@@ -5,14 +5,14 @@ If you don't know if you should create an ADR, the answer is probably "yes".
 
 ## ADR List
 
-- [ADR 01: System Architecture](01_system_architecture.md)
+- [ADR 01: System Architecture](01-system-architecture.md)
 
 ## Background
 
 Background information on ADRs:
 
-- https://adr.github.io
-- https://www.heise.de/hintergrund/Gut-dokumentiert-Architecture-Decision-Records-4664988.html?seite=all
+- [GitHub](https://adr.github.io)
+- [Heise](https://www.heise.de/hintergrund/Gut-dokumentiert-Architecture-Decision-Records-4664988.html?seite=all)
 
 ## Template
 
