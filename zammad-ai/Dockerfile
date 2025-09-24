@@ -60,4 +60,4 @@ ENV PYTHONWARNINGS="ignore"
 ENV APP_VERSION=${IMAGE_VERSION}
 
 # Reset the entrypoint, don't invoke `uv`
-ENTRYPOINT ["python", "app.py"]
+ENTRYPOINT ["python", "main.py"]
