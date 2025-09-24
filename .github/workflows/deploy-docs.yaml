@@ -1,0 +1,32 @@
+name: Deploy documentation website
+
+on:
+  # Runs on pushes to any branch when changes are made to docs or workflow
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yaml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yaml"
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - id: build_docs
+        uses: it-at-m/lhm_actions/action-templates/actions/action-build-docs@9767179088fd2e344d1a24c17404ab809a60f1b6 # v1.0.20
+        with:
+          docs-path: "docs"
+      - id: deploy_docs
+        # Only deploy documentation from the main branch to prevent unauthorized changes
+        uses: it-at-m/lhm_actions/action-templates/actions/action-deploy-docs@9767179088fd2e344d1a24c17404ab809a60f1b6 # v1.0.20
