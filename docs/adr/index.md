@@ -1,4 +1,4 @@
-# Architecture Decision Records (ADRs) for KICC / the KI-RefArch
+# Architecture Decision Records (ADRs) for Zammad-AI
 
 We document all fundamental architectural decisions for our projects as ADRs.
 If you don't know if you should create an ADR, the answer is probably "yes".
