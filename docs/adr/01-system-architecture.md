@@ -1,11 +1,11 @@
 # ADR 01: System Architecture
 
-| Status      | proposed |
-| ----------- | -------- |
-| Author      | @freinold |
-| Voters      | @freinold, @lenabMUC, @pilitz |
-| Drafted     | 2025-09-23 |
-| Timeline    | tbd |
+| Status   | proposed                      |
+| -------- | ----------------------------- |
+| Author   | @freinold                     |
+| Voters   | @freinold, @lenabMUC, @pilitz |
+| Drafted  | 2025-09-23                    |
+| Timeline | tbd                           |
 
 < optionally reference related ADRs >
 

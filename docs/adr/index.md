@@ -21,7 +21,7 @@ We essentially follow [MADR](https://adr.github.io/madr/), but add a status fiel
 ```
 # ADR XX: < short description of the decision >
 
-| Status      | proposed | < accepted | rejected | deprecated | superseded by ADR <n> > 
+| Status      | proposed | < accepted | rejected | deprecated | superseded by ADR <n> >
 | ----------- | -------- |
 | Author      | < initials > |
 | Voters      | - |

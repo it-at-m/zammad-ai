@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitepress'
+import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -7,21 +7,24 @@ export default defineConfig({
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
-      { text: 'Home', link: '/' },
-      { text: 'ADR', link: '/adr' }
+      { text: "Home", link: "/" },
+      { text: "ADR", link: "/adr" },
     ],
 
     sidebar: [
       {
-        text: 'ADR',
+        text: "ADR",
         items: [
-          { text: '01: System Architecture', link: '/adr/01-system-architecture' },
-        ]
-      }
+          {
+            text: "01: System Architecture",
+            link: "/adr/01-system-architecture",
+          },
+        ],
+      },
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/it-at-m/zammad-ai' }
-    ]
-  }
-})
+      { icon: "github", link: "https://github.com/it-at-m/zammad-ai" },
+    ],
+  },
+});
