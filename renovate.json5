@@ -15,7 +15,7 @@
   lockFileMaintenance: {
     enabled: true,
   },
-  reviewers: ["fabian.reinold", "stefan.hentschel"],
+  reviewers: ["freinold", "lenabMUC", "pilitz"],
   packageRules: [
     {
       matchManagers: ["pep621"],
