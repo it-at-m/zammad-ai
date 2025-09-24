@@ -1,6 +1,6 @@
 [project]
 name = "zammad-ai"
-license = { file = "LICENSE" }
+license = { file = "../LICENSE" }
 version = "0.1.0"
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
