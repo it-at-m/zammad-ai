@@ -5,3 +5,5 @@ reviews:
   auto_review:
     enabled: true
     auto_incremental_review: true
+  path_filters:
+    - "!**/*.excalidraw" # Ignore Excalidraw sketch files
