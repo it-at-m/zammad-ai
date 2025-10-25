@@ -15,7 +15,7 @@ maintainers = [
 ]
 
 dependencies = [
-    "faststream[cli,kafka]==0.6.1",
+    "faststream[cli,kafka]==0.6.2",
     "pydantic-settings==2.11.0",
     "python-dotenv==1.1.1",
     "truststore==0.10.4",
@@ -24,7 +24,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit==4.3.0",
-    "ruff==0.14.1",
+    "ruff==0.14.2",
     "ipykernel==7.0.1",
     "jupyter==1.1.1",
 ]
