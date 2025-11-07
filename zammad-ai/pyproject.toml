@@ -4,7 +4,7 @@ license = { file = "../LICENSE" }
 version = "0.1.0"
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
-requires-python = "==3.13.7"
+requires-python = "==3.13.9"
 authors = [
     { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
     { name = "Lena Barth", email = "lena.barth@muenchen.de" },
