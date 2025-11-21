@@ -1,7 +1,7 @@
 # ADR 04: Knowledge Management System Selection
 
 | Status   | proposed   |
-| -------- | -----------|
+| -------- | ---------- |
 | Author   | LB, PI     |
 | Voters   | -          |
 | Drafted  | 2025-11-19 |
@@ -98,15 +98,15 @@ To generate precise and helpful draft responses for tickets in Zammad, the LLM r
 
 ## Overview
 
-| Criterion          | Magnolia | Liferay | BlueSpice Wiki | Zammad KB |
-| ------------------ | -------- | ------- | -------------- | --------- |
-| Department Access  | +        | +       | +              | ++        |
-| API Interface      | +        | +       | +              | +         |
-| Document Mgmt      | +        | +       | +              | +         |
-| Rights/Roles       | ?        | +       | +              | +         |
-| Backup/Export      | +        | +       | +              | +         |
-| Low Maintenance    | -        | -       | o              | ++        |
-| User Friendliness  | o        | o       | +              | ++        |
+| Criterion         | Magnolia | Liferay | BlueSpice Wiki | Zammad KB |
+| ----------------- | -------- | ------- | -------------- | --------- |
+| Department Access | +        | +       | +              | ++        |
+| API Interface     | +        | +       | +              | +         |
+| Document Mgmt     | +        | +       | +              | +         |
+| Rights/Roles      | ?        | +       | +              | +         |
+| Backup/Export     | +        | +       | +              | +         |
+| Low Maintenance   | -        | -       | o              | ++        |
+| User Friendliness | o        | o       | +              | ++        |
 
 ## Decision Recommendation
 
@@ -122,12 +122,13 @@ After weighing the considered options, the Dev-Team favors the Zammad Knowledgeb
 
 **Challenges:**
 
-- No automatic trigger for knowledgebase updates → *Solution:* regular polling of differences via RSS feed
-- Attached documents are not included when retrieving knowledge articles (Answers) → *Solution:* Individual API calls to retrieve each document
+- No automatic trigger for knowledgebase updates → _Solution:_ regular polling of differences via RSS feed
+- Attached documents are not included when retrieving knowledge articles (Answers) → _Solution:_ Individual API calls to retrieve each document
 
 **Conclusion:**
 
 The Zammad Knowledgebase is the most practical and efficient solution for the requirements of this project and is recommended as the central knowledge platform.
 
 ## Decision made
+
 tbd
