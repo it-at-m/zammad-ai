@@ -14,7 +14,7 @@ To generate precise and helpful draft responses for tickets in Zammad, the LLM r
 ### The following criteria are relevant for the decision:
 
 - **Department Access:** The department must be able to independently create, edit, and delete knowledge articles.
-- **API Interface:** An API must be available through which knowledge articles can be automatically retrieved (scraped).
+- **API:** An API must be available through which knowledge articles can be automatically retrieved (scraped).
 - **Document Management and Links:** The system should enable document storage as well as linking to external websites.
 - **Rights and Role Concept:** A differentiated rights concept must ensure that access and modifications can be controlled accordingly.
 - **Backup / Export Capability:** The system must support complete exports of all knowledge articles including metadata and attachments, thus enabling backups to ensure migrations and restorations.
@@ -110,7 +110,7 @@ To generate precise and helpful draft responses for tickets in Zammad, the LLM r
 
 ## Decision Recommendation
 
-After weighing the considered options, the Dev-Team's recommendation is in favor of the Zammad Knowledgebase.
+After weighing the considered options, the Dev-Team favors the Zammad Knowledgebase.
 
 **Rationale:**
 
@@ -129,5 +129,5 @@ After weighing the considered options, the Dev-Team's recommendation is in favor
 
 The Zammad Knowledgebase is the most practical and efficient solution for the requirements of this project and is recommended as the central knowledge platform.
 
-## Decison made
+## Decision made
 tbd
