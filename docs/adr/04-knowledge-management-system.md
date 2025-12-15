@@ -1,11 +1,11 @@
 # ADR 04: Knowledge Management System Selection
 
-| Status   | proposed   |
-| -------- | ---------- |
-| Author   | LB, PI     |
-| Voters   | -          |
-| Drafted  | 2025-11-19 |
-| Accepted | tbd        |
+| Status   | proposed       |
+| -------- | -------------- |
+| Author   | LB, PI         |
+| Voters   | LB, PI, FR, GO |
+| Drafted  | 2025-11-19     |
+| Accepted | 2025-12-05     |
 
 ## Context and Problem Statement
 
@@ -131,4 +131,4 @@ The Zammad Knowledgebase is the most practical and efficient solution for the re
 
 ## Decision made
 
-tbd
+In consultation with management, the Zammad Knowledgebase has been selected as the knowledge management system.
