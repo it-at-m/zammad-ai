@@ -18,13 +18,13 @@ logger: Logger = getLogger("zammad-ai.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Manage FastAPI application lifespan.
-
-    This context manager initializes shared resources on startup
-    and cleans them up on shutdown.
-
-    Args:
-        app: The FastAPI application instance
+    """
+    Manage the application lifespan by initializing shared resources on startup and releasing them on shutdown.
+    
+    On startup, attaches a Triage instance to `app.state.triage` using the current settings. On shutdown, calls `cleanup()` on `app.state.backend_context`.
+    
+    Parameters:
+        app (FastAPI): The FastAPI application whose state will hold the shared resources.
     """
     # Startup: Initialize shared context
     settings: ZammadAISettings = get_settings()
@@ -67,9 +67,21 @@ if not settings.frontend.enabled:
 
     @backend.get("/", include_in_schema=False)
     async def reroute_to_docs() -> RedirectResponse:
+        """
+        Redirect root requests to the API documentation page.
+        
+        Returns:
+            RedirectResponse: A response that redirects the client to "/api/docs".
+        """
         return RedirectResponse(url="/api/docs")
 
 
 @backend.get("/api/v1/health", tags=["health"])
 async def health_check() -> HealthCheckReponse:
+    """
+    Provide a basic application health check response.
+    
+    Returns:
+        HealthCheckReponse: An instance containing the application's default health status.
+    """
     return HealthCheckReponse()

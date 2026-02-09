@@ -41,10 +41,15 @@ class TriageError(Exception):
 class Triage:
     def __init__(self, settings: ZammadAISettings) -> None:
         """
-        Initialize Triage with settings from the global configuration.
-
-        Args:
-            settings (ZammadAISettings): The global settings for Zammad AI, including triage categories, actions, action rules, and prompts.
+        Initialize the Triage instance from the provided ZammadAISettings.
+        
+        Sets up categories, actions, fallback no_category/no_action, action rules, prompt sources (Langfuse, file, or string), prepares system prompts for GenAI, initializes the GenAI handler, and instantiates the appropriate Zammad client.
+        
+        Parameters:
+            settings (ZammadAISettings): Configuration containing triage categories, actions, action rules, prompt definitions, GenAI settings, and Zammad settings.
+        
+        Raises:
+            ValueError: If the configured triage prompts type is unsupported or if the Zammad settings type is unsupported.
         """
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
@@ -122,14 +127,17 @@ class Triage:
         logger.info("Triage initialized successfully.")
 
     async def perform_triage(self, id: str) -> TriageResult:
-        """Perform triage on a Zammad ticket by its ID.
-
-        Args:
-            id (str): The ID of the Zammad ticket.
+        """
+        Perform triage for a Zammad ticket identified by its ID.
+        
+        Parameters:
+            id (str): Zammad ticket identifier.
+        
         Returns:
-            TriageResult: The result of the triage process.
+            TriageResult: Result containing the resolved category, selected action, human-readable reasoning, and confidence score.
+        
         Raises:
-            TriageError: If there is an error during the triage process, such as a connection error to Zammad.
+            TriageError: When the ticket cannot be retrieved from Zammad (e.g., connection failures).
         """
         # Step 1: Fetch ticket data from Zammad
         try:
@@ -179,14 +187,15 @@ class Triage:
         )
 
     async def predict_category(self, message: str, session_id: str) -> CategorizationResult:
-        """Predict the category of the given message.
-
-        Args:
-            message (str): The message to categorize.
-            session_id (str): Session ID for Langfuse tracing.
-
+        """
+        Predict the triage category for a customer message using the GenAI handler.
+        
+        Parameters:
+        	message (str): Customer message to categorize; leading/trailing whitespace is ignored.
+        	session_id (str): Langfuse session identifier used for tracing the prediction.
+        
         Returns:
-            CategorizationResult: The result of the categorization.
+        	CategorizationResult: Categorization outcome containing `category`, `reasoning`, and `confidence`. If the message is empty, the predicted category is invalid, or an error occurs, returns a result with `no_category`, an explanatory `reasoning`, and `confidence` set to 1.0.
         """
         if len(message.strip()) == 0:
             logger.warning("Empty message provided for categorization")
@@ -239,12 +248,18 @@ class Triage:
             )
 
     async def get_action_id(self, categorization_result: CategorizationResult, message: str = "", session_id: str | None = None) -> int:
-        """Determine the action ID based on the categorization result and optional message.
-        Args:
-            categorization_result (CategorizationResult): The result of the categorization.
-            message (str, optional): The message to use for evaluating conditions. Defaults to "".
+        """
+        Selects the appropriate action ID for a categorization using configured action rules and optional message-derived conditions.
+        
+        Evaluates action rules associated with the categorization's category. If a rule defines ordered conditions, each condition is evaluated (possibly extracting values from the provided message via the GenAI handler) and its action_id is returned when the condition matches. If a rule matches but none of its conditions match, the rule's default action_id is returned. If the categorization has no category or no rule matches, the configured fallback action ID is returned.
+        
+        Parameters:
+            categorization_result (CategorizationResult): The categorization outcome whose category guides rule selection.
+            message (str): Optional text used to extract condition values (e.g., days since request or processing id).
+            session_id (str | None): Optional session identifier forwarded to GenAI extraction calls.
+        
         Returns:
-            int: The determined action ID.
+            int: The chosen action ID, or the fallback action ID when no rule or matching condition is found.
         """
 
         days_since_request = None
@@ -293,13 +308,14 @@ class Triage:
         return self.no_action.id
 
     def _id_to_category(self, category_id: int) -> Category:
-        """Look up a category by its ID.
-
-        Args:
-            category_id: The category ID to look up
-
+        """
+        Return the Category for the given ID or the configured fallback when no match exists.
+        
+        Parameters:
+            category_id (int): ID of the category to look up.
+        
         Returns:
-            The matching Category or no_category as fallback
+            Category: The matching Category, or the configured fallback Category if no match exists.
         """
         return self.categories_by_id.get(category_id, self.no_category)
 

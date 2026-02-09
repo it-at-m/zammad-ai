@@ -9,28 +9,37 @@ class LangfuseClient:
     """Client for interacting with Langfuse to fetch prompts and build RunnableConfig with Langfuse callbacks."""
 
     def __init__(self) -> None:
+        """
+        Initialize the LangfuseClient with a callback handler and Langfuse client.
+        
+        Creates a new CallbackHandler used for Runnable callbacks and instantiates a Langfuse client.
+        The Langfuse client is expected to be configured externally (for example via environment variables or other application configuration).
+        """
         self.langfuse_handler: CallbackHandler = CallbackHandler()
         self.langfuse: Langfuse = Langfuse()  # Assumes Langfuse is configured via environment variables or other means
 
     def get_prompt(self, prompt_name: str, prompt_label: str = "production") -> str:
-        """Fetch a prompt template from Langfuse by name and label.
-
-        Args:
-            prompt_name (str): The name of the prompt to fetch.
-            prompt_label (str): The label of the prompt to fetch (default: "production").
+        """
+        Retrieve a prompt template from Langfuse by name and label.
+        
+        Parameters:
+        	prompt_name (str): Name of the prompt to fetch.
+        	prompt_label (str): Label or version of the prompt to fetch (default: "production").
+        
         Returns:
-            str: The text of the fetched prompt template.
+        	str: The text content of the fetched prompt template.
         """
         return self.langfuse.get_prompt(prompt_name, label=prompt_label).prompt
 
     def build_config(self, session_id: str | None = None) -> RunnableConfig:
-        """Build a RunnableConfig with Langfuse callback handler and session metadata.
-
-        Args:
-            session_id (str | None, optional): The session ID to use for Langfuse tracking. If None, a new session ID will be generated. Defaults to None.
-
+        """
+        Builds a RunnableConfig that attaches the Langfuse callback handler and embeds a session identifier in metadata.
+        
+        Parameters:
+            session_id (str | None): Session ID to include in metadata; if None a new UUID4-based session ID is generated.
+        
         Returns:
-            RunnableConfig: A RunnableConfig configured with Langfuse callbacks and session metadata.
+            RunnableConfig: Config with `callbacks` containing the Langfuse callback handler and `metadata` containing `"langfuse_session_id"` set to the session ID.
         """
         if session_id is None:
             session_id = self.generate_session_id()
@@ -44,9 +53,9 @@ class LangfuseClient:
 
     def generate_session_id(self) -> str:
         """
-        Generate a new unique session ID for Langfuse tracing.
-
+        Generate a unique session ID for Langfuse tracing.
+        
         Returns:
-            str: A unique session ID.
+            session_id (str): A newly generated UUID4-based session identifier.
         """
         return str(uuid4())

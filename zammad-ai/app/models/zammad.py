@@ -57,13 +57,14 @@ class ZammadArticle(BaseModel):
     @field_validator("text", mode="after")
     @classmethod
     def strip_html(cls, text: str) -> str:
-        """Remove HTML tags and unescape HTML entities from text.
-
-        Args:
-            text: Raw HTML string.
-
+        """
+        Normalize article text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
+        
+        Parameters:
+            text: Input string that may contain HTML.
+        
         Returns:
-            Plain text without tags and with entities unescaped.
+            The input string with HTML tags removed, HTML entities unescaped, and runs of whitespace collapsed to single spaces and trimmed.
         """
         # Remove HTML tags
         clean_text: str = re.sub(

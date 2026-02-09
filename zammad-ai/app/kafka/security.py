@@ -17,15 +17,14 @@ logger = getLogger(__name__)
 
 
 def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
-    """Set up Kafka security configuration based on application settings.
-
+    """
+    Configure and return a BaseSecurity for Kafka based on the provided KafkaSettings.
+    
     Returns:
-        BaseSecurity: The configured security object for Kafka.
-
+        BaseSecurity: A security object configured with an SSLContext and use_ssl=True when mTLS is configured; returns a default (no-security) BaseSecurity if kafka_settings.security is None.
+    
     Raises:
-        ValueError: If required environment variables are not set, if environment
-            variable contents are not valid base64, or if there are issues
-            loading the PKCS#12 file.
+        ValueError: If environment-provided base64 fields are invalid, if the PKCS#12 data or password cannot be decoded or loaded, if the PKCS#12 archive lacks a private key or certificate, or if the kafka_settings.security type is unsupported.
     """
     if kafka_settings.security is None:
         logger.debug("No Kafka security configuration provided; using no security.")

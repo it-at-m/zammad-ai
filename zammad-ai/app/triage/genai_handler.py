@@ -33,19 +33,20 @@ class GenAIHandler:
     """
 
     def __init__(self, genai_settings: GenAISettings, prompts: dict[str, str]) -> None:
-        """Initialize GenAI handler with chains pre-built.
-
-        Args:
-            genai_settings: GenAI configuration (model, temperature, etc.)
-            prompts: Dictionary of prompt templates keyed by name:
-                - "role": Role description prompt
-                - "categories": Categories prompt
-                - "examples": Examples prompt
-                - "days_since_request": Days since request system prompt
-                - "processing_id": Processing ID system prompt
-
+        """
+        Initialize the GenAIHandler, configure the chat model, and pre-build runnable chains for triage operations.
+        
+        Parameters:
+            genai_settings (GenAISettings): GenAI configuration including `sdk`, model name, temperature, max_retries, and optional `reasoning_effort`.
+            prompts (dict[str, str]): Mapping of prompt templates required by the handler. Expected keys:
+                - "role"
+                - "categories"
+                - "examples"
+                - "days_since_request"
+                - "processing_id"
+        
         Raises:
-            ValueError: If unsupported GenAI SDK is specified
+            ValueError: If an unsupported GenAI SDK is specified.
         """
         self.prompts = prompts
         self.langfuse_client = LangfuseClient()
@@ -76,7 +77,14 @@ class GenAIHandler:
         logger.info("GenAI handler initialized successfully")
 
     def _build_chains(self) -> None:
-        """Build all LangChain chains for reuse."""
+        """
+        Construct reusable LangChain runnable sequences for triage operations.
+        
+        Builds and assigns three instance-level chains:
+        - category_chain: categorization prompt using prompts["categories"] that produces a CategorizationResult.
+        - days_since_request_chain: extraction prompt using prompts["days_since_request"] that produces a DaysSinceRequestResponse.
+        - processing_id_chain: extraction prompt using prompts["processing_id"] that produces a ProcessingIdResponse.
+        """
         # Category prediction chain
         self.category_chain = RunnableSequence(
             ChatPromptTemplate(
@@ -116,16 +124,15 @@ class GenAIHandler:
         input: dict,
         session_id: str | None = None,
     ) -> CategorizationResult:
-        """Predict category for the given input.
-
-        Args:
-            input: Dictionary with keys:
-                - "text": Message text to categorize
-                - Additional context as needed
-            session_id: Optional Langfuse session ID for tracing
-
+        """
+        Predicts the category for the provided message and returns classification details.
+        
+        Parameters:
+            input (dict): Payload containing at least the "text" key with the message to categorize; may include additional context.
+            session_id (str | None): Optional Langfuse session ID used for tracing.
+        
         Returns:
-            CategorizationResult with predicted category, reasoning, and confidence
+            CategorizationResult: Predicted category, explanatory reasoning, and confidence score.
         """
         return await self._invoke_chain(
             chain=self.category_chain,
@@ -139,16 +146,17 @@ class GenAIHandler:
         input: dict,
         session_id: str | None = None,
     ) -> DaysSinceRequestResponse:
-        """Extract days since request from the given input.
-
-        Args:
-            input: Dictionary with keys:
-                - "text": Message text to extract from
-                - "today": Today's date in YYYY-MM-DD format
-            session_id: Optional Langfuse session ID for tracing
-
+        """
+        Extract the number of days since a request from the provided input.
+        
+        Parameters:
+            input (dict): Dictionary with keys:
+                - "text": Message text to extract the date/reference from.
+                - "today": Current date as a string in YYYY-MM-DD format.
+            session_id (str | None): Optional Langfuse session ID used for tracing.
+        
         Returns:
-            DaysSinceRequestResponse with extracted days value
+            DaysSinceRequestResponse: Response containing the extracted days value.
         """
         return await self._invoke_chain(
             chain=self.days_since_request_chain,
@@ -162,16 +170,17 @@ class GenAIHandler:
         input: dict,
         session_id: str | None = None,
     ) -> ProcessingIdResponse:
-        """Extract processing ID from the given input.
-
-        Args:
-            input: Dictionary with keys:
-                - "text": Message text to extract from
-                - "condition": Condition string for ID matching
-            session_id: Optional Langfuse session ID for tracing
-
+        """
+        Extract the processing ID from the provided input message.
+        
+        Parameters:
+            input (dict): Input payload containing:
+                - "text": Message text to extract the ID from.
+                - "condition": Condition string used to match or validate the ID.
+            session_id (str | None): Optional Langfuse session ID used for tracing.
+        
         Returns:
-            ProcessingIdResponse with extracted processing ID
+            ProcessingIdResponse: Response object containing the extracted processing ID.
         """
         return await self._invoke_chain(
             chain=self.processing_id_chain,
@@ -185,15 +194,16 @@ class GenAIHandler:
         input: dict,
         session_id: str | None = None,
     ) -> T:
-        """Invoke a pre-built chain with observability support.
-
-        Args:
-            chain: The RunnableSequence chain to invoke
-            input: Input dictionary for the chain
-            session_id: Optional Langfuse session ID for tracing
-
+        """
+        Invoke a pre-built RunnableSequence and associate the call with a Langfuse session trace.
+        
+        Parameters:
+            chain (RunnableSequence[Any, T]): The pre-built chain to execute.
+            input (dict): Input payload passed to the chain.
+            session_id (str | None): Optional Langfuse session ID to use for tracing; a new session ID is generated if omitted.
+        
         Returns:
-            The chain's output
+            T: The chain's output.
         """
         if session_id is None:
             session_id = self.langfuse_client.generate_session_id()

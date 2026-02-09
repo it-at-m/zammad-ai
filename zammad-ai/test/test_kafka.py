@@ -22,9 +22,13 @@ from app.models.triage import TriageResult
 
 
 def create_mock_settings() -> ZammadAISettings:
-    """Create valid test settings with all required fields.
-
-    Patches sys.argv to prevent CLI argument parsing during test setup.
+    """
+    Builds a complete ZammadAISettings object populated with realistic test values for unit tests.
+    
+    Temporarily replaces sys.argv to avoid CLI argument parsing during construction.
+    
+    Returns:
+        ZammadAISettings: Settings populated with zammad, qdrant, kafka, triage configuration, and valid_request_types suitable for tests.
     """
     import sys
 
@@ -64,7 +68,18 @@ def create_mock_settings() -> ZammadAISettings:
 
 @pytest.fixture
 def valid_message() -> dict:
-    """Standard valid test message."""
+    """
+    Standard valid Kafka event payload used by tests.
+    
+    Returns:
+        dict: Payload with keys:
+            - action: event action (e.g., "created")
+            - ticket: ticket identifier (e.g., "3720")
+            - status: ticket status (e.g., "new")
+            - statusId: status identifier (e.g., "1")
+            - anliegenart: request type (e.g., "technischer Bürgersupport")
+            - lhmExtId: external identifier (empty string when absent)
+    """
     return {
         "action": "created",
         "ticket": "3720",
@@ -77,7 +92,14 @@ def valid_message() -> dict:
 
 @pytest.fixture
 def mock_triage() -> MagicMock:
-    """Create a mock Triage instance."""
+    """
+    Create a MagicMock that simulates a Triage with a preset async `perform_triage` result.
+    
+    Returns:
+        MagicMock: A mock Triage object whose `perform_triage` is an AsyncMock returning a
+        TriageResult with a Category(name="Test", id=1), Action(name="Test", description="Test", id=1),
+        reasoning "Test reasoning", and confidence 0.95.
+    """
     triage = MagicMock()
     # Make perform_triage return an async mock that returns a TriageResult
     triage.perform_triage = AsyncMock(
@@ -93,7 +115,18 @@ def mock_triage() -> MagicMock:
 
 @pytest.fixture
 def mock_backend_context(mock_triage) -> Generator[BackendContext, None, None]:
-    """Create a mock BackendContext and inject it into the module."""
+    """
+    Create and inject a mocked BackendContext into the module for use in tests.
+    
+    Parameters:
+        mock_triage (MagicMock): A mock triage object to attach to the backend context; its
+            `perform_triage` coroutine will be called by code under test.
+    
+    Returns:
+        Generator yielding the mocked BackendContext. The function sets `context.backend_context`
+        to the created mock before yielding and resets `context.backend_context` to None after
+        the generator finishes to restore global state.
+    """
     settings = create_mock_settings()
     ctx = MagicMock(spec=BackendContext)
     ctx.triage = mock_triage

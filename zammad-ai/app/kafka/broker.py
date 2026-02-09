@@ -18,13 +18,24 @@ logger: Logger = getLogger("zammad-ai")
 
 
 def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
-    """Build and return a KafkaRouter instance and its event handler.
-
-    Args:
-        settings (ZammadAISettings): The application settings.
-
+    """
+    Create a configured KafkaRouter and its subscriber event handler for ticket triage.
+    
+    Parameters:
+        settings (ZammadAISettings): Application settings containing Kafka configuration and valid request types.
+    
     Returns:
-        tuple[KafkaRouter, Callable]: The configured KafkaRouter and its event handler.
+        tuple[KafkaRouter, Callable]: The configured KafkaRouter and its event handler callable.
+    """
+    """
+    Process a single incoming Kafka event for ticket triage and acknowledge the message.
+    
+    Parameters:
+        event (Event): The incoming Kafka event to process.
+    
+    Raises:
+        AckMessage: Acknowledges the message after processing or when the event is skipped.
+        NackMessage: Signals the broker to retry the message when processing should be retried.
     """
     logger.info("Building Kafka router")
 
@@ -45,14 +56,16 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     async def event_handler(
         event: Event,
     ) -> None:
-        """Handle incoming Kafka events for ticket processing.
-
+        """
+        Process an incoming Kafka event to perform ticket triage and acknowledge the message.
+        
+        If the event's request type is not supported, the event is acknowledged and skipped. The handler attempts to perform triage for the event's ticket, logs any processing errors, and acknowledges the event when finished.
+        
         Args:
             event (Event): The Kafka event to process.
-
+        
         Raises:
-            AckMessage: If the event is processed successfully.
-            NackMessage: If the event processing fails.
+            AckMessage: Acknowledges the Kafka message to mark it as processed.
         """
         logger.debug(f"Received event: {event}")
 

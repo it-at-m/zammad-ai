@@ -24,7 +24,17 @@ triage = Triage(settings=settings)
 
 
 async def process_item(key: str, value: dict) -> tuple[str, str, str, str]:
-    """Process a single benchmark item."""
+    """
+    Send an item's text to the triage API and return its expected and predicted category/action.
+    
+    Parameters:
+        key (str): Identifier for the item.
+        value (dict): Item payload containing at least "category" (expected category name) and "text" (text to triage).
+    
+    Returns:
+        tuple[str, str, str, str]: A 4-tuple (key, expected_category, predicted_category, predicted_action).
+            If an error occurs during the request, `predicted_category` is "Fehler" and `predicted_action` is an empty string.
+    """
     expected_category = value["category"]
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Schritt 1: Triage-Endpunkt aufrufen

@@ -94,6 +94,14 @@ class ZammadAISettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Define the precedence and ordering of configuration sources for the settings class.
+        
+        The returned tuple lists settings sources in precedence order (highest priority first): initialization values, CLI arguments, environment variables, dotenv (.env) file, and YAML configuration file.
+        
+        Returns:
+            tuple[PydanticBaseSettingsSource, ...]: Settings sources in priority order.
+        """
         return (
             init_settings,
             CliSettingsSource(settings_cls),
@@ -105,12 +113,11 @@ class ZammadAISettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> ZammadAISettings:
-    """Get cached application settings.
-
-
+    """
+    Provide the application's cached settings.
+    
     Returns:
-
-        Settings: The application settings.
+        ZammadAISettings: The cached settings instance used by the application.
     """
 
     return ZammadAISettings()  # type: ignore

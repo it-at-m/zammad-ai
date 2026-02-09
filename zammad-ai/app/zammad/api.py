@@ -18,6 +18,14 @@ class ZammadAPIClient(BaseZammadClient):
     """Client for interacting with Zammad API to fetch and update ticket information."""
 
     def __init__(self, settings: ZammadAPISettings) -> None:
+        """
+        Initialize the Zammad API client and store configuration-derived attributes.
+        
+        Creates an AsyncClient configured with the settings' base URL, bearer authorization header, and timeout, and saves the knowledge_base_id, rss_feed_token, and max_retries from the provided settings.
+        
+        Parameters:
+            settings (ZammadAPISettings): Configuration containing base_url, auth_token, timeout, knowledge_base_id, rss_feed_token, and max_retries.
+        """
         self.client = AsyncClient(
             base_url=settings.base_url.encoded_string(),
             headers={"Authorization": f"Bearer {settings.auth_token}"},  # TODO: implement custom auth schema if needed
@@ -29,14 +37,17 @@ class ZammadAPIClient(BaseZammadClient):
 
     @override
     async def get_ticket(self, id: str) -> ZammadTicket:
-        """Fetch ticket information from Zammad by ticket ID.
-
-        Args:
-            id (str): The ID of the ticket to fetch.
+        """
+        Fetches a ticket and its articles from Zammad using the ticket ID.
+        
+        Parameters:
+            id (str): Ticket ID to fetch.
+        
         Returns:
-            ZammadTicketModel: The ticket information including articles and attachments.
+            ZammadTicket: Ticket containing the provided id and the parsed list of articles.
+        
         Raises:
-            ZammadConnectionError: If there is an error connecting to Zammad or fetching the ticket information.
+            ZammadConnectionError: If the request fails after retries or an HTTP error occurs.
         """
         try:
             for attempt in retry_context(on=HTTPStatusError, attempts=self.max_retries):
@@ -67,14 +78,16 @@ class ZammadAPIClient(BaseZammadClient):
         text: str,
         internal: bool = False,
     ) -> None:
-        """Post an answer to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to post the answer to.
-            text (str): The content of the answer to post.
-            internal (bool): Whether the answer should be marked as internal.
+        """
+        Post an answer to a Zammad ticket.
+        
+        Parameters:
+            ticket_id (str): ID of the ticket to post the answer to.
+            text (str): Content of the answer.
+            internal (bool): If True, mark the answer as internal (visible only to agents).
+        
         Raises:
-            ZammadConnectionError: If there is an error connecting to Zammad or posting the article.
+            ZammadConnectionError: If posting the article fails after retrying.
         """
         article_payload = ZammadAnswer(
             ticket_id=ticket_id,
@@ -101,13 +114,11 @@ class ZammadAPIClient(BaseZammadClient):
         ticket_id: str,
         text: str,
     ) -> None:
-        """Post a shared draft to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to post the shared draft to.
-            text (str): The content of the shared draft to post.
+        """
+        Create a shared draft (internal note) on a Zammad ticket.
+        
         Raises:
-            ZammadConnectionError: If there is an error connecting to Zammad or posting the shared draft.
+            ZammadConnectionError: If posting fails after the configured retry attempts or if Zammad returns an HTTP error.
         """
         # TODO: move payload to zammad model with default values and validation for dynamic fields (ticket_id, text)
         payload = {
@@ -145,13 +156,11 @@ class ZammadAPIClient(BaseZammadClient):
             raise ZammadConnectionError(f"Failed to post shared draft to ticket {ticket_id} after {self.max_retries} attempts.") from e
 
     async def add_tag_to_ticket(self, ticket_id: str, tag: str) -> None:
-        """Add a tag to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to add the tag to.
-            tag (str): The tag to add to the ticket.
+        """
+        Add a tag to the specified Zammad ticket.
+        
         Raises:
-            ZammadConnectionError: If there is an error connecting to Zammad or adding the tag.
+            ZammadConnectionError: If adding the tag fails after retrying the configured number of attempts.
         """
         # TODO: move payload to zammad model with default values and validation for dynamic fields (ticket_id, text)
         payload = {

@@ -12,19 +12,20 @@ class BackendContext:
     """
 
     def __init__(self, settings: ZammadAISettings):
-        """Initialize the backend context.
-
-        Args:
-            settings: Application settings
+        """
+        Create a BackendContext that stores application settings and initializes the shared Triage instance.
+        
+        Parameters:
+            settings (ZammadAISettings): Application configuration used to configure internal resources, including the Triage instance.
         """
         self.settings = settings
         self.triage = Triage(settings=settings)
 
     async def cleanup(self) -> None:
-        """Cleanup resources when shutting down.
-
-        This method can be extended to cleanup any resources that need
-        explicit cleanup (e.g., database connections, file handles).
+        """
+        Perform cleanup of BackendContext-managed resources during application shutdown.
+        
+        This method is a no-op by default; override or extend it to close or release resources (for example, external handlers, connections, or file handles) that require explicit cleanup.
         """
         # Future: Add cleanup for GenAIHandler, Langfuse, etc. if needed
         pass

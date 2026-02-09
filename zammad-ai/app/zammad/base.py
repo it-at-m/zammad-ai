@@ -11,12 +11,14 @@ class BaseZammadClient(ABC):
         self,
         id: str,
     ) -> ZammadTicket:
-        """Fetch ticket information from Zammad by ticket ID.
-
-        Args:
-            id (str): The ID of the ticket to fetch.
+        """
+        Fetches ticket information for a given Zammad ticket ID.
+        
+        Parameters:
+            id (str): Zammad ticket ID to retrieve.
+        
         Returns:
-            ZammadTicket: The ticket information retrieved from Zammad.
+            ZammadTicket: Ticket data corresponding to the provided ID.
         """
         ...
 
@@ -27,12 +29,13 @@ class BaseZammadClient(ABC):
         text: str,
         internal: bool = False,
     ) -> None:
-        """Post an answer to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to which the answer should be posted.
-            text (str): The content of the answer to be posted.
-            internal (bool): Whether the answer should be posted as an internal note (default: False).
+        """
+        Post an answer to the specified Zammad ticket.
+        
+        Parameters:
+            ticket_id: ID of the ticket to update.
+            text: Answer content to post.
+            internal: If True, post as an internal note not visible to the customer.
         """
         ...
 
@@ -42,11 +45,12 @@ class BaseZammadClient(ABC):
         ticket_id: str,
         text: str,
     ) -> None:
-        """Post a shared draft to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to which the shared draft should be posted.
-            text (str): The content of the shared draft to be posted.
+        """
+        Post a shared draft to the specified Zammad ticket.
+        
+        Parameters:
+        	ticket_id (str): ID of the ticket to post the shared draft to.
+        	text (str): Content of the shared draft.
         """
         ...
 
@@ -56,11 +60,12 @@ class BaseZammadClient(ABC):
         ticket_id: str,
         tag: str,
     ) -> None:
-        """Add a tag to a Zammad ticket.
-
-        Args:
-            ticket_id (str): The ID of the ticket to which the tag should be added.
-            tag (str): The tag to be added to the ticket.
+        """
+        Add a tag to the specified Zammad ticket.
+        
+        Parameters:
+            ticket_id (str): Zammad ticket identifier.
+            tag (str): Tag text to add to the ticket.
         """
         ...
 
