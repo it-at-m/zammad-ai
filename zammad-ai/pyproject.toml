@@ -17,7 +17,7 @@ maintainers = [
 dependencies = [
     "faststream[cli,kafka]==0.6.5",
     "httpx==0.28.1",
-    "cryptography==46.0.3",
+    "cryptography==46.0.5",
     "pydantic-settings==2.12.0",
     "pydantic==2.12.5",
     "python-dotenv==1.2.1",
