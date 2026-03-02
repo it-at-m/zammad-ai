@@ -27,7 +27,7 @@ dependencies = [
     "langfuse==3.14.5",
     "openai==2.24.0",
     "pandas==3.0.1",
-    "protobuf==6.33.5",
+    "protobuf==7.34.0",
     "pydantic-settings==2.13.1",
     "pydantic==2.12.5",
     "python-dotenv==1.2.2",
