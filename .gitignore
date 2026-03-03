@@ -357,5 +357,5 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-#Data
-data/
+# Qdrant
+qdrant_data/
