@@ -31,7 +31,7 @@ We essentially follow [MADR](https://adr.github.io/madr/), but add a status fiel
 | Drafted     | < date > |
 | Timeline    | tbd |
 
-< optionally reference related ADRs >
+<-- optionally reference related ADRs -->
 
 ## Context and Problem Statement
 
