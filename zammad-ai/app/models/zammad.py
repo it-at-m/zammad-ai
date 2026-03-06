@@ -1,23 +1,169 @@
 import html
 import re
+from datetime import datetime
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator
+
+
+class ZammadKnowledgebase(BaseModel):
+    id: str = Field(
+        description="ID of the knowledge base",
+    )
+    active: bool = Field(
+        description="Whether the knowledge base is active",
+        default=True,
+    )
+    createdAt: str = Field(
+        description="Creation timestamp of the knowledge base",
+    )
+    updatedAt: str = Field(
+        description="Last update timestamp of the knowledge base",
+    )
+    categoryIds: list[str] = Field(
+        description="List of category IDs associated with the knowledge base",
+        default_factory=list,
+    )
+    answerIds: list[str] = Field(
+        description="List of answer IDs associated with the knowledge base",
+        default_factory=list,
+    )
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value: int | str) -> str:
+        """
+        Cast an identifier to a string when it's an integer.
+        
+        Parameters:
+            value (int | str): The identifier to normalize; integers will be converted to strings.
+        
+        Returns:
+            str: The identifier as a string.
+        """
+        return str(value) if isinstance(value, int) else value
+
+    @field_validator("categoryIds", "answerIds", mode="before")
+    @classmethod
+    def cast_category_ids_to_str(cls, value: list[int | str]) -> list[str]:
+        """
+        Convert a list of category IDs to strings, coercing any integer elements.
+        
+        Parameters:
+            value (list[int | str]): Category IDs as integers or strings.
+        
+        Returns:
+            list[str]: Category IDs with all elements as strings.
+        """
+        return [str(v) if isinstance(v, int) else v for v in value]
+
+    @field_validator("createdAt", "updatedAt", mode="before")
+    @classmethod
+    def validate_timestamps(cls, value: str) -> str:
+        """
+        Convert a timestamp string into ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ).
+        
+        Accepts common timestamp representations including ISO variants (with or without fractional seconds and with or without a trailing 'Z'), space-separated date/time, date-only, and common European formats (DD/MM/YYYY or DD.MM.YYYY) with or without time.
+        
+        Parameters:
+            cls: The model class (validator context).
+            value (str): Timestamp string to normalize.
+        
+        Returns:
+            str: Timestamp formatted as YYYY-MM-DDTHH:MM:SSZ.
+        
+        Raises:
+            ValueError: If the input cannot be parsed into a supported timestamp format.
+        """
+        # If already in correct format, return as-is
+        iso8601_pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
+        if re.match(iso8601_pattern, value):
+            return value
+
+        # Common timestamp formats to try parsing
+        formats_to_try = [
+            "%Y-%m-%dT%H:%M:%S",  # 2024-01-01T12:00:00
+            "%Y-%m-%dT%H:%M:%S.%f",  # 2024-01-01T12:00:00.123456
+            "%Y-%m-%dT%H:%M:%S.%fZ",  # 2024-01-01T12:00:00.123456Z
+            "%Y-%m-%d %H:%M:%S",  # 2024-01-01 12:00:00
+            "%Y-%m-%d",  # 2024-01-01
+            "%d/%m/%Y %H:%M:%S",  # 01/01/2024 12:00:00
+            "%d/%m/%Y",  # 01/01/2024
+            "%d.%m.%Y %H:%M:%S",  # 01.01.2024 12:00:00
+            "%d.%m.%Y",  # 01.01.2024
+        ]
+
+        # Try to parse and convert to ISO 8601
+        for fmt in formats_to_try:
+            try:
+                dt = datetime.strptime(value, fmt)
+                return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                continue
+
+        # If no format matched, raise error
+        raise ValueError(f"Timestamp '{value}' could not be parsed to ISO 8601 format.")
+
+
+class KnowledgeBaseAttachment(BaseModel):
+    id: str = Field(
+        description="ID of the attachment",
+    )
+    filename: str = Field(
+        description="Filename of the attachment",
+    )
+    contentType: str = Field(
+        description="Content type of the attachment",
+    )
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value: int | str) -> str:
+        """
+        Cast an identifier to a string when it's an integer.
+        
+        Parameters:
+            value (int | str): The identifier to normalize; integers will be converted to strings.
+        
+        Returns:
+            str: The identifier as a string.
+        """
+        return str(value) if isinstance(value, int) else value
 
 
 class KnowledgeBaseAnswer(BaseModel):
     id: str = Field(
         description="The ID of the answer",
     )
-    title: str = Field(
+    answerTitle: str = Field(
         description="The title of the answer",
     )
-    content: str = Field(
+    answerBody: str = Field(
         description="The content of the answer",
     )
-    attachments: dict[str, str] = Field(
-        description="Dict of attachments associated with the filename",
-        default_factory=dict,
+    createdAt: str = Field(
+        description="The creation timestamp of the answer",
     )
+    updatedAt: str = Field(
+        description="The last update timestamp of the answer",
+    )
+    attachments: list[KnowledgeBaseAttachment] = Field(
+        description="List of attachments associated with the answer",
+        default_factory=list,
+    )
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value: int | str) -> str:
+        """
+        Cast an identifier to a string when it's an integer.
+        
+        Parameters:
+            value (int | str): The identifier to normalize; integers will be converted to strings.
+        
+        Returns:
+            str: The identifier as a string.
+        """
+        return str(value) if isinstance(value, int) else value
 
 
 class ZammadTicket(BaseModel):
@@ -28,6 +174,29 @@ class ZammadTicket(BaseModel):
         description="List of articles associated with the ticket",
         default_factory=list,
     )
+
+
+class ArticleAttachment(BaseModel):
+    id: str = Field(
+        description="ID of the attachment",
+    )
+    filename: str = Field(
+        description="Filename of the attachment",
+    )
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value: int | str) -> str:
+        """
+        Cast an identifier to a string when it's an integer.
+        
+        Parameters:
+            value (int | str): The identifier to normalize; integers will be converted to strings.
+        
+        Returns:
+            str: The identifier as a string.
+        """
+        return str(value) if isinstance(value, int) else value
 
 
 class ZammadArticle(BaseModel):
@@ -41,7 +210,7 @@ class ZammadArticle(BaseModel):
         description="Body of the article",
         validation_alias=AliasChoices("text", "body"),
     )
-    attachments: list["Attachment"] = Field(
+    attachments: list["ArticleAttachment"] = Field(
         description="List of attachments for the article",
         default_factory=list,
     )
@@ -53,6 +222,24 @@ class ZammadArticle(BaseModel):
         description="Author of the article",
         default="-",
     )
+    subject: str | None = Field(
+        description="Subject of the article",
+        default=None,
+    )
+
+    @field_validator("id", "ticket_id", mode="before")
+    @classmethod
+    def cast_id_to_str(cls, value: int | str) -> str:
+        """
+        Cast an identifier to a string when it's an integer.
+        
+        Parameters:
+            value (int | str): The identifier to normalize; integers will be converted to strings.
+        
+        Returns:
+            str: The identifier as a string.
+        """
+        return str(value) if isinstance(value, int) else value
 
     @field_validator("text", mode="after")
     @classmethod
@@ -83,22 +270,6 @@ class ZammadArticle(BaseModel):
         return clean_text
 
 
-class Attachment(BaseModel):
-    id: str = Field(
-        description="ID of the attachment",
-    )
-    filename: str = Field(
-        description="Filename of the attachment",
-    )
-    size: str = Field(
-        description="Size of the attachment",
-    )
-    preferences: dict = Field(
-        description="Preferences of the attachment",
-        default_factory=dict,
-    )
-
-
 class ZammadAnswer(BaseModel):
     ticket_id: str = Field(
         description="ID of the associated ticket",
@@ -110,11 +281,8 @@ class ZammadAnswer(BaseModel):
         description="Whether the article should be marked as internal",
         default=False,
     )
-    subject: str = "Call note"
+    subject: str | None = Field(default=None, description="Optional subject line for the answer")
     content_type: str = "text/html"
-    sender: str = "KI Agent"
-    type: str = "phone"
-    time_unit: str = "15"
 
 
 class ZammadTagAdd(BaseModel):
@@ -143,7 +311,7 @@ class ZammadSharedDraftArticle(BaseModel):
 
 
 # TODO: Research good defaults for model values
-class ZammadSharedDraft(BaseModel):
+class ZammadSharedDraftAPI(BaseModel):
     form_id: str = "367646073"
     new_article: ZammadSharedDraftArticle
     ticket_attributes: dict[str, str] = Field(
@@ -154,3 +322,7 @@ class ZammadSharedDraft(BaseModel):
             "state_id": "2",
         }
     )
+
+
+class ZammadSharedDraftEAI(BaseModel):
+    body: str = Field(description="The body of the shared draft")
