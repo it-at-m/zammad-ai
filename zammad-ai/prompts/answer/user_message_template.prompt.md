@@ -1,6 +1,9 @@
-Classified Category: {category}
+Classified Category: {{ category }}
+
+---
+
 User Question:
 
 ```
-{user_text}
+{{ user_text }}
 ```

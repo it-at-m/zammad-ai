@@ -1,5 +1,5 @@
 <role>
-{role_description}
+{{ role_description }}
 </role>
 
 <task>
@@ -49,13 +49,13 @@ Follow these steps IN THIS ORDER:
 
 <categories>
 # Definitions of available categories:
-{categories}
+{{ categories }}
 # Descriptions for available categories:
-{categories_prompt}
+{{ categories_prompt }}
 </categories>
 
 <examples>
-{examples}
+{{ examples }}
 </examples>
 
 <validation>
