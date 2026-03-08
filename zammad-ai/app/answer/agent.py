@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.models.answer import StructuredAgentResponse
 from app.settings import GenAISettings
 from app.utils.logging import getLogger
+from app.utils.templating import render_template_string
 
 from .dlf import DLFClient, DLFDocument
 from .knowledgebase import QdrantKBClient, QdrantKBError, RetrieveDocumentsKBOutput, SearchQdrantKBInput
@@ -107,12 +108,19 @@ def build_agent(
     if dlf_enabled:
         available_tools.append(search_dlf)
 
+    # Render system prompt using Jinja2
+    search_strategy = (
+        "Start by searching the knowledge base for standard procedures. "
+        "If you cannot find sufficient information, query the DLF (Digital Driver's License File) if available."
+    )
+    rendered_system_prompt = render_template_string(system_prompt, tools=available_tools, search_strategy=search_strategy)
+
     # Create the agent via the factory method
     agent: CompiledStateGraph[
         AgentState[StructuredAgentResponse], AgentContext, _InputAgentState, _OutputAgentState[StructuredAgentResponse]  # type: ignore
     ] = create_agent(
         model=chat_model,
-        system_prompt=system_prompt,
+        system_prompt=rendered_system_prompt,
         tools=available_tools,
         response_format=StructuredAgentResponse,
         context_schema=AgentContext,

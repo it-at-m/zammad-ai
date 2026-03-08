@@ -310,7 +310,7 @@ class TriageService:
                                         prompt_key="processing_id",
                                         input={
                                             "text": message,
-                                            "condition": condition_str,
+                                            "condition_str": condition_str,
                                         },
                                         session_id=session_id,
                                         schema=ProcessingIdResponse,

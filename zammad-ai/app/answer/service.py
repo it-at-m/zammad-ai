@@ -50,6 +50,7 @@ class AnswerService:
         # Setup the user message template as an object variable
         self.user_message_template: PromptTemplate = PromptTemplate.from_template(
             template=load_prompt(file_path=Path("prompts") / "answer" / "user_message_template.prompt.md"),
+            template_format="jinja2",
         )
 
         self.agent: CompiledStateGraph[

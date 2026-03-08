@@ -7,7 +7,7 @@ Chains are constructed on-demand based on prompt keys and optional response sche
 from logging import Logger
 from typing import Any, TypeVar, overload
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 from langchain_core.runnables import RunnableConfig, RunnableSequence
 from langfuse import observe
 
@@ -106,10 +106,10 @@ class GenAIHandler:
         cache_key = f"{prompt_key}_{schema.__name__ if schema else 'raw'}"
 
         if cache_key not in self._chains:
-            prompt_template = ChatPromptTemplate(
-                messages=[
-                    ("system", self.prompts[prompt_key]),
-                    ("user", "{text}"),
+            prompt_template = ChatPromptTemplate.from_messages(
+                [
+                    SystemMessagePromptTemplate.from_template(self.prompts[prompt_key], template_format="jinja2"),
+                    HumanMessagePromptTemplate.from_template("{{ text }}", template_format="jinja2"),
                 ]
             )
 
