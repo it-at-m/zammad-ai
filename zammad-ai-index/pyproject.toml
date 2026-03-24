@@ -5,15 +5,15 @@ description = "Indexing job for Zammad AI"
 readme = "README.md"
 requires-python = "==3.13.11"
 dependencies = [
-    "feedparser>=6.0.12",
-    "langchain>=1.2.10",
-    "langchain-core>=1.2.18",
-    "langchain-openai>=1.1.11",
-    "langchain-qdrant>=1.1.0",
-    "pydantic>=2.12.5",
-    "pydantic-settings>=2.13.1",
-    "stamina>=25.2.0",
-    "truststore>=0.10.4",
+    "feedparser==6.0.12",
+    "langchain==1.2.10",
+    "langchain-core==1.2.18",
+    "langchain-openai==1.1.11",
+    "langchain-qdrant==1.1.0",
+    "pydantic==2.12.5",
+    "pydantic-settings==2.13.1",
+    "stamina==25.2.0",
+    "truststore==0.10.4",
 ]
 
 [dependency-groups]

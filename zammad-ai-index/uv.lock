@@ -1019,15 +1019,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "feedparser", specifier = ">=6.0.12" },
-    { name = "langchain", specifier = ">=1.2.10" },
-    { name = "langchain-core", specifier = ">=1.2.18" },
-    { name = "langchain-openai", specifier = ">=1.1.11" },
-    { name = "langchain-qdrant", specifier = ">=1.1.0" },
-    { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "pydantic-settings", specifier = ">=2.13.1" },
-    { name = "stamina", specifier = ">=25.2.0" },
-    { name = "truststore", specifier = ">=0.10.4" },
+    { name = "feedparser", specifier = "==6.0.12" },
+    { name = "langchain", specifier = "==1.2.10" },
+    { name = "langchain-core", specifier = "==1.2.18" },
+    { name = "langchain-openai", specifier = "==1.1.11" },
+    { name = "langchain-qdrant", specifier = "==1.1.0" },
+    { name = "pydantic", specifier = "==2.12.5" },
+    { name = "pydantic-settings", specifier = "==2.13.1" },
+    { name = "stamina", specifier = "==25.2.0" },
+    { name = "truststore", specifier = "==0.10.4" },
 ]
 
 [package.metadata.requires-dev]
