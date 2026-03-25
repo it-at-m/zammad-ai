@@ -121,7 +121,6 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
         thresholds=JudgeThresholds(),
         prompt=StringPromptConfig(prompt="Judge the answer."),
         repair_prompt=StringPromptConfig(prompt="Repair: {repair_instructions}"),
-        repair_enabled=True,
         max_repairs=1,
     )
 
@@ -167,7 +166,6 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
         thresholds=JudgeThresholds(),
         prompt=StringPromptConfig(prompt="Judge the answer."),
         repair_prompt=StringPromptConfig(prompt="Repair: {repair_instructions}"),
-        repair_enabled=True,
         max_repairs=1,
     )
 

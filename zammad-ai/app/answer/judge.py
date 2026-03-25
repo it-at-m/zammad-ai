@@ -1,5 +1,5 @@
 from logging import Logger
-from typing import Any, TypeVar
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -14,8 +14,6 @@ from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.answer.judge")
 
-T = TypeVar("T")
-
 
 class JudgeHandler:
     """Judge generated answers with a structured LLM response."""
@@ -23,7 +21,7 @@ class JudgeHandler:
     def __init__(self, genai_settings: GenAISettings, prompt: str, langfuse_client: LangfuseClient | None = None) -> None:
         """Initialize the judge chain for the configured GenAI backend."""
 
-        self.langfuse_client = langfuse_client
+        self.langfuse_client: LangfuseClient | None = langfuse_client
 
         if not prompt.strip():
             raise ValueError("Judge prompt cannot be empty.")

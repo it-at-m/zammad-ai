@@ -74,10 +74,6 @@ class JudgeSettings(BaseModel):
         ),
         discriminator="type",
     )
-    repair_enabled: bool = Field(
-        default=True,
-        description="Whether a failed judgment should trigger a single repair pass.",
-    )
     max_repairs: PositiveInt = Field(
         default=1,
         description="Maximum number of repair passes to attempt after a failed judgment.",

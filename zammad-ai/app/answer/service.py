@@ -174,46 +174,43 @@ class AnswerService:
 
         if self.judge_handler is None:
             return structured_response
-
-        judgment: JudgeResult = await self.judge_handler.judge_answer(
-            question=user_text,
-            answer=structured_response.response,
-            documents=[document.model_dump() for document in structured_response.documents],
-            session_id=session_id,
-        )
-
-        if self._is_judged_ok(judgment):
-            logger.debug("Answer passed judgment without need for repair.")
-            return structured_response
-
-        if not self.judge_settings.repair_enabled or self.judge_settings.max_repairs < 1:
-            logger.warning("Answer did not pass judgment but repair is disabled or max repairs is set to 0, returning original answer.")
-            return structured_response
-
         repair_prompt: str = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,
             prompt_source_name="judge repair prompt",
         )
-
-        repair_message = HumanMessage(
-            content=repair_prompt.format(
+        messages = [user_message]
+        for _ in range(self.judge_settings.max_repairs):
+            judgment: JudgeResult = await self.judge_handler.judge_answer(
                 question=user_text,
-                category=category,
                 answer=structured_response.response,
-                judgment_reasoning=judgment.reasoning,
-                repair_instructions=judgment.repair_instructions or "Please improve the answer.",
+                documents=[document.model_dump() for document in structured_response.documents],
+                session_id=session_id,
             )
-        )
 
-        agent_result: dict = await self.agent.ainvoke(
-            input={"messages": [user_message, repair_message]},
-            config=config,
-            context=self.agent_context,
-        )
+            if self._is_judged_ok(judgment):
+                logger.debug("Answer passed judgment without need for repair.")
+                return structured_response
 
-        logger.debug("Answer did not pass judgment and repair was attempted.")
+            repair_message = HumanMessage(
+                content=repair_prompt.format(
+                    question=user_text,
+                    category=category,
+                    answer=structured_response.response,
+                    judgment_reasoning=judgment.reasoning,
+                    repair_instructions=judgment.repair_instructions or "Please improve the answer.",
+                )
+            )
 
-        return agent_result["structured_response"]
+            agent_result: dict = await self.agent.ainvoke(
+                input={"messages": messages + [repair_message]},
+                config=config,
+                context=self.agent_context,
+            )
+
+            logger.debug("Answer did not pass judgment and repair was attempted.")
+            structured_response = agent_result["structured_response"]
+
+        return structured_response
 
     def _is_judged_ok(self, judgment: JudgeResult) -> bool:
         """Return whether a judgment meets the configured quality thresholds."""
