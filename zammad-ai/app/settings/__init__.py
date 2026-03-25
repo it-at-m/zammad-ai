@@ -1,4 +1,4 @@
-from .answer import AnswerSettings, QdrantSettings
+from .answer import AnswerSettings, JudgeSettings, JudgeThresholds, QdrantSettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings
 from .kafka import KafkaSettings
@@ -14,6 +14,8 @@ __all__: list[str] = [
     "GenAISettings",
     "get_settings",
     "KafkaSettings",
+    "JudgeSettings",
+    "JudgeThresholds",
     "QdrantSettings",
     "TriageSettings",
     "UseCaseSettings",

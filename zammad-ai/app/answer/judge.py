@@ -1,0 +1,96 @@
+from logging import Logger
+from typing import Any, TypeVar
+from uuid import uuid4
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig, RunnableSequence
+from langchain_openai import ChatOpenAI
+from langfuse import observe
+
+from app.models.answer import JudgeResult
+from app.observe import LangfuseClient
+from app.settings.genai import GenAISettings
+from app.utils.logging import getLogger
+
+logger: Logger = getLogger("zammad-ai.answer.judge")
+
+T = TypeVar("T")
+
+
+class JudgeHandler:
+    """Judge generated answers with a structured LLM response."""
+
+    def __init__(self, genai_settings: GenAISettings, prompt: str, langfuse_client: LangfuseClient | None = None) -> None:
+        """Initialize the judge chain for the configured GenAI backend."""
+
+        self.langfuse_client = langfuse_client
+
+        if not prompt.strip():
+            raise ValueError("Judge prompt cannot be empty.")
+
+        match genai_settings.sdk:
+            case "openai":
+                self.chat_model = ChatOpenAI(
+                    model_name=genai_settings.judge_model or genai_settings.chat_model,
+                    temperature=genai_settings.judge_temperature
+                    if genai_settings.judge_temperature is not None
+                    else genai_settings.temperature,
+                    max_retries=genai_settings.max_retries,
+                    reasoning=genai_settings.reasoning_config,
+                    store=genai_settings.store,
+                )
+            case _:
+                raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
+
+        self._judge_chain = RunnableSequence(
+            ChatPromptTemplate(
+                messages=[
+                    ("system", prompt),
+                    (
+                        "user",
+                        "Question: {question}\n\nAnswer: {answer}\n\nDocuments: {documents}",
+                    ),
+                ]
+            ),
+            self.chat_model.with_structured_output(schema=JudgeResult, strict=True),
+        )
+
+    @observe(as_type="span")
+    async def judge_answer(
+        self,
+        question: str,
+        answer: str,
+        documents: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> JudgeResult:
+        """Judge an answer and return the structured result."""
+
+        _, config = self._build_runnable_config(session_id=session_id)
+
+        try:
+            response: JudgeResult = await self._judge_chain.ainvoke(
+                input={
+                    "question": question,
+                    "answer": answer,
+                    "documents": documents,
+                },
+                config=config,
+            )
+            return response
+        except Exception as e:
+            logger.error("Error during judge invocation", exc_info=True)
+            raise RuntimeError("Judge operation failed") from e
+
+    def _build_runnable_config(self, session_id: str | None) -> tuple[str, RunnableConfig]:
+        """Build a runnable config, creating a session id when needed."""
+
+        resolved_session_id: str | None = session_id.strip() if session_id is not None else None
+        if not resolved_session_id:
+            resolved_session_id = str(uuid4())
+
+        if self.langfuse_client is None:
+            return resolved_session_id, RunnableConfig()
+
+        self.langfuse_client.langfuse.update_current_trace(session_id=resolved_session_id)
+        config: RunnableConfig = self.langfuse_client.build_config(session_id=resolved_session_id)
+        return resolved_session_id, config

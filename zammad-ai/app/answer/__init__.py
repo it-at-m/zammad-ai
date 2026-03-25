@@ -3,11 +3,13 @@ Answer module for Zammad AI, responsible for generating structured responses to 
 """
 
 from .agent import AgentContext, StructuredAgentResponse
+from .judge import JudgeHandler
 from .service import AnswerService, get_answer_service
 
 __all__: list[str] = [
     "AgentContext",
     "AnswerService",
+    "JudgeHandler",
     "get_answer_service",
     "StructuredAgentResponse",
 ]

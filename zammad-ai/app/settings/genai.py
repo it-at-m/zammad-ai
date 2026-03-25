@@ -47,6 +47,11 @@ class GenAISettings(BaseModel):
         default=0.0,
         le=2.0,
     )
+    judge_temperature: NonNegativeFloat | None = Field(
+        description="Temperature for judge LLM responses; falls back to temperature when unset",
+        default=None,
+        le=2.0,
+    )
 
     # Embedding configuration
     embedding_model: str = Field(

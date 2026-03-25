@@ -34,7 +34,7 @@ class GenAIHandler:
     operation to avoid rebuilding chain objects on every request.
     """
 
-    REQUIRED_PROMPT_KEYS = {"categorization", "days_since_request", "processing_id"}
+    REQUIRED_PROMPT_KEYS = {"triage", "days_since_request", "processing_id"}
 
     def __init__(self, genai_settings: GenAISettings, prompts: dict[str, str]) -> None:
         """Initialize model configuration and durable operation chains.
@@ -85,7 +85,7 @@ class GenAIHandler:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
 
         # Build durable chains once so each operation reuses the same chain instance.
-        self._categorization_chain = self._build_chain(prompt=prompts["categorization"], output_schema=CategorizationResult)
+        self._categorization_chain = self._build_chain(prompt=prompts["triage"], output_schema=CategorizationResult)
         self._days_since_request_chain = self._build_chain(prompt=prompts["days_since_request"], output_schema=DaysSinceRequestResponse)
         self._processing_id_chain = self._build_chain(prompt=prompts["processing_id"], output_schema=ProcessingIdResponse)
 

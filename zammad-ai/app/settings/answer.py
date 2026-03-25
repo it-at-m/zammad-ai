@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, FilePath, HttpUrl, PositiveInt, SecretStr
+from pydantic import AfterValidator, BaseModel, Field, FilePath, HttpUrl, NonNegativeFloat, PositiveInt, SecretStr
 
 from app.utils.paths import get_prompts_dir
 from app.utils.validators import validate_is_prompt
@@ -8,31 +8,79 @@ from app.utils.validators import validate_is_prompt
 from .langfuse import LangfusePrompt
 
 
-class StringAnswerPrompt(BaseModel):
-    """Prompt configuration for answer generation using a raw string template."""
-
+class StringPromptConfig(BaseModel):
     type: Literal["string"] = "string"
     prompt: str = Field(
-        description="The prompt template for answer generation as a raw string.",
+        description="The prompt template as a raw string.",
         default="",
     )
 
 
-class FileAnswerPrompt(BaseModel):
-    """Prompt configuration for answer generation using a file path."""
-
+class FilePromptConfig(BaseModel):
     type: Literal["file"] = "file"
     prompt: Annotated[FilePath, AfterValidator(func=validate_is_prompt)] = Field(
-        description="The file path to the prompt template for answer generation.",
+        description="The file path to the prompt template.",
     )
 
 
-class LangfuseAnswerPrompt(BaseModel):
-    """Prompt configuration for answer generation using a Langfuse prompt reference."""
-
+class LangfusePromptConfig(BaseModel):
     type: Literal["langfuse"] = "langfuse"
     prompt: LangfusePrompt = Field(
-        description="The name and label of the Langfuse prompt to use for answer generation.",
+        description="The name and label of the Langfuse prompt to use.",
+    )
+
+
+PromptSourceConfig = StringPromptConfig | FilePromptConfig | LangfusePromptConfig
+
+
+class JudgeThresholds(BaseModel):
+    context_relevance: NonNegativeFloat = Field(
+        default=0.75,
+        description="Minimum context relevance score required for a passing judgment.",
+        le=1.0,
+    )
+    groundedness: NonNegativeFloat = Field(
+        default=0.75,
+        description="Minimum groundedness score required for a passing judgment.",
+        le=1.0,
+    )
+    answer_relevance: NonNegativeFloat = Field(
+        default=0.75,
+        description="Minimum answer relevance score required for a passing judgment.",
+        le=1.0,
+    )
+
+
+class JudgeSettings(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="Whether to run an LLM judge after answer generation.",
+    )
+    thresholds: JudgeThresholds = Field(
+        default_factory=JudgeThresholds,
+        description="Thresholds used to determine whether an answer passes judgment.",
+    )
+    prompt: PromptSourceConfig = Field(
+        description="Prompt configuration for the judge evaluation step.",
+        default_factory=lambda: FilePromptConfig(
+            prompt=get_prompts_dir() / "judge" / "judge.prompt.md",
+        ),
+        discriminator="type",
+    )
+    repair_prompt: PromptSourceConfig = Field(
+        description="Prompt configuration used to instruct the answer agent during a repair pass.",
+        default_factory=lambda: FilePromptConfig(
+            prompt=get_prompts_dir() / "judge" / "repair.prompt.md",
+        ),
+        discriminator="type",
+    )
+    repair_enabled: bool = Field(
+        default=True,
+        description="Whether a failed judgment should trigger a single repair pass.",
+    )
+    max_repairs: PositiveInt = Field(
+        default=1,
+        description="Maximum number of repair passes to attempt after a failed judgment.",
     )
 
 
@@ -95,9 +143,9 @@ class DLFSettings(BaseModel):
 
 
 class AnswerSettings(BaseModel):
-    agent_prompt: StringAnswerPrompt | FileAnswerPrompt | LangfuseAnswerPrompt = Field(
+    agent_prompt: PromptSourceConfig = Field(
         description="Prompt configuration for the answer generation agent. Can be provided as a raw string, a file path, or a Langfuse prompt reference.",
-        default_factory=lambda: FileAnswerPrompt(
+        default_factory=lambda: FilePromptConfig(
             prompt=get_prompts_dir() / "answer" / "agent.prompt.md",
         ),
         discriminator="type",
@@ -107,4 +155,7 @@ class AnswerSettings(BaseModel):
     )
     qdrant: QdrantSettings = Field(
         default=QdrantSettings(),
+    )
+    judge: JudgeSettings = Field(
+        default_factory=JudgeSettings,
     )
