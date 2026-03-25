@@ -7,6 +7,7 @@ from app.answer import service as answer_module
 from app.answer.judge import JudgeResult
 from app.answer.service import AnswerService
 from app.models.answer import DocumentDict, StructuredAgentResponse
+from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConfig
 
 
@@ -49,8 +50,16 @@ def _get_answer_runs_in_progress_value() -> float:
 
 def _build_answer_service(
     ainvoke: Callable[..., Awaitable[dict]],
+    settings_factory: Callable[..., ZammadAISettings],
 ) -> AnswerService:
     service = AnswerService.__new__(AnswerService)
+    service.settings = settings_factory(
+        overrides={
+            "answer": {
+                "ai_answer_disclaimer": "",
+            },
+        }
+    )
     service.langfuse_client = FakeLangfuseClient()
     service.user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()
@@ -62,13 +71,15 @@ def _build_answer_service(
 
 
 @pytest.mark.asyncio
-async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success() -> None:
+async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
     baseline = _get_answer_runs_in_progress_value()
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {"structured_response": {"answer": "ok"}}
 
-    service = _build_answer_service(ainvoke=_ainvoke)
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
 
     await service.generate_answer(user_text="hello", category="general")
 
@@ -76,7 +87,9 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_answer_in_progress_gauge_increments_while_running() -> None:
+async def test_generate_answer_in_progress_gauge_increments_while_running(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
     baseline = _get_answer_runs_in_progress_value()
     expected = baseline + 1
 
@@ -84,7 +97,7 @@ async def test_generate_answer_in_progress_gauge_increments_while_running() -> N
         assert _get_answer_runs_in_progress_value() == expected
         return {"structured_response": {"answer": "ok"}}
 
-    service = _build_answer_service(ainvoke=_ainvoke)
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
 
     await service.generate_answer(user_text="hello", category="general")
 
@@ -101,7 +114,7 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
             )
         }
 
-    service = _build_answer_service(ainvoke=_ainvoke)
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=ZammadAISettings)
     setattr(service, "judge_handler", FakeJudgeHandler())
     service.judge_settings = JudgeSettings(
         enabled=True,
@@ -138,7 +151,7 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
             )
         }
 
-    service = _build_answer_service(ainvoke=_ainvoke)
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=ZammadAISettings)
     judge_handler = FakeJudgeHandler()
     judge_handler.judge_result = JudgeResult(
         context_relevance=0.1,

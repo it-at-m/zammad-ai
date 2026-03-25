@@ -8,17 +8,18 @@ from faststream.kafka.prometheus import KafkaPrometheusMiddleware
 from faststream.security import BaseSecurity
 from prometheus_client import REGISTRY
 
+from app.action.service import ActionService, get_action_service
+from app.answer.service import AnswerService, get_answer_service
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.settings import ZammadAISettings
-from app.triage.triage import get_triage_service
+from app.triage.triage import TriageService, get_triage_service
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
 
-from ..triage.triage import TriageService
 from .security import setup_security
 
-logger: Logger = getLogger(name="zammad-ai")
+logger: Logger = getLogger(name="zammad-ai.kafka.broker")
 
 
 def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
@@ -49,6 +50,10 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         ),
     )
 
+    triage_service: TriageService = get_triage_service(settings=settings)
+    answer_service: AnswerService = get_answer_service(settings=settings)
+    action_service: ActionService = get_action_service(settings=settings, answer_service=answer_service)
+
     @router.subscriber(
         settings.kafka.topic,
         group_id=settings.kafka.group_id,
@@ -75,10 +80,10 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             if False:  # TODO: Replace with error handlers
                 raise NackMessage()
             try:
-                triage: TriageService = get_triage_service(settings=settings)
-                id: int = int(event.ticket)
-                result: TriageResult = await triage.perform_triage(id=id)
-                logger.debug(f"Triage result for ticket {id}: {result}")
+                ticket_id: int = int(event.ticket)
+                result: TriageResult = await triage_service.perform_triage(id=ticket_id)
+                logger.debug(f"Triage result for ticket {ticket_id}: category: {result.category.name}, action: {result.action.name}")
+                await action_service.execute_action(ticket_id=ticket_id, triage=result)
             except Exception:
                 logger.error(f"Error processing event for ticket {event.ticket}.", exc_info=True)
                 raise NackMessage()

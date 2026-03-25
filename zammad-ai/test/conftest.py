@@ -14,8 +14,8 @@ from fastapi.testclient import TestClient
 from faststream.kafka import TestKafkaBroker
 from pydantic import HttpUrl, SecretStr
 
-from app.settings import GenAISettings, KafkaSettings, TriageSettings, ZammadAISettings, ZammadAPISettings
-from app.settings.triage import Action, ActionRule, Category, StringTriagePrompts
+from app.settings import AnswerSettings, GenAISettings, KafkaSettings, TriageSettings, ZammadAISettings, ZammadAPISettings
+from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
 from test.fakes import FakeGenAIHandler, FakeLangfuseClient, FakeZammadClient
 
 _TEST_ENV_DEFAULTS: dict[str, str] = {
@@ -25,7 +25,7 @@ _TEST_ENV_DEFAULTS: dict[str, str] = {
     "ZAMMAD_AI_ZAMMAD__TYPE": "api",
     "ZAMMAD_AI_ZAMMAD__BASE_URL": "https://example.com",
     "ZAMMAD_AI_ZAMMAD__AUTH_TOKEN": "test-token",
-    "ZAMMAD_AI_TRIAGE": '{"categories":[{"name":"Unknown","id":0}],"no_category_id":0,"actions":[{"name":"Default","description":"Default","id":1}],"no_action_id":1,"action_rules":[],"prompts":{"type":"string","categories":"List of categories: {{categories}}","examples":"Examples: {{examples}}","role":"You are a helpful assistant that categorizes support requests into the above categories based on the content of the request."}}',
+    "ZAMMAD_AI_TRIAGE": '{"categories":[{"name":"Unknown"}],"no_category_name":"Unknown","actions":[{"name":"No Action","description":"No action","type":"NoAction"}],"no_action_name":"No Action","action_rules":[],"prompts":{"type":"string","prompt_map":{"categories":"List of categories: {{categories}}","examples":"Examples: {{examples}}","role":"You are a helpful assistant that categorizes support requests into the above categories based on the content of the request."}}}',
     "ZAMMAD_AI_VALID_REQUEST_TYPES": '["support"]',
     "ZAMMAD_AI_QDRANT__API_KEY": "test-key",
 }
@@ -46,11 +46,11 @@ class _ApiTriageStub:
         Initialize the triage stub with default category and action placeholders.
 
         Attributes:
-            no_category (Category): A Category named "Unknown" with id 0 used as a fallback.
-            no_action (Action): An Action named "Default" with id 1 and description "Default" used as a fallback.
+            no_category (Category): A fallback Category named "Unknown".
+            no_action (Action): A fallback Action named "No Action".
         """
-        self.no_category = Category(name="Unknown", id=0)
-        self.no_action = Action(name="Default", description="Default", id=1)
+        self.no_category = Category(name="Unknown")
+        self.no_action = Action(name="No Action", description="No action", type=ActionTypes.NoAction)
 
     async def predict_category(self, *_args, **_kwargs) -> Any:
         """
@@ -63,21 +63,21 @@ class _ApiTriageStub:
 
         return CategorizationResult(category=self.no_category, reasoning="stub", confidence=1.0)
 
-    async def get_action_id(self, *_args, **_kwargs) -> int:
+    async def get_action_name(self, *_args, **_kwargs) -> str:
         """
-        Get the default action id used by the triage stub.
+        Get the default action name used by the triage stub.
 
         @returns
-            Action id of the stub's default action as an `int`.
+            Action name of the stub's default action as a `str`.
         """
-        return self.no_action.id
+        return self.no_action.name
 
-    def _id_to_action(self, _action_id: int) -> Action:
+    def _name_to_action(self, _action_name: str) -> Action:
         """
-        Return the default stub Action regardless of the provided action id.
+        Return the default stub Action regardless of the provided action name.
 
         Parameters:
-            _action_id (int): Ignored action identifier.
+            _action_name (str): Ignored action name.
 
         Returns:
             Action: The default Action instance used by the stub.
@@ -116,17 +116,25 @@ def base_settings() -> ZammadAISettings:
             topic="test-topic",
         ),
         triage=TriageSettings.model_construct(
-            categories=[Category(name="Unknown", id=0), Category(name="General", id=1)],
-            no_category_id=0,
-            actions=[Action(name="Default", description="Default", id=1), Action(name="Escalate", description="Escalate", id=3)],
-            no_action_id=1,
+            categories=[Category(name="Unknown"), Category(name="General")],
+            no_category_name="Unknown",
+            actions=[
+                Action(name="No Action", description="No action", type=ActionTypes.NoAction),
+                Action(name="Escalate", description="Escalate", type=ActionTypes.StaticAnswer),
+            ],
+            no_action_name="No Action",
             action_rules=[],
             prompts=StringTriagePrompts(
                 type="string",
-                categories=DEFAULT_GENAI_PROMPTS["categories"],
-                examples=DEFAULT_GENAI_PROMPTS["examples"],
-                role=DEFAULT_GENAI_PROMPTS["role"],
+                prompt_map={
+                    "categories": DEFAULT_GENAI_PROMPTS["categories"],
+                    "examples": DEFAULT_GENAI_PROMPTS["examples"],
+                    "role": DEFAULT_GENAI_PROMPTS["role"],
+                },
             ),
+        ),
+        answer=AnswerSettings(
+            ai_answer_disclaimer="",
         ),
         valid_request_types=["support", "technischer Bürgersupport"],
     )

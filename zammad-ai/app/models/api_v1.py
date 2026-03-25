@@ -17,7 +17,9 @@ class TriageOutput(BaseModel):
 class AnswerInput(BaseModel):
     text: str
     session_id: str | None = None
-    category: str | None = None
+    ticket_id: int | None = None
+    category: str
+    action: str
 
 
 class AnswerOutput(BaseModel):

@@ -1,43 +1,135 @@
-from typing import Annotated, Literal
+from __future__ import annotations
 
-from pydantic import AfterValidator, BaseModel, Field, FilePath, NonNegativeInt
+from enum import Enum
+from typing import ClassVar, Literal
 
-from app.utils.validators import validate_is_prompt
-
-from .langfuse import LangfusePrompt
+from pydantic import BaseModel, Field, FilePath, model_validator
 
 
 class TriageSettings(BaseModel):
     categories: list["Category"]
-    no_category_id: int
+    no_category_name: str
     actions: list["Action"]
-    no_action_id: int
+    no_action_name: str
     action_rules: list["ActionRule"]
-    prompts: "StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts" = Field(
+    prompts: StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts = Field(
         description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references.",
-        default_factory=lambda: StringTriagePrompts(
-            categories="Categorize the following text into one of the following categories: {categories}.",
-            examples="Here are some examples of texts and their corresponding categories: {examples}.",
-            role="You are a helpful assistant that categorizes text based on the provided categories and examples.",
-        ),
         discriminator="type",
     )
+
+    _required_prompt_keys: ClassVar[set[str]] = {"categories", "examples", "role"}
+
+    @staticmethod
+    def _collect_named_items(items: list["Category"] | list["Action"]) -> tuple[set[str], list[str]]:
+        names: set[str] = set()
+        duplicates: list[str] = []
+
+        for item in items:
+            if item.name in names:
+                duplicates.append(item.name)
+            names.add(item.name)
+
+        return names, duplicates
+
+    @classmethod
+    def _validate_references(cls, *, category_names: set[str], action_names: set[str], rules: list["ActionRule"]) -> list[str]:
+        errors: list[str] = []
+
+        for rule in rules:
+            if rule.category_name not in category_names:
+                errors.append(
+                    f"ActionRule.category_name '{rule.category_name}' must reference an existing category name: {sorted(category_names)}"
+                )
+            if rule.action_name not in action_names:
+                errors.append(f"ActionRule.action_name '{rule.action_name}' must reference an existing action name: {sorted(action_names)}")
+            if rule.conditions is not None:
+                for condition in rule.conditions:
+                    if condition.action_name not in action_names:
+                        errors.append(
+                            f"Condition.action_name '{condition.action_name}' must reference an existing action name: {sorted(action_names)}"
+                        )
+
+        return errors
+
+    @classmethod
+    def _validate_prompt_keys(cls, prompts: "StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts") -> list[str]:
+        missing_prompt_keys = sorted(cls._required_prompt_keys - set(prompts.prompt_map))
+        if not missing_prompt_keys:
+            return []
+
+        return [
+            f"Prompts of type '{prompts.type}' are missing required keys: {missing_prompt_keys}. Expected keys: {sorted(cls._required_prompt_keys)}"
+        ]
+
+    @model_validator(mode="after")
+    def validate_configuration_integrity(self) -> "TriageSettings":
+        errors: list[str] = []
+
+        # Validate that there is at least one category and one action, and that their names are unique
+        if not self.categories:
+            errors.append("At least one category must be provided")
+        else:
+            category_names, duplicate_category_names = self._collect_named_items(self.categories)
+            if duplicate_category_names:
+                errors.append(f"Category names must be unique. Duplicates found: {duplicate_category_names}")
+
+        if not self.actions:
+            errors.append("At least one action must be provided")
+        else:
+            action_names, duplicate_action_names = self._collect_named_items(self.actions)
+            if duplicate_action_names:
+                errors.append(f"Action names must be unique. Duplicates found: {duplicate_action_names}")
+
+        category_names = {category.name for category in self.categories}
+        action_names = {action.name for action in self.actions}
+
+        # Validate that no_category_name and no_action_name reference existing category and action names
+        if self.no_category_name not in category_names:
+            errors.append(
+                f"no_category_name '{self.no_category_name}' must reference one of the configured categories: {sorted(category_names)}"
+            )
+
+        if self.no_action_name not in action_names:
+            errors.append(f"no_action_name '{self.no_action_name}' must reference one of the configured actions: {sorted(action_names)}")
+
+        # Validate that action rules reference existing category and action names, and that any conditions within the rules also reference existing action names
+        errors.extend(self._validate_references(category_names=category_names, action_names=action_names, rules=self.action_rules))
+
+        # Validate that all StaticAnswer actions have a non-empty answer configured
+        for action in self.actions:
+            if action.type == ActionTypes.StaticAnswer and (action.answer is None or not action.answer.strip()):
+                errors.append(f"Action '{action.name}' has type StaticAnswer but answer is None or empty")
+
+        # Validate that prompts are properly configured based on their type
+        errors.extend(self._validate_prompt_keys(self.prompts))
+
+        if errors:
+            raise ValueError("Invalid triage configuration:\n- " + "\n- ".join(errors))
+
+        return self
 
 
 class Category(BaseModel):
     name: str
-    id: int
+    auto_publish: bool = False
+
+
+class ActionTypes(str, Enum):
+    AIAnswer = "AIAnswer"
+    NoAction = "NoAction"
+    StaticAnswer = "StaticAnswer"
 
 
 class Action(BaseModel):
     name: str
     description: str
-    id: NonNegativeInt
+    type: ActionTypes
+    answer: str | None = None
 
 
 class ActionRule(BaseModel):
-    category_id: int
-    action_id: NonNegativeInt
+    category_name: str
+    action_name: str
     conditions: list["Condition"] | None = None
 
 
@@ -50,7 +142,7 @@ class Condition(BaseModel):
     field: "ConditionField"
     operator: "ConditionOperator"
     value: str | bool | int
-    action_id: int
+    action_name: str
 
 
 class ProcessingState(BaseModel):
@@ -63,38 +155,36 @@ TriagePrompt = Literal["categories", "examples", "role"]
 
 class StringTriagePrompts(BaseModel):
     type: Literal["string"] = "string"
-    categories: str = Field(
-        description="Prompt for categorizing text.",
-    )
-    examples: str = Field(
-        description="Prompt with examples of categorization.",
-    )
-    role: str = Field(
-        description="Role/system prompt for the text categorization assistant.",
+    prompt_map: dict[TriagePrompt, str] = Field(
+        description="Prompts for the triage process as raw strings. The keys should be 'categories', 'examples', and 'role'.",
+        default={
+            "categories": "List of categories: {{categories}}",
+            "examples": "Examples: {{examples}}",
+            "role": "You are a helpful assistant that categorizes support requests into the above categories based on the content of the request.",
+        },
     )
 
 
 class FileTriagePrompts(BaseModel):
     type: Literal["file"] = "file"
-    categories: Annotated[FilePath, AfterValidator(func=validate_is_prompt)] = Field(
-        description="Path to file containing the categorization prompt.",
-    )
-    examples: Annotated[FilePath, AfterValidator(func=validate_is_prompt)] = Field(
-        description="Path to file containing the examples prompt.",
-    )
-    role: Annotated[FilePath, AfterValidator(func=validate_is_prompt)] = Field(
-        description="Path to file containing the role/system prompt.",
+    prompt_map: dict[TriagePrompt, FilePath] = Field(
+        description="Prompts for the triage process as file paths. The files should contain the prompts as raw text. The keys should be 'categories', 'examples', and 'role'.",
     )
 
 
 class LangfuseTriagePrompts(BaseModel):
     type: Literal["langfuse"] = "langfuse"
-    categories: LangfusePrompt = Field(
-        description="Langfuse prompt reference for categorizing text.",
+    prompt_map: dict[TriagePrompt, "LangfusePrompt"] = Field(
+        description="Prompts for the triage process as LangfusePrompt objects. The keys should be 'categories', 'examples', and 'role'.",
     )
-    examples: LangfusePrompt = Field(
-        description="Langfuse prompt reference with examples of categorization.",
+
+
+class LangfusePrompt(BaseModel):
+    label: str = Field(
+        description="Label of the prompt in Langfuse",
+        default="production",
     )
-    role: LangfusePrompt = Field(
-        description="Langfuse prompt reference for the role/system prompt.",
+    name: str = Field(
+        description="Name of the prompt in Langfuse",
+        examples=["use_case/triage/prompt_name"],
     )

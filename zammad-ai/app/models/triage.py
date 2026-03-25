@@ -23,6 +23,7 @@ class CategorizationResult(BaseModel):
 class TriageResult(BaseModel):
     """Complete result of the triage process."""
 
+    user_text: str = Field(description="The original user text that was categorized.")
     category: Category = Field(description="The predicted category")
     action: Action = Field(description="The recommended action")
     reasoning: str = Field(description="Explanation for the categorization")

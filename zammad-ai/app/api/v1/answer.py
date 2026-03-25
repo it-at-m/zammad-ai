@@ -1,21 +1,20 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.answer import AnswerService
-from app.models.answer import StructuredAgentResponse
+from app.action.service import ActionService
 from app.models.api_v1 import AnswerInput, AnswerOutput
 
 
-def answer_dependency(request: Request) -> AnswerService:
+def action_dependency(request: Request) -> ActionService:
     """
-    Retrieve the request-scoped AnswerService instance stored on the FastAPI application state.
+    Retrieve the request-scoped ActionService instance stored on the FastAPI application state.
 
     Parameters:
-        request (Request): FastAPI request whose application state contains the AnswerService instance.
+        request (Request): FastAPI request whose application state contains the ActionService instance.
 
     Returns:
-        AnswerService: The AnswerService instance found at request.app.state.answer_service.
+        ActionService: The ActionService instance found at request.app.state.action_service.
     """
-    return request.app.state.answer_service
+    return request.app.state.action_service
 
 
 answer_router = APIRouter(
@@ -27,23 +26,28 @@ answer_router = APIRouter(
 @answer_router.post(path="")
 async def answer(
     input: AnswerInput,
-    service: AnswerService = Depends(answer_dependency),
+    service: ActionService = Depends(action_dependency),
 ) -> AnswerOutput:
     """
     Process an answer request and produce the agent's response based on the provided input.
 
     Parameters:
-        input (AnswerInput): Request payload containing `text` (the user's query), optional `category` (triage category), and optional `id` (session identifier). If `category` is falsy, "Uncategorized" is used.
+        input (AnswerInput): Request payload containing `ticket_id`, `category`, `action`, `text`, and `session_id` for generating an answer.
 
     Returns:
         AnswerOutput: The agent's response and any supporting documents.
     """
-    result: StructuredAgentResponse = await service.generate_answer(
+    answer, documents = await service.get_answer(
+        ticket_id=input.ticket_id,
+        category_name=input.category,
+        action_name=input.action,
         user_text=input.text,
-        category=input.category or "Uncategorized",
         session_id=input.session_id,
     )
+    if answer is None:
+        answer = "No answer generated based on the provided input and current configuration."
+
     return AnswerOutput(
-        response=result.response,
-        documents=result.documents,
+        response=answer,
+        documents=documents,
     )

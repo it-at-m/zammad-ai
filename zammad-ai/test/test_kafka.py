@@ -8,7 +8,87 @@ from faststream.kafka import TestKafkaBroker
 from app.kafka.broker import build_router
 from app.models.triage import TriageResult
 from app.settings import ZammadAISettings
-from app.settings.triage import Action, Category
+from app.settings.answer import AnswerSettings, QdrantSettings
+from app.settings.kafka import KafkaSettings
+from app.settings.triage import (
+    Action,
+    ActionTypes,
+    Category,
+    StringTriagePrompts,
+    TriageSettings,
+)
+from app.settings.zammad import ZammadAPISettings
+
+
+def create_mock_settings() -> ZammadAISettings:
+    """
+    Builds a complete ZammadAISettings object populated with realistic test values for unit tests.
+
+    Temporarily replaces sys.argv to avoid CLI argument parsing during construction.
+
+    Returns:
+        ZammadAISettings: Settings populated with zammad, qdrant, kafka, triage configuration, and valid_request_types suitable for tests.
+    """
+    import sys
+
+    # Temporarily replace sys.argv to prevent CLI parsing
+    original_argv = sys.argv
+    try:
+        sys.argv = ["zammad-ai"]  # Only the program name, no arguments
+        return ZammadAISettings(
+            mode="unittest",
+            zammad=ZammadAPISettings(
+                base_url="https://example.com",  # type: ignore
+                auth_token="test-token",  # type: ignore
+            ),
+            answer=AnswerSettings(
+                qdrant=QdrantSettings(
+                    host="https://qdrant.example.com",  # type: ignore
+                    api_key="test-key",  # type: ignore
+                    collection_name="test_collection",
+                ),
+            ),
+            kafka=KafkaSettings(
+                broker_url="localhost:9092",
+                group_id="test-group",
+                topic="test-topic",
+            ),
+            triage=TriageSettings(
+                categories=[Category(name="Test")],
+                no_category_name="Test",
+                actions=[Action(name="Keine_Aktion", description="No action", type=ActionTypes.NoAction)],
+                no_action_name="Keine_Aktion",
+                action_rules=[],
+                prompts=StringTriagePrompts(),
+            ),
+            valid_request_types=["technischer Bürgersupport"],
+        )
+    finally:
+        sys.argv = original_argv
+
+
+@pytest.fixture
+def valid_message() -> dict:
+    """
+    Standard valid Kafka event payload used by tests.
+
+    Returns:
+        dict: Payload with keys:
+            - action: event action (e.g., "created")
+            - ticket: ticket identifier (e.g., "3720")
+            - status: ticket status (e.g., "new")
+            - statusId: status identifier (e.g., "1")
+            - anliegenart: request type (e.g., "technischer Bürgersupport")
+            - lhmExtId: external identifier (empty string when absent)
+    """
+    return {
+        "action": "created",
+        "ticket": "3720",
+        "status": "new",
+        "statusId": "1",
+        "anliegenart": "technischer Bürgersupport",
+        "lhmExtId": "",
+    }
 
 
 @pytest.fixture
@@ -18,15 +98,16 @@ def mock_triage() -> MagicMock:
 
     Returns:
         MagicMock: A mock Triage object whose `perform_triage` is an AsyncMock returning a
-        TriageResult with a Category(name="Test", id=1), Action(name="Test", description="Test", id=1),
+        TriageResult with a Category(name="Test"), Action(name="Keine_Aktion", description="No action", type=ActionTypes.No_Action),
         reasoning "Test reasoning", and confidence 0.95.
     """
     triage = MagicMock()
     # Make perform_triage return an async mock that returns a TriageResult
     triage.perform_triage = AsyncMock(
         return_value=TriageResult(
-            category=Category(name="Test", id=1),
-            action=Action(name="Test", description="Test", id=1),
+            user_text="",
+            category=Category(name="Test"),
+            action=Action(name="Keine_Aktion", description="No action", type=ActionTypes.NoAction),
             reasoning="Test reasoning",
             confidence=0.95,
         )
@@ -38,6 +119,15 @@ def mock_triage() -> MagicMock:
 def mock_get_triage(monkeypatch: pytest.MonkeyPatch, mock_triage: MagicMock) -> None:
     """Patch Kafka router triage lookup to return a mocked triage object."""
     monkeypatch.setattr("app.kafka.broker.get_triage_service", lambda *args, **kwargs: mock_triage)
+
+
+@pytest.fixture(autouse=True)
+def mock_get_answer_service(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Patch Kafka router answer lookup to return a mocked answer service."""
+    answer_service = MagicMock()
+    answer_service.generate_answer = AsyncMock()
+    monkeypatch.setattr("app.kafka.broker.get_answer_service", lambda *args, **kwargs: answer_service)
+    return answer_service
 
 
 @pytest.mark.asyncio

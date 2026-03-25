@@ -24,7 +24,7 @@ dependencies = [
     "langchain-openai==1.1.11",
     "langchain-qdrant==1.1.0",
     "langchain==1.2.12",
-    "langfuse==3.14.5",
+    "langfuse==4.0.1",
     "openai==2.28.0",
     "pandas==3.0.1",
     "pydantic-settings==2.13.1",

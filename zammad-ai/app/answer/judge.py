@@ -5,7 +5,7 @@ from uuid import uuid4
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig, RunnableSequence
 from langchain_openai import ChatOpenAI
-from langfuse import observe
+from langfuse import observe, propagate_attributes
 
 from app.models.answer import JudgeResult
 from app.observe import LangfuseClient
@@ -65,17 +65,18 @@ class JudgeHandler:
     ) -> JudgeResult:
         """Judge an answer and return the structured result."""
 
-        _, config = self._build_runnable_config(session_id=session_id)
+        session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
-            response: JudgeResult = await self._judge_chain.ainvoke(
-                input={
-                    "question": question,
-                    "answer": answer,
-                    "documents": documents,
-                },
-                config=config,
-            )
+            with propagate_attributes(session_id=session_id):
+                response: JudgeResult = await self._judge_chain.ainvoke(
+                    input={
+                        "question": question,
+                        "answer": answer,
+                        "documents": documents,
+                    },
+                    config=config,
+                )
             return response
         except Exception as e:
             logger.error("Error during judge invocation", exc_info=True)
@@ -91,6 +92,5 @@ class JudgeHandler:
         if self.langfuse_client is None:
             return resolved_session_id, RunnableConfig()
 
-        self.langfuse_client.langfuse.update_current_trace(session_id=resolved_session_id)
         config: RunnableConfig = self.langfuse_client.build_config(session_id=resolved_session_id)
         return resolved_session_id, config

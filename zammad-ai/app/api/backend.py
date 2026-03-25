@@ -9,12 +9,15 @@ from fastapi.responses import RedirectResponse
 from prometheus_client import Counter, Histogram
 from starlette.responses import Response
 
+from app.action.service import ActionService, get_action_service
 from app.answer import get_answer_service
+from app.answer.service import AnswerService
 from app.frontend import mount_frontend
 from app.kafka.broker import build_router
 from app.models.api_v1 import HealthCheckResponse
 from app.settings import ZammadAISettings, get_settings
 from app.triage import get_triage_service
+from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 from app.utils.status import set_status, track_activity
 
@@ -62,8 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
         logger.info("Initializing shared Triage instance")
-        app.state.triage_service = get_triage_service(settings=settings)
-        app.state.answer_service = get_answer_service(settings=settings)
+        app.state.triage_service: TriageService = get_triage_service(settings=settings)
+        app.state.answer_service: AnswerService = get_answer_service(settings=settings)
+        app.state.action_service: ActionService = get_action_service(settings=settings, answer_service=app.state.answer_service)
 
         yield
 
@@ -72,7 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             await app.state.triage_service.cleanup()
             await app.state.answer_service.cleanup()
-
+            await app.state.action_service.cleanup()
         except asyncio.CancelledError:
             logger.info("Cleanup cancelled during shutdown.")
     except Exception as e:

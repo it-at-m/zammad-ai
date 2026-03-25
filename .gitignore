@@ -359,3 +359,6 @@ vite.config.ts.timestamp-*
 
 # Qdrant
 qdrant_data/
+
+# config
+config.yaml
