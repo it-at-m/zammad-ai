@@ -5,7 +5,7 @@ from uuid import uuid4
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig, RunnableSequence
 from langchain_openai import ChatOpenAI
-from langfuse import observe, propagate_attributes
+from langfuse import propagate_attributes
 
 from app.models.answer import JudgeResult
 from app.observe import LangfuseClient
@@ -53,7 +53,6 @@ class JudgeHandler:
             self.chat_model.with_structured_output(schema=JudgeResult, strict=True),
         )
 
-    @observe(as_type="span")
     async def judge_answer(
         self,
         question: str,

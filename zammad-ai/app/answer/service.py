@@ -5,6 +5,7 @@ from langchain.agents.middleware.types import AgentState
 from langchain.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
+from langfuse import observe, propagate_attributes
 from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
@@ -107,6 +108,7 @@ class AnswerService:
             dlf_client=self.dlf_client,
         )
 
+    @observe(as_type="span")
     async def generate_answer(
         self,
         user_text: str,
@@ -140,11 +142,12 @@ class AnswerService:
             config: RunnableConfig = (
                 self.langfuse_client.build_config(session_id=session_id) if self.langfuse_client is not None else RunnableConfig()
             )
-            agent_result: dict = await self.agent.ainvoke(
-                input={"messages": [user_message]},
-                config=config,
-                context=self.agent_context,
-            )
+            with propagate_attributes(session_id=session_id):
+                agent_result: dict = await self.agent.ainvoke(
+                    input={"messages": [user_message]},
+                    config=config,
+                    context=self.agent_context,
+                )
             structured_response: StructuredAgentResponse = await self._judge_and_repair(
                 user_text=user_text,
                 category=category,
@@ -161,6 +164,7 @@ class AnswerService:
             ANSWER_RUN_DURATION_SECONDS.labels(outcome=outcome).observe(perf_counter() - start_time)
             ANSWER_RUNS_IN_PROGRESS.dec()
 
+    @observe(as_type="span")
     async def _judge_and_repair(
         self,
         user_text: str,
@@ -200,16 +204,16 @@ class AnswerService:
                     repair_instructions=judgment.repair_instructions or "Please improve the answer.",
                 )
             )
+            with propagate_attributes(session_id=session_id):
+                agent_result: dict = await self.agent.ainvoke(
+                    input={"messages": messages + [repair_message]},
+                    config=config,
+                    context=self.agent_context,
+                )
 
-            agent_result: dict = await self.agent.ainvoke(
-                input={"messages": messages + [repair_message]},
-                config=config,
-                context=self.agent_context,
-            )
-
-            logger.debug("Answer did not pass judgment and repair was attempted.")
             structured_response = agent_result["structured_response"]
-
+        logger.debug(f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response.")
+        # TODO what todo when answer fails judgment after max repairs? Return anyway, return with a warning, or return an error?
         return structured_response
 
     def _is_judged_ok(self, judgment: JudgeResult) -> bool:
