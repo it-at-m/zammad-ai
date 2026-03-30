@@ -30,12 +30,10 @@ class JudgeHandler:
             case "openai":
                 self.chat_model = ChatOpenAI(
                     model_name=genai_settings.judge_model or genai_settings.chat_model,
-                    temperature=genai_settings.judge_temperature
-                    if genai_settings.judge_temperature is not None
-                    else genai_settings.temperature,
+                    temperature=genai_settings.judge_temperature,
                     max_retries=genai_settings.max_retries,
-                    reasoning=genai_settings.reasoning_config,
-                    store=genai_settings.store,
+                    reasoning=genai_settings.judge_reasoning_config,
+                    store=genai_settings.judge_store,
                 )
             case _:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")

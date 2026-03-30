@@ -70,7 +70,7 @@ class JudgeSettings(BaseModel):
     repair_prompt: PromptSourceConfig = Field(
         description="Prompt configuration used to instruct the answer agent during a repair pass.",
         default_factory=lambda: FilePromptConfig(
-            prompt=get_prompts_dir() / "judge" / "repair.prompt.md",
+            prompt=get_prompts_dir() / "answer" / "repair.prompt.md",
         ),
         discriminator="type",
     )
