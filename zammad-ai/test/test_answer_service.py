@@ -1,3 +1,5 @@
+"""Tests for answer service metrics behavior."""
+
 from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
@@ -12,23 +14,42 @@ from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConf
 
 
 class FakePromptTemplate:
+    """Minimal prompt template fake used by answer service tests."""
+
     def format(self, *, user_text: str, category: str) -> str:
+        """Format deterministic prompt content for assertions."""
         return f"category={category}; user_text={user_text}"
 
 
 class FakeLangfuseClient:
+    """Minimal Langfuse client fake for session/config handling."""
+
     def generate_session_id(self) -> str:
+        """Return a deterministic session id."""
         return "session-id"
 
     def build_config(self, session_id: str | None = None) -> dict:
+        """Return a deterministic config payload for LangChain invocation."""
         return {"session_id": session_id}
 
 
 class FakeJudgeHandler:
+    """Fake judge handler for testing answer service judge behavior."""
+
     def __init__(self) -> None:
+        """Initialize fake judge handler with no judge result."""
         self.judge_result: JudgeResult | None = None
 
     async def judge_answer(self, **_kwargs) -> JudgeResult:
+        """Return a judge result for testing answer service judge behavior.
+
+        Returns the pre-configured judge result, or a passing result if none is set.
+
+        Returns:
+        -------
+        JudgeResult
+            The judge result for evaluation.
+        """
         if self.judge_result is None:
             return JudgeResult(
                 context_relevance=1.0,
@@ -74,6 +95,7 @@ def _build_answer_service(
 async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
+    """Gauge value should return to baseline after a successful answer run."""
     baseline = _get_answer_runs_in_progress_value()
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
@@ -90,6 +112,7 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
 async def test_generate_answer_in_progress_gauge_increments_while_running(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
+    """Gauge should be incremented while answer generation is in progress."""
     baseline = _get_answer_runs_in_progress_value()
     expected = baseline + 1
 
@@ -106,6 +129,8 @@ async def test_generate_answer_in_progress_gauge_increments_while_running(
 
 @pytest.mark.asyncio
 async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
+    """Service should run judge and return answer when judge passes."""
+
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {
             "structured_response": StructuredAgentResponse(
@@ -131,6 +156,7 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
 
 @pytest.mark.asyncio
 async def test_generate_answer_repairs_when_judge_fails() -> None:
+    """Service should repair answer when judge fails and return repaired response."""
     calls: list[list[str]] = []
 
     async def _ainvoke(*_args, **kwargs) -> dict:

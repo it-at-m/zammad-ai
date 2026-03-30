@@ -1,3 +1,5 @@
+"""Entry point for the Zammad AI index job."""
+
 # ruff: noqa: E402 (no import at top level) suppressed on this file as we need to inject the truststore before importing the other modules
 
 from dotenv import load_dotenv
@@ -9,6 +11,8 @@ load_dotenv()
 from logging import Logger
 from uuid import UUID
 
+from qdrant_client.models import Record
+
 from job.data.processing import filter_for_changed_data, prepare_qdrant_data
 from job.data.retrieval import get_answers_data, retrieve_answer_ids, retrieve_deleted_answer_ids
 from job.models.qdrant import QdrantDocumentItem
@@ -19,7 +23,6 @@ from job.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
-from qdrant_client.models import Record
 
 settings: ZammadAIIndexSettings = get_settings()
 logger: Logger = getLogger("zammad-ai-index")
@@ -74,7 +77,9 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
         if not qdrant_items:
             logger.info("No new or changed documents to index.")
             if deleted_answer_ids:
-                logger.info("However, %d deleted answer IDs detected that will be removed from Qdrant.", len(deleted_answer_ids))
+                logger.info(
+                    "However, %d deleted answer IDs detected that will be removed from Qdrant.", len(deleted_answer_ids)
+                )
             else:
                 logger.info("No deleted answer IDs detected. Exiting.")
                 return
@@ -104,7 +109,9 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
         if deleted_answer_ids:
             try:
                 qdrant_client.delete_points_by_ids(deleted_answer_ids)
-                logger.info("Successfully deleted %d documents from Qdrant for deleted answer IDs.", len(deleted_answer_ids))
+                logger.info(
+                    "Successfully deleted %d documents from Qdrant for deleted answer IDs.", len(deleted_answer_ids)
+                )
             except Exception:
                 logger.error("Failed to delete points for deleted answer IDs: %s", deleted_answer_ids, exc_info=True)
 
@@ -221,6 +228,7 @@ def cleanup(zammad_client, qdrant_client) -> None:
 
 
 def main() -> None:
+    """Run the index job once using the configured Zammad and Qdrant clients."""
     try:
         # Initialize Zammad client based on configuration
         if isinstance(settings.zammad, ZammadAPISettings):

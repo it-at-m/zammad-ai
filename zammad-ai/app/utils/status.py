@@ -1,3 +1,5 @@
+"""Application lifecycle and activity status tracking helpers."""
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,6 +16,7 @@ _requests_in_flight = 0
 
 
 def set_status(state: str) -> None:
+    """Set the lifecycle status and publish it to the status metric."""
     global _lifecycle_status
     _lifecycle_status = state
     STATUS_ENUM.state(state)
@@ -21,6 +24,7 @@ def set_status(state: str) -> None:
 
 @asynccontextmanager
 async def track_activity() -> AsyncIterator[None]:
+    """Track in-flight requests and update active/idle status accordingly."""
     global _requests_in_flight
 
     _requests_in_flight += 1

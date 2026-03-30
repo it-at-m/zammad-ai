@@ -1,8 +1,16 @@
+"""Application settings and configuration source loading."""
+
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, CliSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
+from pydantic_settings import (
+    BaseSettings,
+    CliSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    YamlConfigSettingsSource,
+)
 
 from .answer import AnswerSettings
 from .frontend import FrontendSettings
@@ -16,8 +24,7 @@ from .zammad import ZammadAPISettings, ZammadEAISettings
 
 
 def _is_test_mode() -> bool:
-    """
-    Detect whether configuration loading should treat the environment as a test context.
+    """Detect whether configuration loading should treat the environment as a test context.
 
     Returns:
         bool: `True` if the `PYTEST_CURRENT_TEST` environment variable is present or
@@ -41,8 +48,7 @@ def _is_test_mode() -> bool:
 
 
 def _should_enable_cli() -> bool:
-    """
-    Determine whether command-line argument parsing should be enabled.
+    """Determine whether command-line argument parsing should be enabled.
 
     Returns:
         bool: `True` if no test runner indicators are detected in the environment or argv (allowing CLI parsing), `False` otherwise.
@@ -58,8 +64,8 @@ def _should_enable_cli() -> bool:
 
 
 class ZammadAISettings(BaseSettings):
-    """
-    Application settings for Zammad AI integration.
+    """Application settings for Zammad AI integration.
+
     This class aggregates all configuration settings for the application, including GenAI, Langfuse, Zammad, Qdrant, Kafka, and triage settings.
     """
 
@@ -126,8 +132,7 @@ class ZammadAISettings(BaseSettings):
 
     @model_validator(mode="after")
     def set_log_defaults(self) -> "ZammadAISettings":
-        """
-        Set default logging format and level when they are not explicitly configured.
+        """Set default logging format and level when they are not explicitly configured.
 
         If `log.format` or `log.level` is unset, populate them based on `mode`: use `"plain"` and `"DEBUG"` when mode is `"development"`, otherwise use `"json"` and `"INFO"`.
 
@@ -168,8 +173,7 @@ class ZammadAISettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """
-        Define the precedence and ordering of configuration sources for the settings class.
+        """Define the precedence and ordering of configuration sources for the settings class.
 
         The returned tuple lists settings sources in precedence order (highest priority first): initialization values, CLI arguments (if enabled), environment variables, dotenv (.env) file, and YAML configuration file.
 
@@ -194,11 +198,9 @@ class ZammadAISettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> ZammadAISettings:
-    """
-    Provide the application's cached settings.
+    """Provide the application's cached settings.
 
     Returns:
         ZammadAISettings: The cached settings instance used by the application.
     """
-
     return ZammadAISettings()  # type: ignore

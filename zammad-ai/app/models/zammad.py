@@ -1,3 +1,5 @@
+"""Models for Zammad knowledge base, tickets, and answer payloads."""
+
 import html
 import re
 from datetime import datetime
@@ -6,6 +8,8 @@ from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 
 class ZammadKnowledgebase(BaseModel):
+    """Knowledge base metadata returned by Zammad."""
+
     id: int = Field(
         description="ID of the knowledge base",
     )
@@ -30,6 +34,8 @@ class ZammadKnowledgebase(BaseModel):
 
 
 class KnowledgeBaseAttachment(BaseModel):
+    """Attachment metadata for a knowledge base answer."""
+
     id: int = Field(
         description="ID of the attachment",
     )
@@ -42,6 +48,8 @@ class KnowledgeBaseAttachment(BaseModel):
 
 
 class KnowledgeBaseAnswer(BaseModel):
+    """Knowledge base answer with normalized HTML-free body text."""
+
     id: int = Field(
         description="The ID of the answer",
     )
@@ -65,8 +73,7 @@ class KnowledgeBaseAnswer(BaseModel):
     @field_validator("answerBody", mode="after")
     @classmethod
     def strip_html(cls, text: str) -> str:
-        """
-        Normalize text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
+        """Normalize text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
 
         Parameters:
             text (str): Input string that may contain HTML.
@@ -92,6 +99,8 @@ class KnowledgeBaseAnswer(BaseModel):
 
 
 class ZammadTicket(BaseModel):
+    """Ticket model with its associated articles."""
+
     id: int = Field(
         description="Unique identifier for the ticket",
     )
@@ -102,6 +111,8 @@ class ZammadTicket(BaseModel):
 
 
 class ArticleAttachment(BaseModel):
+    """Attachment metadata for a ticket article."""
+
     id: int = Field(
         description="ID of the attachment",
     )
@@ -111,6 +122,8 @@ class ArticleAttachment(BaseModel):
 
 
 class ZammadArticle(BaseModel):
+    """Ticket article with body text and attachments."""
+
     id: int = Field(
         description="ID of the article",
     )
@@ -141,8 +154,7 @@ class ZammadArticle(BaseModel):
     @field_validator("text", mode="after")
     @classmethod
     def strip_html(cls, text: str) -> str:
-        """
-        Normalize article text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
+        """Normalize article text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
 
         Args:
             text: Input string that may contain HTML.
@@ -169,6 +181,8 @@ class ZammadArticle(BaseModel):
 
 
 class ZammadAnswer(BaseModel):
+    """Answer payload posted back to Zammad."""
+
     ticket_id: int = Field(
         description="ID of the associated ticket",
     )
@@ -184,6 +198,8 @@ class ZammadAnswer(BaseModel):
 
 
 class ZammadTagAdd(BaseModel):
+    """Tag assignment payload for a ticket."""
+
     item: str = Field(description="The tag name")
     object: str = Field(default="Ticket", description="The object type, usually 'Ticket'")
     o_id: int = Field(description="The ID of the object (e.g., ticket ID)")
@@ -191,6 +207,8 @@ class ZammadTagAdd(BaseModel):
 
 # TODO: Research good defaults for model values
 class ZammadSharedDraftArticle(BaseModel):
+    """Shared draft article payload for Zammad EAI."""
+
     body: str = Field(description="The body of the shared draft")
     cc: str = ""
     content_type: str = "text/html"
@@ -210,6 +228,8 @@ class ZammadSharedDraftArticle(BaseModel):
 
 # TODO: Research good defaults for model values
 class ZammadAPISharedDraft(BaseModel):
+    """Shared draft wrapper for the Zammad API transport."""
+
     form_id: str = "367646073"
     new_article: ZammadSharedDraftArticle
     ticket_attributes: dict[str, str] = Field(
@@ -223,4 +243,6 @@ class ZammadAPISharedDraft(BaseModel):
 
 
 class ZammadEAISharedDraft(BaseModel):
+    """Shared draft payload for the Zammad EAI transport."""
+
     body: str = Field(description="The body of the shared draft")

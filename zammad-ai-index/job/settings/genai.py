@@ -1,11 +1,13 @@
+"""Settings for GenAI model selection in the index job."""
+
 from typing import Literal
 
 from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt
 
 
 class GenAISettings(BaseModel):
-    """
-    Settings for GenAI integration, including model selection and configuration.
+    """Settings for GenAI integration, including model selection and configuration.
+
     API keys and URLs are expected to be provided via environment variables or other secure means.
     """
 

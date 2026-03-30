@@ -1,11 +1,9 @@
+"""Qdrant access helpers used by the index job."""
+
 from logging import Logger
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
-from job.models.qdrant import QdrantDocumentItem
-from job.settings.genai import GenAISettings
-from job.settings.settings import QdrantSettings, ZammadAIIndexSettings
-from job.utils.logging import getLogger
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -15,6 +13,11 @@ from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
 from qdrant_client.http.models.models import Record
 from qdrant_client.models import SnapshotDescription
+
+from job.models.qdrant import QdrantDocumentItem
+from job.settings.genai import GenAISettings
+from job.settings.settings import QdrantSettings, ZammadAIIndexSettings
+from job.utils.logging import getLogger
 
 # Create a consistent namespace UUID for generating vector IDs based on content
 ZAMMAD_AI_NAMESPACE: UUID = uuid5(
@@ -33,7 +36,7 @@ class QdrantKBClient:
     """Wrapper around Qdrant client to handle vector storage and retrieval."""
 
     def __init__(self, settings: ZammadAIIndexSettings) -> None:
-        # Create logger for QdrantClient
+        """Initialize the client, embeddings, and vector store for the index job."""
         self.logger: Logger = getLogger("zammad-ai-index.qdrant")
 
         self.collection_name: str = settings.qdrant.collection_name
@@ -54,7 +57,9 @@ class QdrantKBClient:
                 self.logger.error(f"Qdrant collection '{self.qdrant_settings.collection_name}' does not exist.")
                 raise QdrantKBError(f"Qdrant collection '{self.qdrant_settings.collection_name}' does not exist.")
 
-            collection_info: CollectionInfo = self.client.get_collection(collection_name=self.qdrant_settings.collection_name)
+            collection_info: CollectionInfo = self.client.get_collection(
+                collection_name=self.qdrant_settings.collection_name
+            )
             if collection_info.points_count == 0:
                 self.logger.warning(f"Qdrant collection '{self.qdrant_settings.collection_name}' exists but is empty.")
 
@@ -107,7 +112,9 @@ class QdrantKBClient:
         Returns:
             bool: True if snapshot creation was successful, False otherwise.
         """
-        snapshot_description: SnapshotDescription | None = self.client.create_snapshot(collection_name=self.collection_name, wait=True)
+        snapshot_description: SnapshotDescription | None = self.client.create_snapshot(
+            collection_name=self.collection_name, wait=True
+        )
         return snapshot_description is not None
 
     def add_documents(self, items: list[QdrantDocumentItem]) -> None:
@@ -139,8 +146,10 @@ class QdrantKBClient:
 
         Args:
             ids (list[UUID]): The unique identifiers of the documents to retrieve.
+
         Returns:
             dict[UUID, Document]: A dictionary mapping the provided UUIDs to their corresponding Document objects. If a document with a given UUID is not found, it will not be included in the returned dictionary.
+
         Raises:
             QdrantKBError: If there is an error during retrieval from Qdrant, a QdrantKBError will be raised with details about the failure.
         """
@@ -177,8 +186,10 @@ class QdrantKBClient:
 
         Args:
             ids (list[UUID]): The unique identifiers of the documents to delete.
+
         Returns:
             None
+
         Raises:
             QdrantKBError: If there is an error during deletion from Qdrant, a QdrantKBError will be raised with details about the failure.
         """
@@ -194,8 +205,10 @@ class QdrantKBClient:
 
     def get_all_points(self) -> list[Record]:
         """Retrieve all points from the Qdrant collection.
+
         Returns:
             list[Record]: A list of Record objects representing all points in the Qdrant collection. Each Record includes the point's ID, payload, and vector (if available).
+
         Raises:
             QdrantKBError: If there is an error during retrieval from Qdrant, a QdrantKBError will be raised with details about the failure.
         """

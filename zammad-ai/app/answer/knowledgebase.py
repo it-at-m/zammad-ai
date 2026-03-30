@@ -1,3 +1,5 @@
+"""Qdrant knowledge-base client and retrieval helpers."""
+
 from logging import Logger
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
@@ -23,6 +25,8 @@ ZAMMAD_AI_NAMESPACE: UUID = uuid5(
 
 
 class SearchQdrantKBInput(BaseModel):
+    """Validated input for knowledge-base search queries."""
+
     query: str = Field(
         description="The search query string; should be concise and focused on the information needed; maximum length is 200 characters (~ 20 words).",
         max_length=200,
@@ -38,6 +42,8 @@ class SearchQdrantKBInput(BaseModel):
 
 
 class RetrieveDocumentsKBOutput(BaseModel):
+    """Knowledge-base search results with relevance scores."""
+
     documents_with_relevance_score: list[tuple[Document, float]] = Field(
         description="A list of tuples containing retrieved documents and their corresponding relevance scores between 0 and 1; the list is ordered by relevance score in descending order.",
     )
@@ -54,8 +60,7 @@ class QdrantKBClient:
 
     def __init__(self, qdrant_settings: QdrantSettings, genai_settings: GenAISettings) -> None:
         # Create logger for QdrantClient
-        """
-        Initialize the QdrantKBClient, configure Qdrant clients, embeddings, vector store, and retriever.
+        """Initialize the QdrantKBClient, configure Qdrant clients, embeddings, vector store, and retriever.
 
         Parameters:
             qdrant_settings (QdrantSettings): Configuration for Qdrant connection, collection, vector dimensions, vector name, timeout, and retrieval defaults.
@@ -89,7 +94,9 @@ class QdrantKBClient:
                 self.logger.error(f"Qdrant collection '{qdrant_settings.collection_name}' does not exist.")
                 raise QdrantKBError(f"Qdrant collection '{qdrant_settings.collection_name}' does not exist.")
 
-            collection_info: CollectionInfo = self.client.get_collection(collection_name=qdrant_settings.collection_name)
+            collection_info: CollectionInfo = self.client.get_collection(
+                collection_name=qdrant_settings.collection_name
+            )
             if collection_info.points_count == 0:
                 self.logger.warning(f"Qdrant collection '{qdrant_settings.collection_name}' exists but is empty.")
                 raise QdrantKBError(f"Qdrant collection '{qdrant_settings.collection_name}' exists but is empty.")

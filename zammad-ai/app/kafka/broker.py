@@ -1,3 +1,5 @@
+"""Kafka router setup for Zammad AI ticket events."""
+
 from collections.abc import Callable
 from logging import Logger
 
@@ -23,8 +25,7 @@ logger: Logger = getLogger(name="zammad-ai.kafka.broker")
 
 
 def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
-    """
-    Create and configure a KafkaRouter and its subscriber event handler for ticket triage.
+    """Create and configure a KafkaRouter and its subscriber event handler for ticket triage.
 
     Parameters:
         settings (ZammadAISettings): Application settings containing Kafka configuration and the set of valid request types.
@@ -62,8 +63,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     async def event_handler(
         event: Event,
     ) -> None:
-        """
-        Process a Kafka event by performing ticket triage and acknowledging or negatively acknowledging the message.
+        """Process a Kafka event by performing ticket triage and acknowledging or negatively acknowledging the message.
 
         Raises:
             AckMessage: If the event is successfully processed or intentionally skipped due to unsupported request type.
@@ -82,7 +82,9 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             try:
                 ticket_id: int = int(event.ticket)
                 result: TriageResult = await triage_service.perform_triage(id=ticket_id)
-                logger.debug(f"Triage result for ticket {ticket_id}: category: {result.category.name}, action: {result.action.name}")
+                logger.debug(
+                    f"Triage result for ticket {ticket_id}: category: {result.category.name}, action: {result.action.name}"
+                )
                 await action_service.execute_action(ticket_id=ticket_id, triage=result)
             except Exception:
                 logger.error(f"Error processing event for ticket {event.ticket}.", exc_info=True)

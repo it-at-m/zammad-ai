@@ -57,7 +57,9 @@ class GenAIHandler:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        empty_keys: list[str] = [key for key, value in prompts.items() if not isinstance(value, str) or not value.strip()]
+        empty_keys: list[str] = [
+            key for key, value in prompts.items() if not isinstance(value, str) or not value.strip()
+        ]
         if empty_keys:
             error_msg = f"Empty prompt values for keys: {', '.join(empty_keys)}. All prompts must be non-empty strings."
             logger.error(error_msg)
@@ -86,8 +88,12 @@ class GenAIHandler:
 
         # Build durable chains once so each operation reuses the same chain instance.
         self._categorization_chain = self._build_chain(prompt=prompts["triage"], output_schema=CategorizationResult)
-        self._days_since_request_chain = self._build_chain(prompt=prompts["days_since_request"], output_schema=DaysSinceRequestResponse)
-        self._processing_id_chain = self._build_chain(prompt=prompts["processing_id"], output_schema=ProcessingIdResponse)
+        self._days_since_request_chain = self._build_chain(
+            prompt=prompts["days_since_request"], output_schema=DaysSinceRequestResponse
+        )
+        self._processing_id_chain = self._build_chain(
+            prompt=prompts["processing_id"], output_schema=ProcessingIdResponse
+        )
 
         logger.info("GenAI handler initialized successfully")
 
@@ -135,7 +141,9 @@ class GenAIHandler:
             raise GenAIError("GenAI operation failed") from e
 
     @observe(as_type="span")
-    async def extract_days_since_request(self, *, message: str, today: str, session_id: str | None = None) -> DaysSinceRequestResponse:
+    async def extract_days_since_request(
+        self, *, message: str, today: str, session_id: str | None = None
+    ) -> DaysSinceRequestResponse:
         """Extract days-since-request information from a ticket message.
 
         Args:
@@ -214,7 +222,9 @@ class GenAIHandler:
 
         return RunnableSequence(
             prompt_template,
-            self.chat_model.with_structured_output(schema=output_schema, strict=True) if output_schema else self.chat_model,
+            self.chat_model.with_structured_output(schema=output_schema, strict=True)
+            if output_schema
+            else self.chat_model,
         )
 
     def _build_runnable_config(self, session_id: str | None) -> tuple[str, RunnableConfig]:

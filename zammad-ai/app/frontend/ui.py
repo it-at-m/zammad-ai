@@ -1,3 +1,5 @@
+"""Build the Gradio UI used for manual triage experiments."""
+
 from typing import Any
 
 import gradio as gr
@@ -40,8 +42,7 @@ EXAMPLE_PAYLOADS: list[tuple[str, str]] = [
 
 
 def _empty_result(message: str = "") -> FrontendResult:
-    """
-    Create a FrontendResult populated with a head message and empty fields.
+    """Create a FrontendResult populated with a head message and empty fields.
 
     Parameters:
         message (str): Text to place in the first element (typically an informational or error message).
@@ -54,8 +55,7 @@ def _empty_result(message: str = "") -> FrontendResult:
 
 
 def _format_documents(documents: list[dict[str, Any]]) -> str:
-    """
-    Format a list of document dictionaries into a single newline-separated string.
+    """Format a list of document dictionaries into a single newline-separated string.
 
     Parameters:
         documents (list[dict[str, Any]]): A list of document objects represented as dictionaries.
@@ -69,8 +69,7 @@ def _format_documents(documents: list[dict[str, Any]]) -> str:
 
 
 async def _request_json(client: httpx.AsyncClient, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Send a JSON POST to the given URL and return the parsed JSON object.
+    """Send a JSON POST to the given URL and return the parsed JSON object.
 
     Sends `payload` as the request JSON using `client.post`, ensures the HTTP response status is successful, parses the response body as JSON, and verifies the parsed value is a dict.
 
@@ -96,8 +95,7 @@ async def _request_json(client: httpx.AsyncClient, url: str, payload: dict[str, 
 
 
 async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float) -> FrontendResult:
-    """
-    Process ticket text through triage and, if the triage action indicates, request an AI-generated answer.
+    """Process ticket text through triage and, if the triage action indicates, request an AI-generated answer.
 
     Sends the ticket text to the triage endpoint and extracts category, action, reasoning, and confidence. If the triage action is "AI_Answer" or "ai_response", requests an answer and any supporting documents from the answer endpoint and formats them for the frontend.
 
@@ -184,8 +182,7 @@ def build_frontend(frontend_settings: FrontendSettings) -> gr.Blocks:
     """Build the Gradio frontend Blocks UI."""
 
     async def _process_ticket(text: str) -> FrontendResult:
-        """
-        Process the given ticket text using the module's configured API base URL and the frontend's request timeout.
+        """Process the given ticket text using the module's configured API base URL and the frontend's request timeout.
 
         Parameters:
             text (str): Raw ticket text to be analyzed and (optionally) answered.

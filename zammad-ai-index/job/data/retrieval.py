@@ -6,12 +6,13 @@ from typing import Any
 from uuid import UUID
 
 from feedparser import FeedParserDict
+from qdrant_client.models import Record
+
 from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
 from job.settings.settings import ZammadAIIndexSettings, get_settings
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
-from qdrant_client.models import Record
 
 logger: Logger = getLogger("zammad-ai-index.data-retrieval")
 settings: ZammadAIIndexSettings = get_settings()
@@ -137,7 +138,9 @@ def _get_answer_id_from_entry(entry: FeedParserDict) -> int | None:
     return None
 
 
-def get_answers_data(answer_ids: list[int], client: ZammadAPIClient | ZammadEAIClient) -> dict[int, KnowledgeBaseAnswer]:
+def get_answers_data(
+    answer_ids: list[int], client: ZammadAPIClient | ZammadEAIClient
+) -> dict[int, KnowledgeBaseAnswer]:
     """Fetch knowledge base answer data for given answer IDs.
 
     Args:
@@ -205,19 +208,16 @@ def fetch_attachments_for_answer(
 
 
 def retrieve_deleted_answer_ids(all_points: list[Record], client: ZammadAPIClient | ZammadEAIClient) -> list[UUID]:
-    """Retrieve IDs of knowledge base answers that have been deleted since last indexing.
+    """Retrieve IDs of knowledge base answers deleted since the last indexing run.
 
     This method checks for answers that were previously indexed but have been
-    removed from the knowledge base, allowing the indexing process to also
-    handle deletions and keep the search index in sync with the current state
-    of the knowledge base.
+    removed from the knowledge base, allowing the indexing process to keep the
+    search index in sync with the current state of the knowledge base.
 
     Returns:
-        List of answer IDs that have been deleted since the last indexing run,
-        or empty list if no deletions are detected or if retrieval fails.
-
+        list[UUID]: Deleted answer IDs, or an empty list if none are detected
+        or retrieval fails.
     """
-
     deleted_ids: list[UUID] = []
     try:
         for point in all_points:
@@ -237,7 +237,9 @@ def retrieve_deleted_answer_ids(all_points: list[Record], client: ZammadAPIClien
                 if answer_id is not None:
                     answer_id = int(answer_id)
                     if not client.check_if_answer_exists(answer_id):
-                        logger.debug("Answer ID %d no longer exists in knowledge base, marking for deletion.", answer_id)
+                        logger.debug(
+                            "Answer ID %d no longer exists in knowledge base, marking for deletion.", answer_id
+                        )
                         deleted_ids.append(UUID(str(point.id)))
             except Exception:
                 logger.error(

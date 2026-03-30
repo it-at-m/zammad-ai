@@ -1,1 +1,1 @@
-# Zammad AI App Package
+"""Zammad AI application package."""

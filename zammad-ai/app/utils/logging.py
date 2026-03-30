@@ -1,3 +1,5 @@
+"""Logging configuration and formatters for Zammad AI."""
+
 import json
 import logging
 import logging.config
@@ -11,8 +13,7 @@ from yaml import safe_load
 
 @lru_cache(maxsize=1)
 def get_log_config() -> dict[str, Any]:
-    """
-    Builds a logging configuration dictionary from the logconf.yaml template and current application settings.
+    """Builds a logging configuration dictionary from the logconf.yaml template and current application settings.
 
     Selects the formatter to use ("simple" when settings.log.format == "plain" or settings.mode == "development", otherwise "json"), applies that formatter to all handlers that declare one, and sets the "zammad-ai" logger level from settings. This function is cached so the configuration is generated once per process.
 
@@ -75,7 +76,7 @@ def getLogger(name: str = "zammad-ai") -> logging.Logger:
 
 
 class JsonFormatter(logging.Formatter):
-    """A custom JSON formatter for logging."""
+    """Format log records as JSON objects."""
 
     # Standard LogRecord attributes to exclude
     STANDARD_ATTRIBUTES: set[str] = {
@@ -135,5 +136,8 @@ class JsonFormatter(logging.Formatter):
 
 
 class MetricsFilter(logging.Filter):
+    """Filter out Prometheus metrics endpoint access logs."""
+
     def filter(self, record):
+        """Return True for non-metrics records and False for /metrics requests."""
         return record.getMessage().find("/metrics") == -1

@@ -1,9 +1,13 @@
+"""Models for Zammad knowledge base answers and attachments."""
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
 
 class ZammadKnowledgebase(BaseModel):
+    """Knowledge base metadata returned by Zammad."""
+
     id: int = Field(
         description="ID of the knowledge base",
     )
@@ -28,6 +32,8 @@ class ZammadKnowledgebase(BaseModel):
 
 
 class KnowledgeBaseAttachment(BaseModel):
+    """Attachment metadata for a knowledge base answer."""
+
     id: int = Field(
         description="ID of the attachment",
     )
@@ -40,6 +46,8 @@ class KnowledgeBaseAttachment(BaseModel):
 
 
 class KnowledgeBaseAnswer(BaseModel):
+    """Knowledge base answer payload used by the index job."""
+
     id: int = Field(
         description="The ID of the answer",
     )

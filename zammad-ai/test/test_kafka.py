@@ -1,3 +1,5 @@
+"""Tests for Kafka event routing and triage invocation."""
+
 from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,8 +23,7 @@ from app.settings.zammad import ZammadAPISettings
 
 
 def create_mock_settings() -> ZammadAISettings:
-    """
-    Builds a complete ZammadAISettings object populated with realistic test values for unit tests.
+    """Builds a complete ZammadAISettings object populated with realistic test values for unit tests.
 
     Temporarily replaces sys.argv to avoid CLI argument parsing during construction.
 
@@ -69,8 +70,7 @@ def create_mock_settings() -> ZammadAISettings:
 
 @pytest.fixture
 def valid_message() -> dict:
-    """
-    Standard valid Kafka event payload used by tests.
+    """Standard valid Kafka event payload used by tests.
 
     Returns:
         dict: Payload with keys:
@@ -93,8 +93,7 @@ def valid_message() -> dict:
 
 @pytest.fixture
 def mock_triage() -> MagicMock:
-    """
-    Create a MagicMock that simulates a Triage with a preset async `perform_triage` result.
+    """Create a MagicMock that simulates a Triage with a preset async `perform_triage` result.
 
     Returns:
         MagicMock: A mock Triage object whose `perform_triage` is an AsyncMock returning a
@@ -137,10 +136,9 @@ async def test_event_handler_valid_message(
     mock_get_triage: None,
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """
-    Verifies that a valid Kafka message causes the triage service to be invoked with the ticket ID from the message.
+    """Verifies that a valid Kafka message causes the triage service to be invoked with the ticket ID from the message.
 
-    Publishes a message to the router's broker configured with a single allowed request type and asserts that `perform_triage` is called once with `id="3720"`.
+    Publishes a message to the router's broker configured with a single allowed request type and asserts that `perform_triage` is called once with `id=3720`.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
     router, event_handler = build_router(settings=settings)
@@ -179,8 +177,7 @@ async def test_event_handler_invalid_request_type(
     settings_factory: Callable[..., ZammadAISettings],
     caplog,
 ) -> None:
-    """
-    Verify that messages whose request type is not listed in the configured valid_request_types are skipped by the event handler.
+    """Verify that messages whose request type is not listed in the configured valid_request_types are skipped by the event handler.
 
     When a message contains an invalid request type, the handler logs an informational "Skipping" message and does not invoke the triage service.
     """
@@ -222,10 +219,9 @@ async def test_event_handler_with_multiple_valid_request_types(
     mock_get_triage: None,
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """
-    Verify the event handler invokes triage when the message's request type matches any of multiple allowed types.
+    """Verify the event handler invokes triage when the message's request type matches any of multiple allowed types.
 
-    Publishes a Kafka message with `anliegenart` set to "general support" while the settings allow ["technischer Bürgersupport", "general support", "other"], and asserts `perform_triage` was called with `id="3720"`.
+    Publishes a Kafka message with `anliegenart` set to "general support" while the settings allow ["technischer Bürgersupport", "general support", "other"], and asserts `perform_triage` was called with `id=3720`.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport", "general support", "other"])
     router, event_handler = build_router(settings=settings)

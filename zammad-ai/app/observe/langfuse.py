@@ -1,3 +1,5 @@
+"""Langfuse client helpers for observability and prompt retrieval."""
+
 from logging import Logger
 from uuid import uuid4
 
@@ -21,8 +23,7 @@ class LangfuseClient:
     """Client for interacting with Langfuse to fetch prompts and build RunnableConfig with Langfuse callbacks."""
 
     def __init__(self) -> None:
-        """
-        Initialize the LangfuseClient with a callback handler and Langfuse client.
+        """Initialize the LangfuseClient with a callback handler and Langfuse client.
 
         Creates a new CallbackHandler used for Runnable callbacks and instantiates a Langfuse client.
         The Langfuse client is expected to be configured externally (for example via environment variables or other application configuration).
@@ -31,8 +32,7 @@ class LangfuseClient:
         self.langfuse: Langfuse = Langfuse()  # Assumes Langfuse is configured via environment variables or other means
 
     def get_prompt(self, prompt_name: str, prompt_label: str = "production") -> str:
-        """
-        Retrieve a prompt template from Langfuse by name and label.
+        """Retrieve a prompt template from Langfuse by name and label.
 
         Parameters:
             prompt_name (str): Name of the prompt to fetch.
@@ -62,8 +62,7 @@ class LangfuseClient:
             raise LangfuseError(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'.") from e
 
     def build_config(self, session_id: str | None = None) -> RunnableConfig:
-        """
-        Builds a RunnableConfig that attaches the Langfuse callback handler and embeds a session identifier in metadata.
+        """Builds a RunnableConfig that attaches the Langfuse callback handler and embeds a session identifier in metadata.
 
         Parameters:
             session_id (str | None): Session ID to include in metadata; if None a new UUID4-based session ID is generated.
@@ -82,8 +81,7 @@ class LangfuseClient:
         )
 
     def generate_session_id(self) -> str:
-        """
-        Generate a unique session ID for Langfuse tracing.
+        """Generate a unique session ID for Langfuse tracing.
 
         Returns:
             session_id (str): A newly generated UUID4-based session identifier.

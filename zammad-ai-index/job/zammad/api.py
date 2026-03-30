@@ -7,6 +7,7 @@ from typing import override
 from feedparser import FeedParserDict
 from feedparser import parse as feedparser
 from httpx import HTTPStatusError
+
 from job.models.zammad import (
     KnowledgeBaseAnswer,
     KnowledgeBaseAttachment,

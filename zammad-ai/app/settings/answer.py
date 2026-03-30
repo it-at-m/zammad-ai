@@ -1,3 +1,5 @@
+"""Settings for answer generation, knowledge base, and DLF integrations."""
+
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, FilePath, HttpUrl, NonNegativeFloat, PositiveInt, SecretStr
@@ -9,6 +11,8 @@ from .langfuse import LangfusePrompt
 
 
 class StringPromptConfig(BaseModel):
+    """Prompt configuration with a raw string template."""
+
     type: Literal["string"] = "string"
     prompt: str = Field(
         description="The prompt template as a raw string.",
@@ -17,6 +21,8 @@ class StringPromptConfig(BaseModel):
 
 
 class FilePromptConfig(BaseModel):
+    """Prompt configuration loaded from a file."""
+
     type: Literal["file"] = "file"
     prompt: Annotated[FilePath, AfterValidator(func=validate_is_prompt)] = Field(
         description="The file path to the prompt template.",
@@ -24,6 +30,8 @@ class FilePromptConfig(BaseModel):
 
 
 class LangfusePromptConfig(BaseModel):
+    """Prompt configuration loaded from Langfuse."""
+
     type: Literal["langfuse"] = "langfuse"
     prompt: LangfusePrompt = Field(
         description="The name and label of the Langfuse prompt to use.",
@@ -34,6 +42,8 @@ PromptSourceConfig = StringPromptConfig | FilePromptConfig | LangfusePromptConfi
 
 
 class JudgeThresholds(BaseModel):
+    """Thresholds for LLM judge evaluation of generated answers."""
+
     context_relevance: NonNegativeFloat = Field(
         default=0.75,
         description="Minimum context relevance score required for a passing judgment.",
@@ -52,6 +62,8 @@ class JudgeThresholds(BaseModel):
 
 
 class JudgeSettings(BaseModel):
+    """Settings for LLM judge evaluation of generated answers."""
+
     enabled: bool = Field(
         default=False,
         description="Whether to run an LLM judge after answer generation.",
@@ -81,9 +93,7 @@ class JudgeSettings(BaseModel):
 
 
 class QdrantSettings(BaseModel):
-    """
-    Settings for Qdrant vector database integration, including host URL, API key, collection name, and vector configuration.
-    """
+    """Settings for Qdrant vector database integration, including host URL, API key, collection name, and vector configuration."""
 
     url: HttpUrl = Field(
         description="Qdrant host URL",
@@ -139,6 +149,8 @@ class DLFSettings(BaseModel):
 
 
 class AnswerSettings(BaseModel):
+    """Settings for the answer-generation pipeline."""
+
     agent_prompt: PromptSourceConfig = Field(
         description="Prompt configuration for the answer generation agent. Can be provided as a raw string, a file path, or a Langfuse prompt reference.",
         default_factory=lambda: FilePromptConfig(

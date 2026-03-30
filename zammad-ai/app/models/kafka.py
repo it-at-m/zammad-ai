@@ -1,3 +1,5 @@
+"""Kafka event models used by the broker and API layers."""
+
 from pydantic import AliasChoices, BaseModel, Field
 
 

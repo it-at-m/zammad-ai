@@ -1,3 +1,5 @@
+"""Settings for Kafka connectivity and security."""
+
 from typing import Literal
 
 from pydantic import BaseModel, Field, FilePath

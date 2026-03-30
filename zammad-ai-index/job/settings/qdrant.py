@@ -1,10 +1,10 @@
+"""Settings for Qdrant connectivity and retrieval in the index job."""
+
 from pydantic import BaseModel, Field, HttpUrl, PositiveInt, SecretStr
 
 
 class QdrantSettings(BaseModel):
-    """
-    Settings for Qdrant vector database integration, including host URL, API key, collection name, and vector configuration.
-    """
+    """Settings for Qdrant vector database integration and retrieval."""
 
     url: HttpUrl = Field(
         description="Qdrant host URL",

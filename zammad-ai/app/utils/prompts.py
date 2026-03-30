@@ -1,4 +1,4 @@
-"""Parse prompt files with optional YAML frontmatter."""
+r"""Parse prompt files with optional YAML frontmatter."""
 
 from logging import Logger
 from pathlib import Path
@@ -12,7 +12,7 @@ logger: Logger = getLogger("zammad-ai.utils.prompts")
 
 
 def extract_frontmatter(content: str) -> tuple[dict[str, Any], str]:
-    """Extract YAML frontmatter and remaining content from markdown text.
+    r"""Extract YAML frontmatter and remaining content from markdown text.
 
     Frontmatter must be delimited by `---` at the start of the file.
     If no frontmatter is present, returns empty dict and the full content.
@@ -75,8 +75,7 @@ def extract_frontmatter(content: str) -> tuple[dict[str, Any], str]:
 
 
 def load_prompt(file_path: Path | str) -> str:
-    """
-    Load a prompt file and remove any leading YAML frontmatter.
+    """Load a prompt file and remove any leading YAML frontmatter.
 
     Parameters:
         file_path (Path | str): Path to the prompt file; may be a string or Path.

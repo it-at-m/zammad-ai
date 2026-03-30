@@ -1,11 +1,16 @@
+"""Pydantic models for Qdrant index records."""
+
 from datetime import datetime
 from uuid import UUID
 
-from job.models.zammad import KnowledgeBaseAttachment
 from pydantic import BaseModel
+
+from job.models.zammad import KnowledgeBaseAttachment
 
 
 class QdrantVectorMetadata(BaseModel):
+    """Metadata stored alongside a Qdrant vector."""
+
     # vector info
     vector_updatedAt: datetime
     # answer info
@@ -22,6 +27,8 @@ class QdrantVectorMetadata(BaseModel):
 
 
 class QdrantDocumentItem(BaseModel):
+    """A Qdrant document item ready for indexing."""
+
     vector_id: UUID
     page_content: str
     metadata: QdrantVectorMetadata

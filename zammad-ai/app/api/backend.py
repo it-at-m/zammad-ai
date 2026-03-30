@@ -1,3 +1,5 @@
+"""FastAPI backend wiring for Zammad AI services and routes."""
+
 import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -41,8 +43,7 @@ HTTP_REQUEST_DURATION_SECONDS = Histogram(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """
-    Manage application startup and shutdown by initializing and cleaning shared services.
+    """Manage application startup and shutdown by initializing and cleaning shared services.
 
     On startup, attaches `triage_service` and `answer_service` to `app.state` using current settings. On shutdown, awaits each service's `cleanup()` method; `asyncio.CancelledError` raised during cleanup is caught.
     """
@@ -67,7 +68,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Initializing shared Triage instance")
         app.state.triage_service: TriageService = get_triage_service(settings=settings)
         app.state.answer_service: AnswerService = get_answer_service(settings=settings)
-        app.state.action_service: ActionService = get_action_service(settings=settings, answer_service=app.state.answer_service)
+        app.state.action_service: ActionService = get_action_service(
+            settings=settings, answer_service=app.state.answer_service
+        )
 
         yield
 
@@ -111,6 +114,7 @@ async def prometheus_http_metrics_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
+    """Collect Prometheus HTTP metrics around each incoming request."""
     start_time: float = perf_counter()
     method: str = request.method
     status_code = 500
@@ -128,7 +132,9 @@ async def prometheus_http_metrics_middleware(
         route = request.scope.get("route")
         route_path: str = route.path if route is not None and hasattr(route, "path") else "unmatched"
         HTTP_REQUESTS_TOTAL.labels(method=method, path=route_path, status=str(status_code)).inc()
-        HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=route_path, status=str(status_code)).observe(perf_counter() - start_time)
+        HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=route_path, status=str(status_code)).observe(
+            perf_counter() - start_time
+        )
 
     return response
 
@@ -141,6 +147,7 @@ backend.include_router(
 
 @kafka_router.after_startup
 async def mark_ready(_app: FastAPI) -> None:
+    """Mark the application status as ready after Kafka startup completes."""
     set_status("ready")
     logger.info("Kafka broker connected and application startup completed.")
 
@@ -164,8 +171,7 @@ if not settings.frontend.enabled and settings.mode == "development":
 
     @backend.get("/", include_in_schema=False)
     async def reroute_to_docs() -> RedirectResponse:
-        """
-        Redirect root requests to the API documentation page.
+        """Redirect root requests to the API documentation page.
 
         Returns:
             RedirectResponse: A response that redirects the client to "/api/docs".
@@ -175,8 +181,7 @@ if not settings.frontend.enabled and settings.mode == "development":
 
 @backend.get("/api/v1/health", tags=["health"])
 async def health_check() -> HealthCheckResponse:
-    """
-    Provide a basic application health check response.
+    """Provide a basic application health check response.
 
     Returns:
         HealthCheckResponse: An instance containing the application's default health status.

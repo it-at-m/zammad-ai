@@ -18,8 +18,7 @@ logger: Logger = getLogger("zammad-ai.kafka.security")
 
 
 def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
-    """
-    Configure Kafka TLS/mTLS according to the provided Kafka settings.
+    """Configure Kafka TLS/mTLS according to the provided Kafka settings.
 
     Parameters:
         kafka_settings (KafkaSettings): Kafka configuration describing either disabled security, mTLS provided via environment variables, or mTLS provided via file paths.
@@ -42,19 +41,25 @@ def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
             try:
                 ca_data = b64decode(s=kafka_settings.security.ca_file_base64).decode(encoding="utf-8")
             except binascii.Error as e:  # Malformed base64 raises binascii.Error
-                raise ValueError(f"Setting 'settings.kafka.security.ca_file_base64' contains invalid base64 data: {e}") from e
+                raise ValueError(
+                    f"Setting 'settings.kafka.security.ca_file_base64' contains invalid base64 data: {e}"
+                ) from e
 
             # Unpack PKCS#12 file
             try:
                 pkcs12_bytes = b64decode(s=kafka_settings.security.pkcs12_base64)
             except binascii.Error as e:
-                raise ValueError(f"Setting 'settings.kafka.security.pkcs12_base64' contains invalid base64 data: {e}") from e
+                raise ValueError(
+                    f"Setting 'settings.kafka.security.pkcs12_base64' contains invalid base64 data: {e}"
+                ) from e
 
             # Unpack PKCS#12 password
             try:
                 pkcs12_pw_bytes: bytes = b64decode(s=kafka_settings.security.pkcs12_pw_base64)
             except binascii.Error as e:
-                raise ValueError(f"Setting 'settings.kafka.security.pkcs12_pw_base64' contains invalid base64 data: {e}") from e
+                raise ValueError(
+                    f"Setting 'settings.kafka.security.pkcs12_pw_base64' contains invalid base64 data: {e}"
+                ) from e
 
             # Extract the private key and certificate from the PKCS#12 file
             try:

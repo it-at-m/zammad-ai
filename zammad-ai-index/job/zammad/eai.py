@@ -8,10 +8,11 @@ from typing import Any, override
 from feedparser import FeedParserDict
 from feedparser import parse as feedparser
 from httpx import HTTPStatusError, RequestError
+from pydantic import TypeAdapter
+
 from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
 from job.settings.zammad import ZammadEAISettings
 from job.utils.logging import getLogger
-from pydantic import TypeAdapter
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -61,7 +62,9 @@ class ZammadEAIClient(BaseZammadClient):
 
         try:
             response = self.client.post(
-                str(self.settings.oauth2_token_url), data=token_data, headers={"Content-Type": "application/x-www-form-urlencoded"}
+                str(self.settings.oauth2_token_url),
+                data=token_data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             response.raise_for_status()
         except (HTTPStatusError, RequestError) as e:

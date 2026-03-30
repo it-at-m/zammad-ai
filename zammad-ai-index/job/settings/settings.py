@@ -1,8 +1,16 @@
+"""Top-level settings for the Zammad AI index job."""
+
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, CliSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
+from pydantic_settings import (
+    BaseSettings,
+    CliSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    YamlConfigSettingsSource,
+)
 
 from .genai import GenAISettings
 from .index import IndexJobSettings
@@ -40,9 +48,9 @@ def _should_enable_cli() -> bool:
 
 
 class ZammadAIIndexSettings(BaseSettings):
-    """
-    Application settings for Zammad AI integration.
-    This class aggregates all configuration settings for the application, including GenAI, Langfuse, Zammad, Qdrant, Kafka, and triage settings.
+    """Application settings for the index job.
+
+    This class aggregates all configuration settings for the application, including GenAI, Zammad, Qdrant, logging, and index settings.
     """
 
     index: IndexJobSettings = Field(
@@ -107,8 +115,7 @@ class ZammadAIIndexSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """
-        Define the precedence and ordering of configuration sources for the settings class.
+        """Define the precedence and ordering of configuration sources for the settings class.
 
         The returned tuple lists settings sources in precedence order (highest priority first): initialization values, CLI arguments (if enabled), environment variables, dotenv (.env) file, and YAML configuration file.
 
@@ -133,11 +140,9 @@ class ZammadAIIndexSettings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> ZammadAIIndexSettings:
-    """
-    Provide the application's cached settings.
+    """Provide the application's cached settings.
 
     Returns:
         ZammadAIIndexSettings: The cached settings instance used by the application.
     """
-
     return ZammadAIIndexSettings()  # type: ignore

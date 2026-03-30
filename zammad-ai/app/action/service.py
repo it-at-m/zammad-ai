@@ -1,3 +1,5 @@
+"""Action service for executing post-triage ticket handling."""
+
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
@@ -13,13 +15,12 @@ from app.zammad.eai import ZammadEAIClient
 
 
 class ActionService:
-    """
-    Service class that gets the Category and Action from Triage and either returns a ai response, standard answer or does nothing based on the ActionType.
-    """
+    """Execute ticket actions based on triage category and action type."""
 
     logger: Logger = getLogger("zammad-ai.action.service")
 
     def __init__(self, settings: ZammadAISettings, answer_service: AnswerService):
+        """Initialize action execution with settings, answer service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
         # Zammad client setup
@@ -31,10 +32,15 @@ class ActionService:
             raise ValueError("Invalid type for Zammad settings in configuration")
 
     async def execute_action(self, ticket_id: int, triage: TriageResult, session_id: str | None = None) -> None:
+        """Run the configured action for a ticket and publish or draft the answer."""
         category_name: str = triage.category.name
         action: Action = triage.action
 
-        answer, documents, judge_auto_publish = await self.get_answer(  # TODO what to do with documents here? Internal Note?
+        (
+            answer,
+            documents,
+            judge_auto_publish,
+        ) = await self.get_answer(  # TODO what to do with documents here? Internal Note?
             ticket_id=ticket_id,
             category_name=category_name,
             action_name=action.name,
@@ -43,7 +49,9 @@ class ActionService:
         )
 
         if answer is None:
-            self.logger.info(f"No answer generated for ticket {ticket_id} with category {category_name}; skipping action execution.")
+            self.logger.info(
+                f"No answer generated for ticket {ticket_id} with category {category_name}; skipping action execution."
+            )
             return
 
         if triage.category.auto_publish and judge_auto_publish:
@@ -69,7 +77,10 @@ class ActionService:
         user_text: str,
         session_id: str | None,
     ) -> tuple[str | None, list[DocumentDict], bool]:
-        action: Action | None = next((action for action in self.settings.triage.actions if action.name == action_name), None)
+        """Resolve an answer payload for the given action and category."""
+        action: Action | None = next(
+            (action for action in self.settings.triage.actions if action.name == action_name), None
+        )
         answer: str | None = None
         documents: list[DocumentDict] = []
         judge_auto_publish: bool = True
@@ -94,8 +105,7 @@ class ActionService:
         return answer, documents, judge_auto_publish
 
     async def cleanup(self) -> None:
-        """
-        Close internal clients and reset the module-level service reference.
+        """Close internal clients and reset the module-level service reference.
 
         Attempts to close the Qdrant KB client and, if present, the DLF client. Always resets the module-level `_service` reference to `None` so the service can be recreated.
         """
@@ -109,9 +119,10 @@ class ActionService:
 _service: ActionService | None = None
 
 
-def get_action_service(settings: ZammadAISettings | None = None, answer_service: AnswerService | None = None) -> ActionService:
-    """
-    Get or create the shared ActionService instance.
+def get_action_service(
+    settings: ZammadAISettings | None = None, answer_service: AnswerService | None = None
+) -> ActionService:
+    """Get or create the shared ActionService instance.
 
     Args:
         settings: Optional settings to initialize the ActionService instance.

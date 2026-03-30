@@ -1,3 +1,5 @@
+"""Answer service orchestration for triaged ticket responses."""
+
 from logging import Logger
 from time import perf_counter
 
@@ -42,10 +44,11 @@ ANSWER_RUNS_IN_PROGRESS = Gauge(
 
 
 class AnswerService:
+    """Service that coordinates prompt loading, agent execution, and cleanup."""
+
     def __init__(self, settings: ZammadAISettings) -> None:
         # Optionally set up Langfuse client if enabled in settings
-        """
-        Initialize the AnswerService, configuring prompt sources, the agent, and supporting clients from the provided settings.
+        """Initialize the AnswerService, configuring prompt sources, the agent, and supporting clients from the provided settings.
 
         The initializer:
         - Optionally creates a Langfuse client when langfuse is enabled.
@@ -83,7 +86,9 @@ class AnswerService:
                 prompt_config=self.judge_settings.prompt,
                 prompt_source_name="judge prompt",
             )
-            self.judge_handler = JudgeHandler(genai_settings=settings.genai, prompt=judge_prompt, langfuse_client=self.langfuse_client)
+            self.judge_handler = JudgeHandler(
+                genai_settings=settings.genai, prompt=judge_prompt, langfuse_client=self.langfuse_client
+            )
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
         # Setup the user message template as an object variable
@@ -102,7 +107,9 @@ class AnswerService:
             genai_settings=settings.genai,
             qdrant_settings=settings.answer.qdrant,
         )
-        self.dlf_client: DLFClient | None = DLFClient(dlf_settings=settings.answer.dlf) if settings.answer.dlf is not None else None
+        self.dlf_client: DLFClient | None = (
+            DLFClient(dlf_settings=settings.answer.dlf) if settings.answer.dlf is not None else None
+        )
         self.agent_context: AgentContext = AgentContext(
             qdrant_kb_client=self.qdrant_kb_client,
             dlf_client=self.dlf_client,
@@ -115,8 +122,7 @@ class AnswerService:
         category: str,
         session_id: str | None = None,
     ) -> StructuredAgentResponse:
-        """
-        Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
+        """Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
 
         Parameters:
             user_text (str): The user's input text to be answered.
@@ -140,7 +146,9 @@ class AnswerService:
                 )
             )
             config: RunnableConfig = (
-                self.langfuse_client.build_config(session_id=session_id) if self.langfuse_client is not None else RunnableConfig()
+                self.langfuse_client.build_config(session_id=session_id)
+                if self.langfuse_client is not None
+                else RunnableConfig()
             )
             with propagate_attributes(session_id=session_id):
                 agent_result: dict = await self.agent.ainvoke(
@@ -212,13 +220,14 @@ class AnswerService:
                 )
 
             structured_response = agent_result["structured_response"]
-        logger.debug(f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response.")
+        logger.debug(
+            f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response."
+        )
         structured_response.auto_publish = False
         return structured_response
 
     def _is_judged_ok(self, judgment: JudgeResult) -> bool:
         """Return whether a judgment meets the configured quality thresholds."""
-
         return (
             judgment.passed
             and judgment.context_relevance >= self.judge_settings.thresholds.context_relevance
@@ -232,7 +241,6 @@ class AnswerService:
         prompt_source_name: str,
     ) -> str:
         """Resolve a prompt from settings, a file, or Langfuse."""
-
         if isinstance(prompt_config, LangfusePromptConfig):
             if self.langfuse_client is None:
                 raise ValueError(f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source.")
@@ -251,8 +259,7 @@ class AnswerService:
         raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
 
     async def cleanup(self) -> None:
-        """
-        Close internal clients and reset the module-level service reference.
+        """Close internal clients and reset the module-level service reference.
 
         Attempts to close the Qdrant KB client and, if present, the DLF client. Always resets the module-level `_service` reference to `None` so the service can be recreated.
         """
@@ -269,8 +276,7 @@ _service: AnswerService | None = None
 
 
 def get_answer_service(settings: ZammadAISettings | None = None) -> AnswerService:
-    """
-    Get or create the shared AnswerService instance.
+    """Get or create the shared AnswerService instance.
 
     Args:
         settings: Optional settings to initialize the AnswerService instance.

@@ -1,3 +1,5 @@
+"""Core triage service for ticket categorization and action selection."""
+
 from datetime import date
 from time import perf_counter
 
@@ -53,9 +55,10 @@ class TriageError(Exception):
 
 
 class TriageService:
+    """Service that classifies tickets and selects follow-up actions."""
+
     def __init__(self, settings: ZammadAISettings) -> None:
-        """
-        Initialize the TriageService with the provided configuration, preparing category/action maps, prompt sources, the GenAI handler, and the Zammad client.
+        """Initialize the TriageService with the provided configuration, preparing category/action maps, prompt sources, the GenAI handler, and the Zammad client.
 
         Parameters:
             settings (ZammadAISettings): Configuration containing triage categories, actions, action rules, prompt definitions (Langfuse, file, or string), GenAI settings, and Zammad settings.
@@ -131,8 +134,7 @@ class TriageService:
         logger.info("Triage initialized successfully.")
 
     async def perform_triage(self, id: int) -> TriageResult:
-        """
-        Triage a Zammad ticket by analyzing its customer message to determine category, action, and any extracted values.
+        """Triage a Zammad ticket by analyzing its customer message to determine category, action, and any extracted values.
 
         Parameters:
             id (int): Zammad ticket identifier.
@@ -215,8 +217,7 @@ class TriageService:
             TRIAGE_RUNS_IN_PROGRESS.dec()
 
     async def predict_category(self, message: str, session_id: str) -> CategorizationResult:
-        """
-        Predict the appropriate triage category for a customer message.
+        """Predict the appropriate triage category for a customer message.
 
         Parameters:
             message (str): Customer message to categorize; leading/trailing whitespace is ignored.
@@ -266,11 +267,12 @@ class TriageService:
             raise TriageError("Categorization failed due to GenAI error") from e
         except Exception as e:
             logger.error("Unexpected error during categorization", exc_info=True)
-            raise TriageError(f"Categorization failed due to unexpected error: {str(e)}") from e
+            raise TriageError("Categorization failed due to unexpected error") from e
 
-    async def get_action_name(self, categorization_result: CategorizationResult, message: str = "", session_id: str | None = None) -> str:
-        """
-        Selects the appropriate action name for a categorization using configured action rules and optional message-derived conditions.
+    async def get_action_name(
+        self, categorization_result: CategorizationResult, message: str = "", session_id: str | None = None
+    ) -> str:
+        """Selects the appropriate action name for a categorization using configured action rules and optional message-derived conditions.
 
         Evaluates action rules associated with the categorization's category. If a rule defines ordered conditions, each condition is evaluated (possibly extracting values from the provided message via the GenAI handler) and its action_name is returned when the condition matches. If a rule matches but none of its conditions match, the rule's default action_name is returned. If the categorization has no category or no rule matches, the configured fallback action name is returned.
 
@@ -305,14 +307,18 @@ class TriageService:
                                         session_id=session_id,
                                     )
                                     days_since_request = days_result.days_since_request
-                                if (get_operator_function(operator=condition.operator))(days_since_request, condition.value):
+                                if (get_operator_function(operator=condition.operator))(
+                                    days_since_request, condition.value
+                                ):
                                     return condition.action_name
 
                             if condition.field == "processing_id":
                                 if processing_id is None:
-                                    processing_result: ProcessingIdResponse = await self.genai_handler.extract_processing_id(
-                                        message=message,
-                                        session_id=session_id,
+                                    processing_result: ProcessingIdResponse = (
+                                        await self.genai_handler.extract_processing_id(
+                                            message=message,
+                                            session_id=session_id,
+                                        )
                                     )
                                     processing_id = processing_result.processing_id
                                 if get_operator_function(operator=condition.operator)(processing_id, condition.value):
@@ -329,8 +335,7 @@ class TriageService:
             raise TriageError(f"Action determination failed due to unexpected error: {str(e)}") from e
 
     def _name_to_category(self, category_name: str) -> Category:
-        """
-        Return the Category for the given name or the configured fallback when no match exists.
+        """Return the Category for the given name or the configured fallback when no match exists.
 
         Parameters:
             category_name (str): Name of the category to look up.
@@ -352,8 +357,7 @@ class TriageService:
         return self.actions_by_name.get(action_name, self.no_action)
 
     async def cleanup(self) -> None:
-        """
-        Release resources held by the TriageService and clear the global singleton.
+        """Release resources held by the TriageService and clear the global singleton.
 
         This closes the underlying Zammad client and resets the module-level service reference so a new instance can be created on next request.
         """
@@ -367,8 +371,7 @@ _service: TriageService | None = None
 
 
 def get_triage_service(settings: ZammadAISettings | None = None) -> TriageService:
-    """
-    Return the shared TriageService singleton, creating and initializing it if necessary.
+    """Return the shared TriageService singleton, creating and initializing it if necessary.
 
     Parameters:
         settings (ZammadAISettings | None): Optional settings to initialize the service. If None, the application settings from get_settings() are used.

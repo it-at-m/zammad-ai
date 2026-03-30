@@ -1,10 +1,10 @@
+"""Settings for the optional Gradio frontend."""
+
 from pydantic import BaseModel, Field, SecretStr
 
 
 class FrontendSettings(BaseModel):
-    """
-    Settings for the optional frontend.
-    """
+    """Settings for the optional frontend."""
 
     enabled: bool = Field(
         description="Whether to enable the optional frontend for Zammad AI.",

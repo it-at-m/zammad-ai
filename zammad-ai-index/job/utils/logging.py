@@ -1,3 +1,5 @@
+"""Logging configuration helpers for the index job."""
+
 import json
 import logging
 import logging.config
@@ -11,8 +13,7 @@ from yaml import safe_load
 
 @lru_cache(maxsize=1)
 def get_log_config() -> dict[str, Any]:
-    """
-    Builds a logging configuration dictionary from the logconf.yaml template and current application settings.
+    """Build a logging configuration dictionary from the template and current settings.
 
     Selects the formatter to use ("simple" when settings.log.format == "plain" or settings.mode == "development", otherwise "json"), applies that formatter to all handlers that declare one, and sets the "zammad-ai" logger level from settings. This function is cached so the configuration is generated once per process.
 

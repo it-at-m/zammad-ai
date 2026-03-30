@@ -1,3 +1,5 @@
+"""Hashing and normalization helpers for indexing content."""
+
 from hashlib import sha256
 from re import sub
 

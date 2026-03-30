@@ -1,3 +1,5 @@
+"""Triage configuration models and validation rules."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -7,6 +9,8 @@ from pydantic import BaseModel, Field, FilePath, model_validator
 
 
 class TriageSettings(BaseModel):
+    """Settings for triage categories, actions, rules, and prompts."""
+
     categories: list["Category"]
     no_category_name: str
     actions: list["Action"]
@@ -32,7 +36,9 @@ class TriageSettings(BaseModel):
         return names, duplicates
 
     @classmethod
-    def _validate_references(cls, *, category_names: set[str], action_names: set[str], rules: list["ActionRule"]) -> list[str]:
+    def _validate_references(
+        cls, *, category_names: set[str], action_names: set[str], rules: list["ActionRule"]
+    ) -> list[str]:
         errors: list[str] = []
 
         for rule in rules:
@@ -41,7 +47,9 @@ class TriageSettings(BaseModel):
                     f"ActionRule.category_name '{rule.category_name}' must reference an existing category name: {sorted(category_names)}"
                 )
             if rule.action_name not in action_names:
-                errors.append(f"ActionRule.action_name '{rule.action_name}' must reference an existing action name: {sorted(action_names)}")
+                errors.append(
+                    f"ActionRule.action_name '{rule.action_name}' must reference an existing action name: {sorted(action_names)}"
+                )
             if rule.conditions is not None:
                 for condition in rule.conditions:
                     if condition.action_name not in action_names:
@@ -52,7 +60,9 @@ class TriageSettings(BaseModel):
         return errors
 
     @classmethod
-    def _validate_prompt_keys(cls, prompts: "StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts") -> list[str]:
+    def _validate_prompt_keys(
+        cls, prompts: "StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts"
+    ) -> list[str]:
         missing_prompt_keys = sorted(cls._required_prompt_keys - set(prompts.prompt_map))
         if not missing_prompt_keys:
             return []
@@ -63,6 +73,7 @@ class TriageSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_configuration_integrity(self) -> "TriageSettings":
+        """Validate cross-field consistency for categories, actions, rules, and prompts."""
         errors: list[str] = []
 
         # Validate that there is at least one category and one action, and that their names are unique
@@ -90,10 +101,14 @@ class TriageSettings(BaseModel):
             )
 
         if self.no_action_name not in action_names:
-            errors.append(f"no_action_name '{self.no_action_name}' must reference one of the configured actions: {sorted(action_names)}")
+            errors.append(
+                f"no_action_name '{self.no_action_name}' must reference one of the configured actions: {sorted(action_names)}"
+            )
 
         # Validate that action rules reference existing category and action names, and that any conditions within the rules also reference existing action names
-        errors.extend(self._validate_references(category_names=category_names, action_names=action_names, rules=self.action_rules))
+        errors.extend(
+            self._validate_references(category_names=category_names, action_names=action_names, rules=self.action_rules)
+        )
 
         # Validate that all StaticAnswer actions have a non-empty answer configured
         for action in self.actions:
@@ -110,17 +125,23 @@ class TriageSettings(BaseModel):
 
 
 class Category(BaseModel):
+    """A triage category with a display name and identifier."""
+
     name: str
     auto_publish: bool = False
 
 
 class ActionTypes(str, Enum):
+    """Supported action execution types for triage outcomes."""
+
     AIAnswer = "AIAnswer"
     NoAction = "NoAction"
     StaticAnswer = "StaticAnswer"
 
 
 class Action(BaseModel):
+    """Action metadata associated with a triage result."""
+
     name: str
     description: str
     type: ActionTypes
@@ -128,6 +149,8 @@ class Action(BaseModel):
 
 
 class ActionRule(BaseModel):
+    """Map a category to a default action with optional conditional overrides."""
+
     category_name: str
     action_name: str
     conditions: list["Condition"] | None = None
@@ -138,6 +161,8 @@ ConditionField = Literal["processing_id", "days_since_request"]
 
 
 class Condition(BaseModel):
+    """Condition used to select a triage action."""
+
     priority: int
     field: "ConditionField"
     operator: "ConditionOperator"
@@ -146,6 +171,8 @@ class Condition(BaseModel):
 
 
 class ProcessingState(BaseModel):
+    """Stored state used while evaluating processing-id rules."""
+
     operator: str
     datetime: str
 
@@ -154,6 +181,8 @@ TriagePrompt = Literal["categories", "examples", "role"]
 
 
 class StringTriagePrompts(BaseModel):
+    """Triage prompt templates provided as raw strings."""
+
     type: Literal["string"] = "string"
     prompt_map: dict[TriagePrompt, str] = Field(
         description="Prompts for the triage process as raw strings. The keys should be 'categories', 'examples', and 'role'.",
@@ -166,6 +195,8 @@ class StringTriagePrompts(BaseModel):
 
 
 class FileTriagePrompts(BaseModel):
+    """Triage prompt templates loaded from files."""
+
     type: Literal["file"] = "file"
     prompt_map: dict[TriagePrompt, FilePath] = Field(
         description="Prompts for the triage process as file paths. The files should contain the prompts as raw text. The keys should be 'categories', 'examples', and 'role'.",
@@ -173,6 +204,8 @@ class FileTriagePrompts(BaseModel):
 
 
 class LangfuseTriagePrompts(BaseModel):
+    """Triage prompt references loaded from Langfuse."""
+
     type: Literal["langfuse"] = "langfuse"
     prompt_map: dict[TriagePrompt, "LangfusePrompt"] = Field(
         description="Prompts for the triage process as LangfusePrompt objects. The keys should be 'categories', 'examples', and 'role'.",
@@ -180,6 +213,8 @@ class LangfuseTriagePrompts(BaseModel):
 
 
 class LangfusePrompt(BaseModel):
+    """Reference to a Langfuse prompt by name and label."""
+
     label: str = Field(
         description="Label of the prompt in Langfuse",
         default="production",

@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from logging import Logger
 from uuid import UUID, uuid5
 
+from qdrant_client.models import Record
+
 from job.data.retrieval import fetch_attachments_for_answer
 from job.models.qdrant import QdrantDocumentItem, QdrantVectorMetadata
 from job.models.zammad import KnowledgeBaseAnswer
@@ -13,13 +15,14 @@ from job.utils.hash import hash_content, normalize_content
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
-from qdrant_client.models import Record
 
 logger: Logger = getLogger("zammad-ai-index.data-processing")
 settings: ZammadAIIndexSettings = get_settings()
 
 
-def prepare_qdrant_data(answers: dict[int, KnowledgeBaseAnswer], client: ZammadAPIClient | ZammadEAIClient) -> list[QdrantDocumentItem]:
+def prepare_qdrant_data(
+    answers: dict[int, KnowledgeBaseAnswer], client: ZammadAPIClient | ZammadEAIClient
+) -> list[QdrantDocumentItem]:
     """Prepare data for Qdrant indexing based on knowledge base answers.
 
     Args:
@@ -130,7 +133,9 @@ def _create_vector_metadata(answer: KnowledgeBaseAnswer, page_content: str) -> Q
     )
 
 
-def filter_for_changed_data(new_qdrant_data: list[QdrantDocumentItem], all_points: list[Record]) -> list[QdrantDocumentItem]:
+def filter_for_changed_data(
+    new_qdrant_data: list[QdrantDocumentItem], all_points: list[Record]
+) -> list[QdrantDocumentItem]:
     """Filter the provided Qdrant data to include only entries that have changed since the last indexing.
 
     Args:
@@ -183,7 +188,9 @@ def filter_for_changed_data(new_qdrant_data: list[QdrantDocumentItem], all_point
                     QdrantVectorMetadata.model_validate(payload_metadata) if payload_metadata else None
                 )
             except Exception:
-                logger.warning("Failed to validate metadata for document %s, treating as new.", item.vector_id, exc_info=True)
+                logger.warning(
+                    "Failed to validate metadata for document %s, treating as new.", item.vector_id, exc_info=True
+                )
                 filtered_data.append(item)
                 continue
 
@@ -191,11 +198,17 @@ def filter_for_changed_data(new_qdrant_data: list[QdrantDocumentItem], all_point
             new_hash: str | None = item.metadata.pagecontent_hash
             if current_hash != new_hash:
                 # Content has changed, include for re-indexing
-                logger.debug("Content changes detected for answer ID %d, including in re-indexing.", item.metadata.answer_id)
+                logger.debug(
+                    "Content changes detected for answer ID %d, including in re-indexing.", item.metadata.answer_id
+                )
                 filtered_data.append(item)
             else:
                 # No changes detected, skip re-indexing
-                logger.debug("No content changes detected for answer ID %d, skipping re-indexing.", item.metadata.answer_id)
+                logger.debug(
+                    "No content changes detected for answer ID %d, skipping re-indexing.", item.metadata.answer_id
+                )
 
-    logger.info("Filtered data to %d/%d items with detected changes for indexing.", len(filtered_data), len(new_qdrant_data))
+    logger.info(
+        "Filtered data to %d/%d items with detected changes for indexing.", len(filtered_data), len(new_qdrant_data)
+    )
     return filtered_data

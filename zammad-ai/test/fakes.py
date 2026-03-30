@@ -1,3 +1,5 @@
+"""Test doubles used across the Zammad AI test suite."""
+
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadTicket
 from app.settings import GenAISettings
@@ -5,6 +7,8 @@ from app.settings.zammad import ZammadAPISettings
 
 
 class FakeZammadConnectionError(Exception):
+    """Raised by the fake Zammad client when connection errors are simulated."""
+
     pass
 
 
@@ -17,9 +21,11 @@ class FakeLangfuseClient:
             return None
 
     def __init__(self) -> None:
+        """Initialize the fake Langfuse client."""
         self.langfuse = self._FakeLangfuse()
 
     def build_config(self, *, session_id: str) -> dict:
+        """Return a minimal runnable config for tests."""
         del session_id
         return {}
 
@@ -51,7 +57,9 @@ class FakeGenAIHandler:
 
         empty_keys = [key for key, value in prompts.items() if not value]
         if empty_keys:
-            raise ValueError(f"Empty prompt values for keys: {', '.join(empty_keys)}. All prompts must be non-empty strings.")
+            raise ValueError(
+                f"Empty prompt values for keys: {', '.join(empty_keys)}. All prompts must be non-empty strings."
+            )
 
         missing_keys = self.REQUIRED_PROMPT_KEYS - set(prompts)
         if missing_keys:
@@ -60,7 +68,9 @@ class FakeGenAIHandler:
         self.prompts = prompts
         self.langfuse_client = FakeLangfuseClient()
         self._categorization_chain = self._build_chain(prompt_key="categorization", schema=CategorizationResult)
-        self._days_since_request_chain = self._build_chain(prompt_key="days_since_request", schema=DaysSinceRequestResponse)
+        self._days_since_request_chain = self._build_chain(
+            prompt_key="days_since_request", schema=DaysSinceRequestResponse
+        )
         self._processing_id_chain = self._build_chain(prompt_key="processing_id", schema=ProcessingIdResponse)
         self.categorization_result: CategorizationResult | None = None
         self.days_since_request_response: DaysSinceRequestResponse | None = None
@@ -161,9 +171,10 @@ class FakeGenAIHandler:
 
 
 class FakeZammadClient:
+    """Fake Zammad client for unit tests."""
+
     def __init__(self, settings: ZammadAPISettings) -> None:
-        """
-        Create a fake Zammad client configured for tests.
+        """Create a fake Zammad client configured for tests.
 
         Parameters:
             settings (ZammadAPISettings): Configuration used by the fake client; stored on the instance.
@@ -175,8 +186,7 @@ class FakeZammadClient:
         self.raise_connection_error: bool = False
 
     async def get_ticket(self, id: int) -> ZammadTicket:
-        """
-        Retrieve a ticket by id, raising a fake connection error when configured.
+        """Retrieve a ticket by id, raising a fake connection error when configured.
 
         If a preset ticket has been assigned to the fake client, that ticket is returned.
         Otherwise returns a new ZammadTicket with the given `id` and an empty `articles` list.
@@ -197,8 +207,7 @@ class FakeZammadClient:
         return self.ticket
 
     async def post_answer(self, ticket_id: str, text: str, internal: bool = False) -> None:
-        """
-        Prevent posting an answer during tests by failing if called.
+        """Prevent posting an answer during tests by failing if called.
 
         Raises:
             AssertionError: Always raised to indicate this method must not be invoked in tests.
@@ -206,8 +215,7 @@ class FakeZammadClient:
         raise AssertionError("post_answer should not be called in these tests")
 
     async def post_shared_draft(self, ticket_id: str, text: str) -> None:
-        """
-        Signal that posting a shared draft is unsupported by this fake client and fail the test if invoked.
+        """Signal that posting a shared draft is unsupported by this fake client and fail the test if invoked.
 
         Raises:
             AssertionError: Always raised to indicate this method must not be called in tests.
@@ -215,8 +223,7 @@ class FakeZammadClient:
         raise AssertionError("post_shared_draft should not be called in these tests")
 
     async def add_tag_to_ticket(self, ticket_id: str, tag: str) -> None:
-        """
-        Prevent accidental use of tag-adding in tests by failing immediately.
+        """Prevent accidental use of tag-adding in tests by failing immediately.
 
         Raises:
             AssertionError: Always raised to indicate this fake client must not be asked to add a tag to a ticket during tests.
@@ -224,27 +231,25 @@ class FakeZammadClient:
         raise AssertionError("add_tag_to_ticket should not be called in these tests")
 
     async def cleanup(self) -> None:
-        """
-        Perform cleanup for the fake client.
+        """Perform cleanup for the fake client.
 
         This implementation performs no action.
         """
         return None
 
     async def parse_rss_feed(self) -> dict | None:
-        """
-        Stub method that must not be called during tests and signals misuse by raising an AssertionError.
+        """Stub method that must not be called during tests and signals misuse by raising an AssertionError.
 
         @raises AssertionError: always raised with message "parse_rss_feed should not be called in these tests"
         """
         raise AssertionError("parse_rss_feed should not be called in these tests")
 
     async def get_kb_answer_by_id(self, answer_id: str) -> dict | None:
+        """Fail if knowledge-base lookup is attempted in tests."""
         raise AssertionError("get_kb_answer_by_id should not be called in these tests")
 
     async def fetch_attachment_data(self, url: str) -> str | None:
-        """
-        Fail the test if code attempts to fetch attachment data from a URL.
+        """Fail the test if code attempts to fetch attachment data from a URL.
 
         Raises:
             AssertionError: Always raised with message "fetch_attachment_data should not be called in these tests".
@@ -252,8 +257,7 @@ class FakeZammadClient:
         raise AssertionError("fetch_attachment_data should not be called in these tests")
 
     async def check_if_answer_exists(self, answer_id: str) -> bool:
-        """
-        Indicates whether a knowledge-base answer exists for the given answer ID.
+        """Indicates whether a knowledge-base answer exists for the given answer ID.
 
         Parameters:
             answer_id (str): The identifier of the knowledge-base answer to check.

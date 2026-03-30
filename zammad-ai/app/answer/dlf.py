@@ -1,3 +1,5 @@
+"""DLF client and retrieval helpers for answer generation."""
+
 from logging import Logger
 
 from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout, Response, TimeoutException
@@ -37,6 +39,8 @@ class DLFAPIResponse(BaseModel):
 
 
 class SearchDLFInput(BaseModel):
+    """Validated input for DLF search queries."""
+
     query: str = Field(
         description=f"The search query string; maximum length is {QUERY_MAX_LENGTH} characters (~ {QUERY_MAX_LENGTH // 10} words).",
         max_length=QUERY_MAX_LENGTH,
@@ -53,8 +57,7 @@ class DLFClient:
     """Stateful client for interacting with the Dienstleistungsfinder (DLF) API."""
 
     def __init__(self, dlf_settings: DLFSettings) -> None:
-        """
-        Configure the DLFClient using provided settings by creating an AsyncClient and storing filter categories.
+        """Configure the DLFClient using provided settings by creating an AsyncClient and storing filter categories.
 
         Parameters:
             dlf_settings (DLFSettings): Settings that provide the DLF base URL, request timeout, and filter categories.
@@ -74,8 +77,7 @@ class DLFClient:
         self.logger = logger
 
     async def retrieve_documents(self, query: str) -> list[DLFDocument]:  # type: ignore
-        """
-        Retrieve documents from the DLF matching the given search query.
+        """Retrieve documents from the DLF matching the given search query.
 
         Parameters:
             query (str): Search query string; maximum length 200 characters.
@@ -114,8 +116,7 @@ class DLFClient:
             raise DLFError("Failed to retrieve documents from DLF.") from e
 
     async def close(self) -> None:
-        """
-        Close the underlying HTTPX AsyncClient and release its resources.
+        """Close the underlying HTTPX AsyncClient and release its resources.
 
         Awaiting this coroutine closes network connections and frees resources held by the internal AsyncClient.
         """

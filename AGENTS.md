@@ -124,6 +124,8 @@ async with TestKafkaBroker(broker) as test_broker:
 
 ## Git workflow
 
+Always use the CLI so the user can enter their passphrase for signing commits. Never use `--no-verify` or bypass commit hooks.
+
 **Commit message format (Conventional Commits):**
 
 All commits MUST follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
@@ -158,9 +160,26 @@ chore(deps): bump faststream to 0.6.7
 
 ## Boundaries
 
-- ✅ **Always:** Run tests before committing, use `uv` for dependencies, follow ruff formatting (line-length 140), validate with Pydantic models, log with structured logging, type check with `ty`, use Conventional Commits format for all commit messages
-- ⚠️ **Ask first:** Changes to Kafka topics, database schema modifications, adding new dependencies to `pyproject.toml`, modifying security settings (mTLS config)
-- 🚫 **Never:** Commit secrets/API keys, modify `.git/` or `.venv/`, remove failing tests without fixing root cause, change Docker Compose service versions without approval, hardcode configuration (use settings instead)
+- ✅ **Always:**
+  - Run tests before committing
+  - Use `uv` for dependencies
+  - Follow ruff formatting (run `uv run ruff format` inside the module)
+  - Validate with Pydantic models
+  - Log with structured logging
+  - Type check with `ty`
+  - Use Conventional Commits format for all commit messages
+- ⚠️ **Ask first:**
+  - Changes to Kafka topics
+  - Database schema modifications
+  - Adding new dependencies to `pyproject.toml`
+  - Modifying security settings (mTLS config)
+- 🚫 **Never:**
+  - Commit secrets/API keys
+  - Modify `.git/` or `.venv/`
+  - Remove failing tests without fixing root cause
+  - Change Docker Compose service versions without approval
+  - Hardcode configuration (use settings instead)
+  - Bypass commit hooks or use `--no-verify`
 
 ## Configuration hierarchy
 

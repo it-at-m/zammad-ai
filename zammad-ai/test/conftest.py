@@ -14,7 +14,14 @@ from fastapi.testclient import TestClient
 from faststream.kafka import TestKafkaBroker
 from pydantic import HttpUrl, SecretStr
 
-from app.settings import AnswerSettings, GenAISettings, KafkaSettings, TriageSettings, ZammadAISettings, ZammadAPISettings
+from app.settings import (
+    AnswerSettings,
+    GenAISettings,
+    KafkaSettings,
+    TriageSettings,
+    ZammadAISettings,
+    ZammadAPISettings,
+)
 from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
 from test.fakes import FakeGenAIHandler, FakeLangfuseClient, FakeZammadClient
 
@@ -42,8 +49,7 @@ DEFAULT_GENAI_PROMPTS = {
 
 class _ApiTriageStub:
     def __init__(self) -> None:
-        """
-        Initialize the triage stub with default category and action placeholders.
+        """Initialize the triage stub with default category and action placeholders.
 
         Attributes:
             no_category (Category): A fallback Category named "Unknown".
@@ -53,8 +59,7 @@ class _ApiTriageStub:
         self.no_action = Action(name="No Action", description="No action", type=ActionTypes.NoAction)
 
     async def predict_category(self, *_args, **_kwargs) -> Any:
-        """
-        Provide a stubbed CategorizationResult representing an "Unknown" category prediction.
+        """Provide a stubbed CategorizationResult representing an "Unknown" category prediction.
 
         Returns:
             CategorizationResult: Result with `category` set to the module's `no_category` placeholder, `reasoning` equal to "stub", and `confidence` 1.0.
@@ -64,8 +69,7 @@ class _ApiTriageStub:
         return CategorizationResult(category=self.no_category, reasoning="stub", confidence=1.0)
 
     async def get_action_name(self, *_args, **_kwargs) -> str:
-        """
-        Get the default action name used by the triage stub.
+        """Get the default action name used by the triage stub.
 
         @returns
             Action name of the stub's default action as a `str`.
@@ -73,8 +77,7 @@ class _ApiTriageStub:
         return self.no_action.name
 
     def _name_to_action(self, _action_name: str) -> Action:
-        """
-        Return the default stub Action regardless of the provided action name.
+        """Return the default stub Action regardless of the provided action name.
 
         Parameters:
             _action_name (str): Ignored action name.
@@ -85,8 +88,7 @@ class _ApiTriageStub:
         return self.no_action
 
     async def cleanup(self) -> None:
-        """
-        Perform any asynchronous cleanup required by the triage service.
+        """Perform any asynchronous cleanup required by the triage service.
 
         This stub implementation performs no actions.
         """
@@ -142,8 +144,7 @@ def base_settings() -> ZammadAISettings:
 
 @pytest.fixture
 def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAISettings]:
-    """
-    Create a factory that produces modified copies of a ZammadAISettings instance for tests.
+    """Create a factory that produces modified copies of a ZammadAISettings instance for tests.
 
     The returned callable builds a deep copy of the provided base settings and applies optional overrides:
     - `action_rules`: replace the triage action rules.
@@ -163,8 +164,7 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
         valid_request_types: list[str] | None = None,
         **overrides: Any,
     ) -> ZammadAISettings:
-        """
-        Create a modified copy of the base ZammadAISettings with optional overrides.
+        """Create a modified copy of the base ZammadAISettings with optional overrides.
 
         Parameters:
             action_rules (list[ActionRule] | None): If provided, replace the triage.action_rules list on the returned settings.
@@ -208,8 +208,7 @@ def cleanup_log_config_cache() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def cleanup_triage_singleton() -> Generator[None, None, None]:
-    """
-    Reset the shared triage singleton before and after each test to prevent state leakage.
+    """Reset the shared triage singleton before and after each test to prevent state leakage.
 
     This fixture sets app.triage.triage._service to None before yielding and again after the test completes.
     """
@@ -221,9 +220,10 @@ def cleanup_triage_singleton() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def mock_settings(monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]) -> ZammadAISettings:
-    """
-    Patch the application's get_settings accessors to return a deterministic test settings instance.
+def mock_settings(
+    monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]
+) -> ZammadAISettings:
+    """Patch the application's get_settings accessors to return a deterministic test settings instance.
 
     Parameters:
         settings_factory (Callable[..., ZammadAISettings]): Factory function that produces a ZammadAISettings instance for tests.
@@ -239,8 +239,7 @@ def mock_settings(monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..
 
 @pytest.fixture
 def mock_logger(monkeypatch: pytest.MonkeyPatch) -> logging.Logger:
-    """
-    Provide a preconfigured logger for tests and patch the application's logging factory to return it.
+    """Provide a preconfigured logger for tests and patch the application's logging factory to return it.
 
     Returns:
         logging.Logger: A logger named "zammad-ai.tests" with no handlers (uses a NullHandler) suitable for use in tests.
@@ -254,8 +253,7 @@ def mock_logger(monkeypatch: pytest.MonkeyPatch) -> logging.Logger:
 
 @pytest.fixture
 def temp_logconf(tmp_path_factory: pytest.TempPathFactory) -> str:
-    """
-    Create a temporary YAML logging configuration file and return its filesystem path.
+    """Create a temporary YAML logging configuration file and return its filesystem path.
 
     Parameters:
         tmp_path_factory (pytest.TempPathFactory): pytest factory used to create a temporary directory for the file.
@@ -291,8 +289,7 @@ root:
 
 @pytest.fixture
 def kafka_message_factory() -> Callable[..., dict[str, str]]:
-    """
-    Return a factory that builds a valid Kafka payload dictionary, allowing optional string field overrides.
+    """Return a factory that builds a valid Kafka payload dictionary, allowing optional string field overrides.
 
     The produced factory accepts keyword string arguments that override the default payload fields:
     `action`, `ticket`, `status`, `statusId`, `anliegenart`, and `lhmExtId`.
@@ -302,8 +299,7 @@ def kafka_message_factory() -> Callable[..., dict[str, str]]:
     """
 
     def _factory(**overrides: str) -> dict[str, str]:
-        """
-        Create a valid Kafka-style message payload and apply any provided field overrides.
+        """Create a valid Kafka-style message payload and apply any provided field overrides.
 
         Parameters:
             **overrides (str): Keyword arguments where each key is a payload field name and each value
@@ -329,8 +325,7 @@ def kafka_message_factory() -> Callable[..., dict[str, str]]:
 
 @pytest.fixture
 def valid_message(kafka_message_factory: Callable[..., dict[str, str]]) -> dict[str, str]:
-    """
-    Provides a backward-compatible valid Kafka message.
+    """Provides a backward-compatible valid Kafka message.
 
     Returns:
         dict: A dictionary representing a valid Kafka message payload.
@@ -340,16 +335,14 @@ def valid_message(kafka_message_factory: Callable[..., dict[str, str]]) -> dict[
 
 @pytest.fixture
 def test_kafka_broker() -> Callable[[Any], TestKafkaBroker]:
-    """
-    Provide a factory that creates FastStream TestKafkaBroker instances for a router.
+    """Provide a factory that creates FastStream TestKafkaBroker instances for a router.
 
     Returns:
         factory (Callable[[Any], TestKafkaBroker]): A callable that accepts a router-like object and returns a TestKafkaBroker built from the router's `broker` attribute.
     """
 
     def _factory(router: Any) -> TestKafkaBroker:
-        """
-        Create a TestKafkaBroker bound to the provided router's broker.
+        """Create a TestKafkaBroker bound to the provided router's broker.
 
         Parameters:
             router (Any): Router-like object exposing a `broker` attribute used to construct the TestKafkaBroker.
@@ -364,8 +357,7 @@ def test_kafka_broker() -> Callable[[Any], TestKafkaBroker]:
 
 @pytest.fixture
 def fake_langfuse_client() -> FakeLangfuseClient:
-    """
-    Provide a FakeLangfuseClient configured for use in tests.
+    """Provide a FakeLangfuseClient configured for use in tests.
 
     Returns:
         FakeLangfuseClient: A fake Langfuse client instance suitable for test assertions and simulation.
@@ -375,13 +367,11 @@ def fake_langfuse_client() -> FakeLangfuseClient:
 
 @pytest.fixture
 def fake_genai_handler() -> FakeGenAIHandler:
-    """
-    Create a FakeGenAIHandler configured with default GenAISettings and prompts.
+    """Create a FakeGenAIHandler configured with default GenAISettings and prompts.
 
     Returns:
         handler (FakeGenAIHandler): A FakeGenAIHandler instance using a default GenAISettings() and DEFAULT_GENAI_PROMPTS.
     """
-
     return FakeGenAIHandler(
         genai_settings=GenAISettings(),
         prompts=DEFAULT_GENAI_PROMPTS,
@@ -390,8 +380,7 @@ def fake_genai_handler() -> FakeGenAIHandler:
 
 @pytest.fixture
 def fake_zammad_client(settings_factory: Callable[..., ZammadAISettings]) -> FakeZammadClient:
-    """
-    Create a FakeZammadClient configured with Zammad API settings from test settings.
+    """Create a FakeZammadClient configured with Zammad API settings from test settings.
 
     Parameters:
         settings_factory (Callable[..., ZammadAISettings]): Factory that produces a ZammadAISettings instance; the returned settings' `zammad` attribute is used to configure the fake client.
@@ -405,9 +394,10 @@ def fake_zammad_client(settings_factory: Callable[..., ZammadAISettings]) -> Fak
 
 
 @pytest.fixture
-def test_client(monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]) -> Generator[TestClient, None, None]:
-    """
-    Provide a TestClient for the backend application with settings and triage replaced for testing.
+def test_client(
+    monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]
+) -> Generator[TestClient, None, None]:
+    """Provide a TestClient for the backend application with settings and triage replaced for testing.
 
     Returns:
         TestClient: A TestClient for the backend application configured with the test settings and a triage stub.

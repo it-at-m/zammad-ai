@@ -6,9 +6,10 @@ from typing import Any
 
 from feedparser import FeedParserDict
 from httpx import Client, ConnectError, HTTPStatusError, ReadTimeout, TimeoutException
+from stamina import retry_context
+
 from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
 from job.utils.logging import getLogger
-from stamina import retry_context
 
 logger = getLogger("zammad-ai.base")
 

@@ -1,10 +1,10 @@
+"""Settings for the indexing job."""
+
 from pydantic import BaseModel, Field, PositiveInt
 
 
 class IndexJobSettings(BaseModel):
-    """
-    Settings for the indexing job, including configuration for fetching and processing knowledge base answers.
-    """
+    """Settings for fetching and processing knowledge base answers."""
 
     full_indexing: bool = Field(
         description="Whether to perform a full indexing of all knowledge base answers. If False, only answers updated within the specified interval will be indexed.",

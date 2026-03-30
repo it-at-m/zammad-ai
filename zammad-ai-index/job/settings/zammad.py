@@ -1,3 +1,5 @@
+"""Settings for Zammad connectivity in the index job."""
+
 from abc import ABC
 from typing import Literal
 
@@ -7,9 +9,7 @@ ZammadEndpoint = Literal["api", "eai"]
 
 
 class BaseZammadSettings(BaseModel, ABC):
-    """
-    Base settings for Zammad integration, including common configuration options for both API and EAI integrations.
-    """
+    """Base settings for Zammad integration."""
 
     knowledge_base_id: int = Field(
         description="The ID of the knowledge base to use for retrieving documents.",
@@ -35,9 +35,7 @@ class BaseZammadSettings(BaseModel, ABC):
 
 
 class ZammadAPISettings(BaseZammadSettings):
-    """
-    Settings for Zammad API integration.
-    """
+    """Settings for Zammad API integration."""
 
     type: Literal["api"] = "api"
 
@@ -55,9 +53,7 @@ class ZammadAPISettings(BaseZammadSettings):
 
 
 class ZammadEAISettings(BaseZammadSettings):
-    """
-    Settings for specific Zammad EAI integration, such as API endpoints and authentication details.
-    """
+    """Settings for Zammad EAI integration."""
 
     type: Literal["eai"] = "eai"
 

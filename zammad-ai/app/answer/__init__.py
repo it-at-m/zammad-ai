@@ -1,6 +1,4 @@
-"""
-Answer module for Zammad AI, responsible for generating structured responses to user questions using an agent-based approach.
-"""
+"""Answer module for Zammad AI, responsible for generating structured responses to user questions using an agent-based approach."""
 
 from .agent import AgentContext, StructuredAgentResponse
 from .judge import JudgeHandler

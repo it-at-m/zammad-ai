@@ -1,11 +1,12 @@
+"""Helper utilities for triage rules and comparisons."""
+
 import operator as op
 
 from app.settings.triage import ConditionOperator
 
 
 def get_operator_function(operator: ConditionOperator):
-    """
-    Map a ConditionOperator identifier to the corresponding binary comparison function.
+    """Map a ConditionOperator identifier to the corresponding binary comparison function.
 
     Parameters:
         operator (ConditionOperator): Identifier for the comparison; expected values are

@@ -1,3 +1,5 @@
+"""Entry point for the Zammad AI backend application."""
+
 # ruff: noqa: E402
 import asyncio
 

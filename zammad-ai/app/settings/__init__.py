@@ -1,3 +1,5 @@
+"""Settings models and configuration loading for Zammad AI."""
+
 from .answer import AnswerSettings, JudgeSettings, JudgeThresholds, QdrantSettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings

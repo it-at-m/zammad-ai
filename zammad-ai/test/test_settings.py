@@ -1,7 +1,10 @@
+"""Tests for application settings loading behavior."""
+
 from app.settings.settings import ZammadAISettings, get_settings
 
 
 def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch) -> None:
+    """Settings loading should ignore a broken YAML file in unittest mode."""
     broken_yaml = tmp_path / "config.yaml"
     broken_yaml.write_text("triage: [", encoding="utf-8")
 

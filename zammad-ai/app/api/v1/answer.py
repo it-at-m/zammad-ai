@@ -1,3 +1,5 @@
+"""Version 1 answer endpoint for Zammad AI."""
+
 from fastapi import APIRouter, Depends, Request
 
 from app.action.service import ActionService
@@ -5,8 +7,7 @@ from app.models.api_v1 import AnswerInput, AnswerOutput
 
 
 def action_dependency(request: Request) -> ActionService:
-    """
-    Retrieve the request-scoped ActionService instance stored on the FastAPI application state.
+    """Retrieve the request-scoped ActionService instance stored on the FastAPI application state.
 
     Parameters:
         request (Request): FastAPI request whose application state contains the ActionService instance.
@@ -28,8 +29,7 @@ async def answer(
     input: AnswerInput,
     service: ActionService = Depends(action_dependency),
 ) -> AnswerOutput:
-    """
-    Process an answer request and produce the agent's response based on the provided input.
+    """Process an answer request and produce the agent's response based on the provided input.
 
     Parameters:
         input (AnswerInput): Request payload containing `ticket_id`, `category`, `action`, `text`, and `session_id` for generating an answer.

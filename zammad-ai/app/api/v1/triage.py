@@ -1,3 +1,5 @@
+"""Version 1 triage endpoint for Zammad AI."""
+
 from fastapi import APIRouter, Depends, Request
 
 from app.models.api_v1 import TriageInput, TriageOutput
@@ -7,8 +9,7 @@ from app.triage.triage import TriageService
 
 
 def triage_dependency(request: Request) -> TriageService:
-    """
-    Retrieve the request-scoped TriageService instance from the FastAPI application state.
+    """Retrieve the request-scoped TriageService instance from the FastAPI application state.
 
     Parameters:
         request (Request): Incoming FastAPI request whose app.state contains the service.
@@ -30,8 +31,7 @@ async def triage(
     input: TriageInput,
     service: TriageService = Depends(triage_dependency),
 ) -> TriageOutput:
-    """
-    Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
+    """Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
 
     Parameters:
         input (TriageInput): Request payload containing `text` to classify; if `session_id` is missing a UUID will be assigned and returned.

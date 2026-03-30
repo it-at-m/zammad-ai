@@ -1,3 +1,5 @@
+"""Judge generated answers with a structured LLM response and optional Langfuse tracing."""
+
 from logging import Logger
 from typing import Any
 from uuid import uuid4
@@ -18,9 +20,10 @@ logger: Logger = getLogger("zammad-ai.answer.judge")
 class JudgeHandler:
     """Judge generated answers with a structured LLM response."""
 
-    def __init__(self, genai_settings: GenAISettings, prompt: str, langfuse_client: LangfuseClient | None = None) -> None:
+    def __init__(
+        self, genai_settings: GenAISettings, prompt: str, langfuse_client: LangfuseClient | None = None
+    ) -> None:
         """Initialize the judge chain for the configured GenAI backend."""
-
         self.langfuse_client: LangfuseClient | None = langfuse_client
 
         if not prompt.strip():
@@ -59,7 +62,6 @@ class JudgeHandler:
         session_id: str | None = None,
     ) -> JudgeResult:
         """Judge an answer and return the structured result."""
-
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
@@ -79,7 +81,6 @@ class JudgeHandler:
 
     def _build_runnable_config(self, session_id: str | None) -> tuple[str, RunnableConfig]:
         """Build a runnable config, creating a session id when needed."""
-
         resolved_session_id: str | None = session_id.strip() if session_id is not None else None
         if not resolved_session_id:
             resolved_session_id = str(uuid4())

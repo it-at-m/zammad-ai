@@ -1,3 +1,5 @@
+"""Frontend integration package for the optional Gradio UI."""
+
 from .integration import mount_frontend
 from .ui import EXAMPLE_PAYLOADS, FrontendResult, build_frontend, process_ticket
 

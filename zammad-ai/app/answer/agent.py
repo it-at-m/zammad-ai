@@ -1,10 +1,12 @@
-from logging import Logger
+"""LangChain agent wiring for answer generation."""
 
-from langchain.agents import AgentState, create_agent
+from logging import Logger
+from typing import Any
+
+from langchain.agents import create_agent
 from langchain.tools import BaseTool, ToolException, ToolRuntime, tool
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
 from app.models.answer import StructuredAgentResponse
@@ -18,6 +20,8 @@ logger: Logger = getLogger("zammad-ai.answer.agent")
 
 
 class AgentContext(BaseModel):
+    """Runtime context passed into the answer agent tools."""
+
     qdrant_kb_client: QdrantKBClient
     dlf_client: DLFClient | None
 
@@ -34,8 +38,7 @@ class AgentContext(BaseModel):
     response_format="content",
 )
 async def search_dlf(runtime: ToolRuntime[AgentContext], query: str) -> list[DLFDocument]:
-    """
-    Search the Munich city (DLF) site using the runtime's DLF client and return retrieved documents.
+    """Search the Munich city (DLF) site using the runtime's DLF client and return retrieved documents.
 
     Parameters:
         query (str): Query string to send to the DLF site.
@@ -53,7 +56,9 @@ async def search_dlf(runtime: ToolRuntime[AgentContext], query: str) -> list[DLF
         raise ToolException("Failed to search the munich city website. Please try other tools for now.")
 
     if len(query) > dlf_client.query_max_length:
-        logger.warning(f"Query length exceeds maximum allowed characters of {dlf_client.query_max_length}. Truncating query.")
+        logger.warning(
+            f"Query length exceeds maximum allowed characters of {dlf_client.query_max_length}. Truncating query."
+        )
         query = query[: dlf_client.query_max_length]
 
     try:
@@ -77,8 +82,7 @@ async def search_knowledgebase(
     num_documents: int = 5,
     offset: int = 0,
 ) -> RetrieveDocumentsKBOutput:
-    """
-    Retrieve relevant documents from the knowledge base for a given query.
+    """Retrieve relevant documents from the knowledge base for a given query.
 
     Parameters:
         runtime (ToolRuntime[AgentContext]): Tool runtime whose context provides a QdrantKBClient.
@@ -109,9 +113,8 @@ def build_agent(
     genai_settings: GenAISettings,
     system_prompt: str,
     dlf_enabled: bool = True,
-) -> CompiledStateGraph[AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]]:  # type: ignore
-    """
-    Constructs a LangChain agent configured for Zammad AI Answer using the provided model settings, system prompt, and tools.
+) -> Any:
+    """Constructs a LangChain agent configured for Zammad AI Answer using the provided model settings, system prompt, and tools.
 
     Parameters:
         genai_settings (GenAISettings): Model and generation parameters used to create the chat model.
@@ -122,7 +125,6 @@ def build_agent(
         CompiledStateGraph[AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]]:
             A compiled agent configured with a ChatOpenAI model, the supplied system prompt, the knowledge-base search tool (and optionally the DLF tool), producing StructuredAgentResponse outputs and using AgentContext for runtime clients.
     """
-
     # Build the chat model
     chat_model = ChatOpenAI(
         model_name=genai_settings.answer_model or genai_settings.chat_model,
@@ -140,9 +142,7 @@ def build_agent(
         available_tools.append(search_dlf)
 
     # Create the agent via the factory method
-    agent: CompiledStateGraph[
-        AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]  # type: ignore
-    ] = create_agent(
+    agent: Any = create_agent(
         model=chat_model,
         system_prompt=system_prompt,
         tools=available_tools,
