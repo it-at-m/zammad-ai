@@ -3,7 +3,7 @@ name = "zammad-ai-index"
 version = "0.1.0"
 description = "Indexing job for Zammad AI"
 readme = "README.md"
-requires-python = "==3.13.11"
+requires-python = "==3.14.3"
 dependencies = [
     "feedparser==6.0.12",
     "langchain==1.2.10",
