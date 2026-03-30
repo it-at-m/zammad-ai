@@ -5,8 +5,6 @@ import httpx
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm_asyncio
 
-from app.settings.settings import ZammadAISettings, get_settings
-from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 
 load_dotenv()
@@ -14,13 +12,10 @@ load_dotenv()
 logger = getLogger("zammad-ai.benchmark_triage")
 
 # Rate limiting: 50 requests per 30 seconds
-RATE_LIMIT = 50
+RATE_LIMIT = 30
 RATE_PERIOD = 30  # seconds
 
 API_BASE_URL = "http://localhost:8080"
-
-settings: ZammadAISettings = get_settings()
-triage = TriageService(settings=settings)
 
 
 async def process_item(key: str, value: dict) -> tuple[str, str, str, str]:

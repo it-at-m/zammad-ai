@@ -175,7 +175,7 @@ class AnswerService:
         config: RunnableConfig,
     ) -> StructuredAgentResponse:
         """Run judgment and optionally repair a response that failed checks."""
-
+        structured_response.auto_publish = True
         if self.judge_handler is None:
             return structured_response
         repair_prompt: str = self._resolve_prompt(
@@ -213,7 +213,7 @@ class AnswerService:
 
             structured_response = agent_result["structured_response"]
         logger.debug(f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response.")
-        # TODO what todo when answer fails judgment after max repairs? Return anyway, return with a warning, or return an error?
+        structured_response.auto_publish = False
         return structured_response
 
     def _is_judged_ok(self, judgment: JudgeResult) -> bool:

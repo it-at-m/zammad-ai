@@ -9,6 +9,7 @@ class DocumentDict(BaseModel):
 class StructuredAgentResponse(BaseModel):
     response: str = Field(description="The final answer to the user's question.")
     documents: list[DocumentDict] = Field(description="List of documents supporting the answer.")
+    auto_publish: bool = Field(description="Whether the answer should be automatically published based on the judge's evaluation.")
 
 
 class JudgeResult(BaseModel):
