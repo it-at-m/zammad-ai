@@ -10,9 +10,10 @@ from feedparser import parse as feedparser
 from httpx import HTTPStatusError, RequestError
 from pydantic import TypeAdapter
 
-from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
+from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.settings.zammad import ZammadEAISettings
 from job.utils.logging import getLogger
+from job.utils.parse_document import parse_document
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -137,16 +138,30 @@ class ZammadEAIClient(BaseZammadClient):
         return TypeAdapter(KnowledgeBaseAnswer).validate_python(response)
 
     @override
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
-        data = self._request("GET", f"/attachments/{id}", parse_json=False) if id else None
-        if not (id and data):
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
+        data: Any | None = (
+            self._request("GET", f"/attachments/{attachment.id}", parse_json=False) if attachment.id else None
+        )
+        if not (attachment.id and data):
             return None
-        decoded = b64decode(data)
-        try:
-            return decoded.decode("utf-8")
-        except UnicodeDecodeError:
-            # Return raw base64 string for binary attachments
-            return data
+
+        if self.settings.document_parsing.enabled:
+            return parse_document(data=data, attachment=attachment, url=self.settings.document_parsing.url)
+        else:
+            if attachment.contentType.startswith("text/"):
+                decoded: bytes = b64decode(data)
+                try:
+                    return decoded.decode("utf-8")
+                except UnicodeDecodeError:
+                    # Return raw base64 string for binary attachments
+                    return data
+            else:
+                logger.warning(
+                    "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                    attachment.id,
+                    attachment.contentType,
+                )
+                return None
 
     @override
     def check_if_answer_exists(self, answer_id: int) -> bool:

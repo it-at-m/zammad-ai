@@ -8,6 +8,19 @@ from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr
 ZammadEndpoint = Literal["api", "eai"]
 
 
+class DocumentParsingSettings(BaseModel):
+    """Settings for parsing documents retrieved from Zammad."""
+
+    enabled: bool = Field(
+        description="Whether to enable document parsing for Zammad documents.",
+        default=False,
+    )
+    url: str | None = Field(
+        description="Optional URL to send documents for remote parsing. If not set, local parsing will be used.",
+        default=None,
+    )
+
+
 class BaseZammadSettings(BaseModel, ABC):
     """Base settings for Zammad integration."""
 
@@ -31,6 +44,11 @@ class BaseZammadSettings(BaseModel, ABC):
     base_url: HttpUrl = Field(
         description="Zammad base URL",
         examples=["https://my-zammad.example.com"],
+    )
+
+    document_parsing: DocumentParsingSettings = Field(
+        description="Settings for parsing documents retrieved from Zammad.",
+        default_factory=DocumentParsingSettings,
     )
 
 

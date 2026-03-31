@@ -18,3 +18,4 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pre-commit==4.5.1", "ruff==0.15.4", "ty==0.0.20"]
+kreuzberg = ["langchain-kreuzberg==1.0.0", "kreuzberg==4.6.3"]

@@ -1,8 +1,10 @@
 """Models for Zammad knowledge base answers and attachments."""
 
+import html
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ZammadKnowledgebase(BaseModel):
@@ -67,3 +69,30 @@ class KnowledgeBaseAnswer(BaseModel):
         description="List of attachments associated with the answer",
         default_factory=list,
     )
+
+    @field_validator("answerBody", mode="after")
+    @classmethod
+    def strip_html(cls, text: str) -> str:
+        """Normalize text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
+
+        Parameters:
+            text (str): Input string that may contain HTML.
+
+        Returns:
+            str: The input string with HTML tags removed, HTML entities unescaped, and consecutive whitespace collapsed to single spaces and trimmed.
+        """
+        # Remove HTML tags
+        clean_text: str = re.sub(
+            pattern=r"<[^>]+>",
+            repl=" ",
+            string=text,
+        )
+        # Unescape HTML entities
+        clean_text = html.unescape(clean_text)
+        # Normalize whitespace
+        clean_text = re.sub(
+            pattern=r"\s+",
+            repl=" ",
+            string=clean_text,
+        ).strip()
+        return clean_text

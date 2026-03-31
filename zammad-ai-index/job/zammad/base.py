@@ -8,7 +8,7 @@ from feedparser import FeedParserDict
 from httpx import Client, ConnectError, HTTPStatusError, ReadTimeout, TimeoutException
 from stamina import retry_context
 
-from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
+from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.base")
@@ -51,11 +51,11 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
         """Fetch an attachment and return its content as text or base64.
 
         Args:
-            id: ID of the attachment to fetch.
+            attachment: The attachment object to fetch.
 
         Returns:
             str: Decoded text for text/* or JSON; base64 string for binary content.

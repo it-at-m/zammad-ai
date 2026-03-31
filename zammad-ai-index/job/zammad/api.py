@@ -2,7 +2,7 @@
 
 from base64 import b64decode
 from logging import Logger
-from typing import override
+from typing import Any, override
 
 from feedparser import FeedParserDict
 from feedparser import parse as feedparser
@@ -15,6 +15,7 @@ from job.models.zammad import (
 )
 from job.settings.zammad import ZammadAPISettings
 from job.utils.logging import getLogger
+from job.utils.parse_document import parse_document
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -37,7 +38,7 @@ class ZammadAPIClient(BaseZammadClient):
             max_retries=settings.max_retries,
             proxy_url=settings.http_proxy_url,
         )
-
+        self.settings: ZammadAPISettings = settings
         # Set auth header
         self.client.headers.update({"Authorization": f"Token token={settings.auth_token.get_secret_value()}"})
 
@@ -117,8 +118,24 @@ class ZammadAPIClient(BaseZammadClient):
         )
 
     @override
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
-        return self._request("GET", f"/api/v1/attachments/{id}", parse_json=False) if id else None
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
+        data: Any | None = (
+            self._request("GET", f"/api/v1/attachments/{attachment.id}", parse_json=False) if attachment.id else None
+        )
+        if not (attachment.id and data):
+            return None
+        if self.settings.document_parsing.enabled:
+            return parse_document(data, attachment, self.settings.document_parsing.url)
+        else:
+            if attachment.contentType.startswith("text/"):
+                return data
+            else:
+                logger.warning(
+                    "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                    attachment.id,
+                    attachment.contentType,
+                )
+                return None
 
     @override
     def check_if_answer_exists(self, answer_id: int) -> bool:
