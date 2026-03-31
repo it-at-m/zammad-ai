@@ -99,7 +99,13 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
     baseline = _get_answer_runs_in_progress_value()
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
-        return {"structured_response": {"answer": "ok"}}
+        return {
+            "structured_response": StructuredAgentResponse(
+                response="ok",
+                documents=[],
+                auto_publish=True,
+            )
+        }
 
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
 
@@ -118,7 +124,13 @@ async def test_generate_answer_in_progress_gauge_increments_while_running(
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
         assert _get_answer_runs_in_progress_value() == expected
-        return {"structured_response": {"answer": "ok"}}
+        return {
+            "structured_response": StructuredAgentResponse(
+                response="ok",
+                documents=[],
+                auto_publish=True,
+            )
+        }
 
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
 
@@ -136,6 +148,7 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
             "structured_response": StructuredAgentResponse(
                 response="ok",
                 documents=[DocumentDict(title="Source", url="https://example.com")],
+                auto_publish=True,
             )
         }
 
@@ -167,12 +180,14 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
                 "structured_response": StructuredAgentResponse(
                     response="weak",
                     documents=[DocumentDict(title="Source", url="https://example.com")],
+                    auto_publish=True,
                 )
             }
         return {
             "structured_response": StructuredAgentResponse(
                 response="repaired",
                 documents=[DocumentDict(title="Source", url="https://example.com")],
+                auto_publish=True,
             )
         }
 
