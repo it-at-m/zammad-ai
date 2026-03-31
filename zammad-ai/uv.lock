@@ -904,6 +904,18 @@ wheels = [
 ]
 
 [[package]]
+name = "kreuzberg"
+version = "4.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/6e/a04a24f901e772ccdc06920fe3c0b5d366239dd5a11c4ce77c5f6815ca15/kreuzberg-4.6.3.tar.gz", hash = "sha256:eaea80d5395f35761cce9396660cf6cb06d9b94ed20d616b137c736b236c4eb0", size = 2173464, upload-time = "2026-03-27T07:54:35.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/6d/ca7f91c7da9d22841a618350dc085ec0d543e0bc916dab1c905029412e24/kreuzberg-4.6.3-cp310-abi3-macosx_14_0_arm64.whl", hash = "sha256:2a01e9bbdf0d0d316bbc26873fb40a648ce5a2cd60fdcafc62d046cfe1bace4b", size = 51045873, upload-time = "2026-03-27T07:54:21.728Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/4c/c6a777d3a90e4fb8bb3bc128d15b9767f47dac52fa5fc93b3f86bcfb3390/kreuzberg-4.6.3-cp310-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:c265ebd92e5ce4ab3d90cc6ff74a100abe6de92c067a3cffd7988e75d205e9ca", size = 59278814, upload-time = "2026-03-27T07:54:25.443Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/cc/87494127d7b991852b3e2e53b975203e1ca6296076d1886448574d526433/kreuzberg-4.6.3-cp310-abi3-manylinux_2_39_x86_64.whl", hash = "sha256:43f3db7ada83f11bf297a14a151769b0d8572e1d0931c7bb6fe20a70c70d26ea", size = 59017388, upload-time = "2026-03-27T07:54:29.036Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/7a/d8fe90973f1047576832f019d1cc716e8c00be52fee8a48fe89712d299ab/kreuzberg-4.6.3-cp310-abi3-win_amd64.whl", hash = "sha256:fc0afd51f0a22808e87a76351b105bb82f7b352b2e7b3b33cbbc09e4b54e55df", size = 58766457, upload-time = "2026-03-27T07:54:32.361Z" },
+]
+
+[[package]]
 name = "langchain"
 version = "1.2.12"
 source = { registry = "https://pypi.org/simple" }
@@ -934,6 +946,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/a3/c4cd6827a1df46c821e7214b7f7b7a28b189e6c9b84ef15c6d629c5e3179/langchain_core-1.2.22.tar.gz", hash = "sha256:8d8f726d03d3652d403da915126626bb6250747e8ba406537d849e68b9f5d058", size = 842487, upload-time = "2026-03-24T18:48:44.9Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/a6/2ffacf0f1a3788f250e75d0b52a24896c413be11be3a6d42bcdf46fbea48/langchain_core-1.2.22-py3-none-any.whl", hash = "sha256:7e30d586b75918e828833b9ec1efc25465723566845dd652c277baf751e9c04b", size = 506829, upload-time = "2026-03-24T18:48:43.286Z" },
+]
+
+[[package]]
+name = "langchain-kreuzberg"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "kreuzberg" },
+    { name = "langchain-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7b/46/0666d39a97c25fcfb2b3ec449a5a413e7409a40933d3b6ef6bb3b1043fea/langchain_kreuzberg-1.0.0.tar.gz", hash = "sha256:ba925e0464568c444fa911dde0c4fd31548d2113f73f6e42aec791bf05ef1e02", size = 8390, upload-time = "2026-02-24T19:42:21.376Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/c4/9600d74ff7c52d8a2533c09a0af8cf4dc8465f401296d15e06fd90d34511/langchain_kreuzberg-1.0.0-py3-none-any.whl", hash = "sha256:97a9c9f33bc332c30f54640be858d6808e87cef3af17f6bcfd6d2201fa341114", size = 8676, upload-time = "2026-02-24T19:42:20.043Z" },
 ]
 
 [[package]]
@@ -2359,6 +2384,10 @@ dev = [
     { name = "ruff" },
     { name = "ty" },
 ]
+kreuzberg = [
+    { name = "kreuzberg" },
+    { name = "langchain-kreuzberg" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2391,6 +2420,10 @@ dev = [
     { name = "pytest-asyncio", specifier = "==1.3.0" },
     { name = "ruff", specifier = "==0.15.6" },
     { name = "ty", specifier = "==0.0.23" },
+]
+kreuzberg = [
+    { name = "kreuzberg", specifier = "==4.6.3" },
+    { name = "langchain-kreuzberg", specifier = "==1.0.0" },
 ]
 
 [[package]]

@@ -52,6 +52,9 @@ zammad:
   timeout: 30 # Request timeout in seconds
   max_retries: 3 # Maximum number of retries for API calls
   http_proxy_url: null # Optional: proxy URL for routing requests (e.g. "http://proxy.example.com:8080")
+  document_parsing:
+    enabled: true # Set to false to disable document parsing of attachments with kreuzberg
+    url: null # Optional: URL of document parsing service (e.g. "https://kreuzberg.example.com"), if null, document parsing is used locally without calling an external service
 
   # For type: "eai" (alternative to "api"), use these instead:
   # eai_url: "https://your-zammad-eai.example.com/api/v1"

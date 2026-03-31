@@ -6,6 +6,19 @@ from typing import Literal
 from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr
 
 
+class DocumentParsingSettings(BaseModel):
+    """Settings for parsing documents retrieved from Zammad."""
+
+    enabled: bool = Field(
+        description="Whether to enable document parsing for Zammad documents.",
+        default=False,
+    )
+    url: str | None = Field(
+        description="Optional URL to send documents for remote parsing. If not set, local parsing will be used.",
+        default=None,
+    )
+
+
 class BaseZammadSettings(BaseModel, ABC):
     """Base settings for Zammad integration, including common configuration options for both API and EAI integrations."""
 
@@ -26,6 +39,10 @@ class BaseZammadSettings(BaseModel, ABC):
     http_proxy_url: str | None = Field(
         description="Optional proxy URL for routing HTTP requests to Zammad through a proxy server.",
         default=None,
+    )
+    document_parsing: DocumentParsingSettings = Field(
+        description="Settings for parsing documents retrieved from Zammad.",
+        default_factory=DocumentParsingSettings,
     )
 
 

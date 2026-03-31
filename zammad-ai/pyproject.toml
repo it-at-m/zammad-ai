@@ -44,6 +44,7 @@ dev = [
     "ruff==0.15.6",
     "ty==0.0.23",
 ]
+kreuzberg = ["langchain-kreuzberg==1.0.0", "kreuzberg==4.6.3"]
 
 [tool.uv]
 add-bounds = "exact"
