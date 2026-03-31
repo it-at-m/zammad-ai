@@ -27,8 +27,13 @@ genai:
   sdk: "openai" # Currently only "openai" is supported
   chat_model: "gpt-4.1-mini" # Model for chat completions
   embeddings_model: "text-embedding-3-large" # Model for embeddings
-  reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
-  temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+  judge_model: "gpt-4.1-mini" # Model for triage judgment (can be same as chat_model)
+  triage_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
+  answer_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
+  judge_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
+  triage_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+  answer_temperature: 0.7 # Temperature for chat completions (0.0 = deterministic)
+  judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   max_retries: 3 # Maximum number of retries for API calls
 
 # Note: OpenAI SDK requires environment variables (set in .env):

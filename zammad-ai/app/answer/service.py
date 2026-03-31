@@ -191,7 +191,7 @@ class AnswerService:
             prompt_source_name="judge repair prompt",
         )
         messages = [user_message]
-        for _ in range(self.judge_settings.max_repairs):
+        for x in range(self.judge_settings.max_repairs + 1):
             judgment: JudgeResult = await self.judge_handler.judge_answer(
                 question=user_text,
                 answer=structured_response.response,
@@ -202,6 +202,9 @@ class AnswerService:
             if self._is_judged_ok(judgment):
                 logger.debug("Answer passed judgment without need for repair.")
                 return structured_response
+
+            if x == self.judge_settings.max_repairs:
+                break
 
             repair_message = HumanMessage(
                 content=repair_prompt.format(

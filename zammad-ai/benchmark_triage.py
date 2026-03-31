@@ -13,7 +13,7 @@ load_dotenv()
 
 logger = getLogger("zammad-ai.benchmark_triage")
 
-# Rate limiting: 50 requests per 30 seconds
+# Rate limiting: 30 requests per 30 seconds
 RATE_LIMIT = 30
 RATE_PERIOD = 30  # seconds
 

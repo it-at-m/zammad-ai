@@ -2,7 +2,17 @@
 
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, FilePath, HttpUrl, NonNegativeFloat, PositiveInt, SecretStr
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    FilePath,
+    HttpUrl,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveInt,
+    SecretStr,
+)
 
 from app.utils.paths import get_prompts_dir
 from app.utils.validators import validate_is_prompt
@@ -86,8 +96,8 @@ class JudgeSettings(BaseModel):
         ),
         discriminator="type",
     )
-    max_repairs: PositiveInt = Field(
-        default=1,
+    max_repairs: NonNegativeInt = Field(
+        default=0,
         description="Maximum number of repair passes to attempt after a failed judgment.",
     )
 
