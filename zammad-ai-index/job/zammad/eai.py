@@ -13,7 +13,7 @@ from pydantic import TypeAdapter
 from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.settings.zammad import ZammadEAISettings
 from job.utils.logging import getLogger
-from job.utils.parse_document import parse_document
+from job.utils.parse_document import parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -145,9 +145,7 @@ class ZammadEAIClient(BaseZammadClient):
         if not (attachment.id and data):
             return None
 
-        if self.settings.document_parsing.enabled:
-            return parse_document(data=data, attachment=attachment, url=self.settings.document_parsing.url)
-        else:
+        if self.settings.document_parsing.mode == "off":
             if attachment.contentType.startswith("text/"):
                 decoded: bytes = b64decode(data)
                 try:
@@ -162,6 +160,18 @@ class ZammadEAIClient(BaseZammadClient):
                     attachment.contentType,
                 )
                 return None
+        if self.settings.document_parsing.mode == "local":
+            return parse_document_local(data=data)
+        if self.settings.document_parsing.mode == "remote":
+            if self.settings.document_parsing.url is None:
+                raise ValueError("Document parsing URL must be set for remote parsing mode.")
+            return parse_document_remote(
+                data=data,
+                url=self.settings.document_parsing.url,
+                attachment=attachment,
+                proxy=self.settings.document_parsing.http_proxy_url,
+            )
+        raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
 
     @override
     def check_if_answer_exists(self, answer_id: int) -> bool:

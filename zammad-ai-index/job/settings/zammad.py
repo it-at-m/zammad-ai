@@ -11,12 +11,18 @@ ZammadEndpoint = Literal["api", "eai"]
 class DocumentParsingSettings(BaseModel):
     """Settings for parsing documents retrieved from Zammad."""
 
-    enabled: bool = Field(
-        description="Whether to enable document parsing for Zammad documents.",
-        default=False,
+    mode: Literal["off", "local", "remote"] = Field(
+        description="Mode for parsing documents retrieved from Zammad. 'off' to disable parsing, 'local' to use local Kreuzberg, 'remote' to send documents to a remote Kreuzberg API.",
+        default="off",
     )
+
     url: str | None = Field(
         description="Optional URL to send documents for remote parsing. If not set, local parsing will be used.",
+        default=None,
+    )
+
+    http_proxy_url: str | None = Field(
+        description="Optional proxy URL for routing requests to remote Kreuzberg API through a proxy server.",
         default=None,
     )
 

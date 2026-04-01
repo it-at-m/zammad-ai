@@ -17,7 +17,7 @@ from app.models.zammad import (
 )
 from app.settings.zammad import ZammadEAISettings
 from app.utils.logging import getLogger
-from app.utils.parse_document import ArticleAttachment, parse_document
+from app.utils.parse_document import ArticleAttachment, parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -132,19 +132,25 @@ class ZammadEAIClient(BaseZammadClient):
         )
         if not data:
             return None
-        if self.settings.document_parsing.enabled:
-            return parse_document(
-                data,
-                attachment,
-                self.settings.document_parsing.url,
-            )
-        else:
+        if self.settings.document_parsing.mode == "off":
             decoded: bytes = b64decode(data)
             try:
                 return decoded.decode("utf-8")
             except UnicodeDecodeError:
                 # Return raw base64 string for binary attachments
                 return data
+        if self.settings.document_parsing.mode == "local":
+            return await parse_document_local(data)
+        if self.settings.document_parsing.mode == "remote":
+            if self.settings.document_parsing.url is None:
+                raise ValueError("Document parsing URL must be set for remote parsing mode.")
+            return await parse_document_remote(
+                data=data,
+                url=self.settings.document_parsing.url,
+                attachment=attachment,
+                proxy=self.settings.document_parsing.http_proxy_url,
+            )
+        raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
 
     @override
     async def close(self) -> None:

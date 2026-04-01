@@ -9,12 +9,16 @@ from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr
 class DocumentParsingSettings(BaseModel):
     """Settings for parsing documents retrieved from Zammad."""
 
-    enabled: bool = Field(
-        description="Whether to enable document parsing for Zammad documents.",
-        default=False,
+    mode: Literal["off", "local", "remote"] = Field(
+        description="Mode for document parsing: 'off' to disable, 'local' for local parsing, 'remote' for remote parsing.",
+        default="off",
     )
     url: str | None = Field(
         description="Optional URL to send documents for remote parsing. If not set, local parsing will be used.",
+        default=None,
+    )
+    http_proxy_url: str | None = Field(
+        description="Optional proxy URL for routing requests to the remote document parsing service.",
         default=None,
     )
 

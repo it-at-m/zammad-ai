@@ -96,9 +96,9 @@ zammad:
   rss_feed_locale: de-de
   # Document parsing configuration for attachments. Set `enabled` to true to enable.
   document_parsing:
-    enabled: false # False: text-based attachments are indexed as-is, non-text attachments are skipped. True: all attachments are parsed using kreuzberg
-    # Optional URL of an external document parsing service.
-    url: null # If null, the built-in Kreuzberg parser will be used for attachment parsing when enabled. If provided, the service must implement the same API as Kreuzberg and will be used instead for parsing attachments when enabled.
+    mode: "off" # Options: "off" (no document parsing), "local" (parse documents locally), "remote" (use external document parsing service)
+    url: null # Optional: URL of document parsing service (e.g. "https://kreuzberg.example.com"), if null, document parsing is used locally without calling an external service
+    http_proxy_url: null # Optional: proxy URL for routing requests to the document parsing service (e.g. "http://proxy.example.com:8080")
 
 
 # --- Option B: Zammad EAI (OAuth 2.0 Client Credentials) ---
