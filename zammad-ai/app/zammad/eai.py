@@ -123,7 +123,10 @@ class ZammadEAIClient(BaseZammadClient):
 
     @override
     async def fetch_ticket_attachment_data(
-        self, ticket_id: int, article_id: int, attachment: ArticleAttachment
+        self,
+        ticket_id: int,
+        article_id: int,
+        attachment: ArticleAttachment,
     ) -> str | None:
         data: Any | None = (
             await self._request("GET", f"/attachments/{ticket_id}/{article_id}/{attachment.id}")
@@ -132,25 +135,32 @@ class ZammadEAIClient(BaseZammadClient):
         )
         if not data:
             return None
-        if self.settings.document_parsing.mode == "off":
-            decoded: bytes = b64decode(data)
-            try:
-                return decoded.decode("utf-8")
-            except UnicodeDecodeError:
-                # Return raw base64 string for binary attachments
-                return data
-        if self.settings.document_parsing.mode == "local":
-            return await parse_document_local(data)
-        if self.settings.document_parsing.mode == "remote":
-            if self.settings.document_parsing.url is None:
-                raise ValueError("Document parsing URL must be set for remote parsing mode.")
-            return await parse_document_remote(
-                data=data,
-                url=self.settings.document_parsing.url,
-                attachment=attachment,
-                proxy=self.settings.document_parsing.http_proxy_url,
+        try:
+            if self.settings.document_parsing.mode == "off":
+                decoded: bytes = b64decode(data)
+                try:
+                    return decoded.decode("utf-8")
+                except UnicodeDecodeError:
+                    # Return raw base64 string for binary attachments
+                    return data
+            if self.settings.document_parsing.mode == "local":
+                return await parse_document_local(data)
+            if self.settings.document_parsing.mode == "remote":
+                if self.settings.document_parsing.url is None:
+                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
+                return await parse_document_remote(
+                    data=data,
+                    url=self.settings.document_parsing.url,
+                    attachment=attachment,
+                    proxy=self.settings.document_parsing.http_proxy_url,
+                )
+            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
+        except Exception as e:
+            logger.error(
+                f"Error processing attachment {attachment.id} for ticket {ticket_id}",
+                exc_info=e,
             )
-        raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
+            return None
 
     @override
     async def close(self) -> None:

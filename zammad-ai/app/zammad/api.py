@@ -84,19 +84,25 @@ class ZammadAPIClient(BaseZammadClient):
         )
         if not data:
             return None
+        try:
+            if self.settings.document_parsing.mode == "off":
+                return data
 
-        if self.settings.document_parsing.mode == "off":
-            return data
-
-        if self.settings.document_parsing.mode == "local":
-            return await parse_document_local(data)
-        if self.settings.document_parsing.mode == "remote":
-            if self.settings.document_parsing.url is None:
-                raise ValueError("Document parsing URL must be set for remote parsing mode.")
-            return await parse_document_remote(
-                data=data,
-                url=self.settings.document_parsing.url,
-                attachment=attachment,
-                proxy=self.settings.document_parsing.http_proxy_url,
+            if self.settings.document_parsing.mode == "local":
+                return await parse_document_local(data)
+            if self.settings.document_parsing.mode == "remote":
+                if self.settings.document_parsing.url is None:
+                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
+                return await parse_document_remote(
+                    data=data,
+                    url=self.settings.document_parsing.url,
+                    attachment=attachment,
+                    proxy=self.settings.document_parsing.http_proxy_url,
+                )
+            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
+        except Exception as e:
+            logger.error(
+                f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
+                exc_info=e,
             )
-        raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
+            return None
