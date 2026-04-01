@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --locked --all-extras
+          uv sync --locked --all-extras --group kreuzberg
 
       - name: Run ty check
         run: |
