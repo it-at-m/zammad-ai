@@ -28,11 +28,15 @@ genai:
   chat_model: "gpt-4.1-mini" # Model for chat completions
   embeddings_model: "text-embedding-3-large" # Model for embeddings
   judge_model: "gpt-4.1-mini" # Model for triage judgment (can be same as chat_model)
+  # Migration note:
+  # - old `temperature` -> use `triage_temperature` / `answer_temperature` / `judge_temperature`
+  # - old `reasoning_effort` -> use `triage_reasoning_effort` / `answer_reasoning_effort` / `judge_reasoning_effort`
+  # Ensure you set all role-specific values explicitly when upgrading existing configs.
   triage_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   answer_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   judge_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   triage_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
-  answer_temperature: 0.7 # Temperature for chat completions (0.0 = deterministic)
+  answer_temperature: 0.7 # Temperature for chat completions (0.7 = more creative, less deterministic)
   judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   max_retries: 3 # Maximum number of retries for API calls
 
