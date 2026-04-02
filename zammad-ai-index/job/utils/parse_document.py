@@ -5,14 +5,15 @@ from binascii import Error
 from logging import Logger
 from typing import Any
 
-from httpx import Client
-from httpx._models import Response
+from httpx import Client, Response
+from langchain_core.documents.base import Document
 
 from job.models.zammad import KnowledgeBaseAttachment
 
 from .logging import getLogger
 
-logger: Logger = getLogger("zammad-ai-index.utils.parse_document")
+logger: Logger = getLogger("zammad-ai.utils.parse_document")
+DEFAULT_MIME_TYPE = "application/octet-stream"
 
 
 def parse_document_local(data: Any) -> str:
@@ -20,7 +21,6 @@ def parse_document_local(data: Any) -> str:
 
     Args:
         data: Attachment payload from Zammad, typically bytes or a base64 string.
-        attachment: The article attachment object.
 
     Returns:
         The extracted document text.
@@ -30,10 +30,10 @@ def parse_document_local(data: Any) -> str:
     document_bytes: bytes = _coerce_document_bytes(data)
     loader = KreuzbergLoader(
         data=document_bytes,
-        mime_type="application/octet-stream",
+        mime_type=DEFAULT_MIME_TYPE,
     )
-    docs = loader.load()
-    if not docs:
+    docs: list[Document] = loader.load()
+    if not isinstance(docs, list) or not docs:
         raise ValueError("Kreuzberg did not return any documents for the attachment.")
     logger.info("Successfully processed document with local Kreuzberg.")
     return docs[0].page_content
@@ -47,7 +47,7 @@ def _coerce_document_bytes(data: Any) -> bytes:
     if isinstance(data, memoryview):
         return data.tobytes()
     if hasattr(data, "read"):
-        return data.read()
+        return _coerce_document_bytes(data.read())
     if isinstance(data, str):
         try:
             return b64decode(data, validate=True)
@@ -79,6 +79,13 @@ def parse_document_remote(data: Any, url: str, attachment: KnowledgeBaseAttachme
         )
         response.raise_for_status()
         payload = response.json()
-
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Remote Kreuzberg returned an empty or invalid response.")
+    first_result = payload[0]
+    if not isinstance(first_result, dict):
+        raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
+    content = first_result.get("content")
+    if not isinstance(content, str):
+        raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
     logger.info("Successfully sent document to remote Kreuzberg for parsing.")
-    return payload[0]["content"]
+    return content
