@@ -79,7 +79,7 @@ class ZammadAPIClient(BaseZammadClient):
     ) -> str | None:
         data: Any | None = (
             await self._request("GET", f"/api/v1/ticket_attachment/{ticket_id}/{article_id}/{attachment.id}")
-            if ticket_id and attachment.id and article_id
+            if ticket_id is not None and attachment.id is not None and article_id is not None
             else None
         )
         if not data:
@@ -100,9 +100,9 @@ class ZammadAPIClient(BaseZammadClient):
                     proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
-        except Exception as e:
+        except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
-                exc_info=e,
+                exc_info=True,
             )
             return None

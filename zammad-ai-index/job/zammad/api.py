@@ -120,7 +120,9 @@ class ZammadAPIClient(BaseZammadClient):
     @override
     def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
         data: Any | None = (
-            self._request("GET", f"/api/v1/attachments/{attachment.id}", parse_json=False) if attachment.id else None
+            self._request("GET", f"/api/v1/attachments/{attachment.id}", parse_json=False)
+            if attachment.id is not None
+            else None
         )
         if not (attachment.id and data):
             return None
@@ -147,10 +149,10 @@ class ZammadAPIClient(BaseZammadClient):
                     proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
-        except Exception as e:
+        except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for knowledge base answer",
-                exc_info=e,
+                exc_info=True,
             )
             return None
 
