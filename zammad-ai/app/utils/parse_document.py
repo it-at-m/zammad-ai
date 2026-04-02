@@ -65,9 +65,9 @@ async def parse_document_remote(data: Any, url: HttpUrl, attachment: ArticleAtta
     """
     document_bytes = _coerce_document_bytes(data)
 
-    async with AsyncClient(timeout=120, proxy=proxy) as client:
+    async with AsyncClient(timeout=120, proxy=proxy, base_url=str(url)) as client:
         response: Response = await client.post(
-            f"{url}/extract",
+            "extract",
             data={"output_format": "markdown"},
             files={"files": (attachment.filename, document_bytes, "application/octet-stream")},
             headers={"Accept": "application/json"},

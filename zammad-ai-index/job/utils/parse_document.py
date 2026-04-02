@@ -64,9 +64,13 @@ def parse_document_remote(data: Any, url: HttpUrl, attachment: KnowledgeBaseAtta
     """
     document_bytes = _coerce_document_bytes(data)
 
-    with Client(timeout=120, proxy=proxy) as client:
+    with Client(
+        timeout=120,
+        proxy=proxy,
+        base_url=str(url),
+    ) as client:
         response: Response = client.post(
-            url=f"{url}/extract",
+            "extract",
             data={"output_format": "markdown"},
             files={"files": (attachment.filename, document_bytes, "application/octet-stream")},
             headers={"Accept": "application/json"},
