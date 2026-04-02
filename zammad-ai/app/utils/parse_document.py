@@ -1,17 +1,18 @@
 """Helpers for parsing attachment documents through Kreuzberg."""
 
-from base64 import b64decode
-from binascii import Error
+from asyncio import to_thread
 from logging import Logger
 from typing import Any
 
 from httpx import AsyncClient, Response
+from langchain_core.documents.base import Document
+from pydantic import HttpUrl
 
 from app.models.zammad import ArticleAttachment
 
 from .logging import getLogger
 
-logger: Logger = getLogger("zammad-ai-index.utils.parse_document")
+logger: Logger = getLogger("zammad-ai.utils.parse_document")
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
 
@@ -19,7 +20,7 @@ async def parse_document_local(data: Any) -> str:
     """Process attachment content using local Kreuzberg.
 
     Args:
-        data: Attachment payload from Zammad, typically bytes or a base64 string.
+        data: Attachment payload from Zammad as bytes or a file-like object.
 
     Returns:
         The extracted document text.
@@ -31,7 +32,7 @@ async def parse_document_local(data: Any) -> str:
         data=document_bytes,
         mime_type=DEFAULT_MIME_TYPE,
     )
-    docs = loader.load()
+    docs: list[Document] = await to_thread(loader.load)
     if not isinstance(docs, list) or not docs:
         raise ValueError("Kreuzberg did not return any documents for the attachment.")
     logger.info("Successfully processed document with local Kreuzberg.")
@@ -47,19 +48,14 @@ def _coerce_document_bytes(data: Any) -> bytes:
         return data.tobytes()
     if hasattr(data, "read"):
         return _coerce_document_bytes(data.read())
-    if isinstance(data, str):
-        try:
-            return b64decode(data, validate=True)
-        except (ValueError, Error):
-            return data.encode("utf-8")
     raise TypeError(f"Unsupported document payload type: {type(data).__name__}")
 
 
-async def parse_document_remote(data: Any, url: str, attachment: ArticleAttachment, proxy: str | None) -> str:
+async def parse_document_remote(data: Any, url: HttpUrl, attachment: ArticleAttachment, proxy: str | None) -> str:
     """Send attachment content to a remote Kreuzberg API server.
 
     Args:
-        data: Attachment payload from Zammad.
+        data: Attachment payload from Zammad as bytes or a file-like object.
         url: Kreuzberg API server base URL.
         attachment: The article attachment object.
         proxy: Optional proxy URL for routing requests.

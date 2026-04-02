@@ -1,18 +1,17 @@
 """Helpers for parsing attachment documents through Kreuzberg."""
 
-from base64 import b64decode
-from binascii import Error
 from logging import Logger
 from typing import Any
 
 from httpx import Client, Response
 from langchain_core.documents.base import Document
+from pydantic import HttpUrl
 
 from job.models.zammad import KnowledgeBaseAttachment
 
 from .logging import getLogger
 
-logger: Logger = getLogger("zammad-ai.utils.parse_document")
+logger: Logger = getLogger("zammad-ai-index.utils.parse_document")
 DEFAULT_MIME_TYPE = "application/octet-stream"
 
 
@@ -20,7 +19,7 @@ def parse_document_local(data: Any) -> str:
     """Process attachment content using local Kreuzberg.
 
     Args:
-        data: Attachment payload from Zammad, typically bytes or a base64 string.
+        data: Attachment payload from Zammad as bytes or a file-like object.
 
     Returns:
         The extracted document text.
@@ -48,19 +47,14 @@ def _coerce_document_bytes(data: Any) -> bytes:
         return data.tobytes()
     if hasattr(data, "read"):
         return _coerce_document_bytes(data.read())
-    if isinstance(data, str):
-        try:
-            return b64decode(data, validate=True)
-        except (ValueError, Error):
-            return data.encode("utf-8")
     raise TypeError(f"Unsupported document payload type: {type(data).__name__}")
 
 
-def parse_document_remote(data: Any, url: str, attachment: KnowledgeBaseAttachment, proxy: str | None) -> str:
+def parse_document_remote(data: Any, url: HttpUrl, attachment: KnowledgeBaseAttachment, proxy: str | None) -> str:
     """Send attachment content to a remote Kreuzberg API server.
 
     Args:
-        data: Attachment payload from Zammad.
+        data: Attachment payload from Zammad as bytes or a file-like object.
         url: Kreuzberg API server base URL.
         attachment: The article attachment object.
         proxy: Optional proxy URL for routing requests.

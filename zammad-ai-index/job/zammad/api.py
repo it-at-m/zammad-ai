@@ -137,13 +137,14 @@ class ZammadAPIClient(BaseZammadClient):
                         attachment.contentType,
                     )
                     return None
+            document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
-                return parse_document_local(data)
+                return parse_document_local(document_data)
             if self.settings.document_parsing.mode == "remote":
                 if self.settings.document_parsing.url is None:
                     raise ValueError("Document parsing URL must be set for remote parsing mode.")
                 return parse_document_remote(
-                    data=data,
+                    data=document_data,
                     url=self.settings.document_parsing.url,
                     attachment=attachment,
                     proxy=self.settings.document_parsing.http_proxy_url,
