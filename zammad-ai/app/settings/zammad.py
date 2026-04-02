@@ -3,7 +3,7 @@
 from abc import ABC
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr
+from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, field_validator
 
 
 class DocumentParsingSettings(BaseModel):
@@ -21,6 +21,13 @@ class DocumentParsingSettings(BaseModel):
         description="Optional proxy URL for routing requests to the remote document parsing service.",
         default=None,
     )
+
+    @field_validator("url")
+    def validate_url(cls, value: str | None) -> str | None:
+        """Validate that URL is set when mode is 'remote'."""
+        if cls.mode == "remote" and not value:
+            raise ValueError("URL must be set for remote parsing mode.")
+        return value
 
 
 class BaseZammadSettings(BaseModel, ABC):
