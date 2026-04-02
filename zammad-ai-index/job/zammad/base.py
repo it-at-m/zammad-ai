@@ -11,7 +11,7 @@ from stamina import retry_context
 from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.utils.logging import getLogger
 
-logger = getLogger("zammad-ai.base")
+logger = getLogger("zammad-ai-index.base")
 
 
 class BaseZammadClient(ABC):

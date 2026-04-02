@@ -19,7 +19,7 @@ from job.utils.parse_document import parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient, ZammadConnectionError
 
-logger: Logger = getLogger("zammad-ai.zammad.api")
+logger: Logger = getLogger("zammad-ai-index.zammad.api")
 
 
 class ZammadAPIClient(BaseZammadClient):
