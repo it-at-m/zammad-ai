@@ -160,7 +160,7 @@ class ZammadEAIClient(BaseZammadClient):
                         attachment.contentType,
                     )
                     return None
-            document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
+            document_data: Any = b64decode(data) if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
                 return parse_document_local(document_data)
             if self.settings.document_parsing.mode == "remote":
