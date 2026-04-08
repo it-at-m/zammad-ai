@@ -157,8 +157,6 @@ class ZammadEAIClient(BaseZammadClient):
                     proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
-        except ValueError:
-            raise
         except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for ticket {ticket_id}",
