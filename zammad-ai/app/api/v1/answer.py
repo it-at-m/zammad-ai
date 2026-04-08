@@ -37,7 +37,7 @@ async def answer(
     Returns:
         AnswerOutput: The agent's response and any supporting documents.
     """
-    answer, documents = await service.get_answer(
+    answer, documents, auto_publish = await service.get_answer(
         ticket_id=input.ticket_id,
         category_name=input.category,
         action_name=input.action,
@@ -50,4 +50,5 @@ async def answer(
     return AnswerOutput(
         response=answer,
         documents=documents,
+        auto_publish=auto_publish,
     )

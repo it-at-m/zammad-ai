@@ -36,7 +36,11 @@ class ActionService:
         category_name: str = triage.category.name
         action: Action = triage.action
 
-        answer, documents = await self.get_answer(  # TODO what to do with documents here? Internal Note?
+        (
+            answer,
+            documents,
+            judge_auto_publish,
+        ) = await self.get_answer(  # TODO what to do with documents here? Internal Note?
             ticket_id=ticket_id,
             category_name=category_name,
             action_name=action.name,
@@ -50,7 +54,7 @@ class ActionService:
             )
             return
 
-        if triage.category.auto_publish:
+        if triage.category.auto_publish and judge_auto_publish:
             await self.zammad_client.post_answer(
                 ticket_id=ticket_id,
                 text=answer,
@@ -72,13 +76,14 @@ class ActionService:
         action_name: str,
         user_text: str,
         session_id: str | None,
-    ) -> tuple[str | None, list[DocumentDict]]:
+    ) -> tuple[str | None, list[DocumentDict], bool]:
         """Resolve an answer payload for the given action and category."""
         action: Action | None = next(
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )
         answer: str | None = None
         documents: list[DocumentDict] = []
+        judge_auto_publish: bool = True
         if action is None:
             raise ValueError(f"No action found with name: {action_name}")
         elif action.type == ActionTypes.NoAction:
@@ -91,12 +96,13 @@ class ActionService:
             )
             answer = response.response
             documents = response.documents
+            judge_auto_publish = response.auto_publish
         elif action.type == ActionTypes.StaticAnswer:
             # The settings validator ensures that if the type is StaticAnswer, the answer field is not None, so we can safely access it here
             answer = action.answer
         else:
             raise ValueError(f"Unknown action type: {action.type}")
-        return answer, documents
+        return answer, documents, judge_auto_publish
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.

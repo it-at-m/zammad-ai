@@ -128,8 +128,10 @@ def build_agent(
     # Build the chat model
     chat_model = ChatOpenAI(
         model_name=genai_settings.answer_model or genai_settings.chat_model,
-        temperature=genai_settings.temperature,
+        temperature=genai_settings.answer_temperature,
         max_retries=genai_settings.max_retries,
+        reasoning=genai_settings.answer_reasoning_config,
+        store=genai_settings.answer_store,
     )
 
     # Configure the tools
