@@ -146,7 +146,8 @@ class ZammadEAIClient(BaseZammadClient):
             return None
         try:
             if self.settings.document_parsing.mode == "off":
-                if attachment.contentType.startswith("text/"):
+                content_type = attachment.contentType.split(";", 1)[0].lower()
+                if content_type.startswith("text/") or content_type == "application/json":
                     decoded: bytes = b64decode(data)
                     try:
                         return decoded.decode("utf-8")

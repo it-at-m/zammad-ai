@@ -128,7 +128,8 @@ class ZammadAPIClient(BaseZammadClient):
             return None
         try:
             if self.settings.document_parsing.mode == "off":
-                if attachment.contentType.startswith("text/"):
+                content_type = attachment.contentType.split(";", 1)[0].lower()
+                if content_type.startswith("text/") or content_type == "application/json":
                     return data
                 else:
                     logger.warning(
