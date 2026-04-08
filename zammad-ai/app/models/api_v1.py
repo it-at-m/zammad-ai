@@ -35,6 +35,10 @@ class AnswerOutput(BaseModel):
 
     response: str = Field(description="The final answer to the user's question.")
     documents: list[DocumentDict] = Field(description="List of documents supporting the answer.")
+    auto_publish: bool = Field(
+        description="Indicates whether the generated answer should be automatically published based on the judge's opinion.",
+        default=False,
+    )
 
 
 class HealthCheckResponse(BaseModel):
