@@ -7,7 +7,7 @@ requires-python = "==3.14.3"
 dependencies = [
     "feedparser==6.0.12",
     "langchain==1.2.10",
-    "langchain-core==1.2.22",
+    "langchain-core==1.2.28",
     "langchain-openai==1.1.11",
     "langchain-qdrant==1.1.0",
     "pydantic==2.12.5",
