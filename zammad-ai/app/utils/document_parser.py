@@ -9,8 +9,7 @@ from langchain_core.documents.base import Document
 
 from app.models.zammad import ArticleAttachment
 from app.settings.zammad import DocumentParsingSettings
-
-from .logging import getLogger
+from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.utils.parse_document")
 DEFAULT_MIME_TYPE = "application/octet-stream"
@@ -27,7 +26,7 @@ class DocumentParser:
                 import langchain_kreuzberg  # noqa: F401
             except ImportError:
                 logger.error("langchain_kreuzberg is not installed. Local Kreuzberg parsing will be unavailable.")
-                self.mode = "off"
+                raise
 
         elif self.mode == "remote":
             self.client = AsyncClient(timeout=120, proxy=settings.http_proxy_url, base_url=str(settings.url))
@@ -97,3 +96,8 @@ class DocumentParser:
             raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
         logger.info("Successfully sent document to remote Kreuzberg for parsing.")
         return content
+
+    async def close(self) -> None:
+        """Close any resources used by the DocumentParser."""
+        if self.mode == "remote":
+            await self.client.aclose()

@@ -82,9 +82,6 @@ class ZammadAPIClient(BaseZammadClient):
         if not data:
             return None
         try:
-            if self.settings.document_parsing.mode == "off":
-                return data
-
             document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
                 return await self.document_parser.parse_local(document_data)
@@ -93,10 +90,10 @@ class ZammadAPIClient(BaseZammadClient):
                     data=document_data,
                     attachment=attachment,
                 )
-            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
                 exc_info=True,
             )
-            return None
+        # If mode is off or any error occurs, return original data
+        return data

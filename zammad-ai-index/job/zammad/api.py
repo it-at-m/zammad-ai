@@ -124,17 +124,6 @@ class ZammadAPIClient(BaseZammadClient):
         if not (attachment.id and data):
             return None
         try:
-            if self.settings.document_parsing.mode == "off":
-                content_type = attachment.contentType.split(";", 1)[0].lower()
-                if content_type.startswith("text/") or content_type == "application/json":
-                    return data
-                else:
-                    logger.warning(
-                        "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
-                        attachment.id,
-                        attachment.contentType,
-                    )
-                    return None
             document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
                 return self.document_parser.parse_local(document_data)
@@ -150,6 +139,16 @@ class ZammadAPIClient(BaseZammadClient):
             logger.error(
                 f"Error processing attachment {attachment.id} for knowledge base answer",
                 exc_info=True,
+            )
+        # If mode is off or any error occurs, return original data for text/* or JSON; otherwise None
+        content_type = attachment.contentType.split(";", 1)[0].lower()
+        if content_type.startswith("text/") or content_type == "application/json":
+            return data
+        else:
+            logger.warning(
+                "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                attachment.id,
+                attachment.contentType,
             )
             return None
 

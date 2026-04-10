@@ -142,22 +142,6 @@ class ZammadEAIClient(BaseZammadClient):
         if not (attachment.id and data):
             return None
         try:
-            if self.settings.document_parsing.mode == "off":
-                content_type = attachment.contentType.split(";", 1)[0].lower()
-                if content_type.startswith("text/") or content_type == "application/json":
-                    decoded: bytes = b64decode(data)
-                    try:
-                        return decoded.decode("utf-8")
-                    except UnicodeDecodeError:
-                        # Return raw base64 string for binary attachments
-                        return data
-                else:
-                    logger.warning(
-                        "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
-                        attachment.id,
-                        attachment.contentType,
-                    )
-                    return None
             document_data: Any = b64decode(data) if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
                 return self.document_parser.parse_local(document_data)
@@ -173,6 +157,20 @@ class ZammadEAIClient(BaseZammadClient):
             logger.error(
                 f"Error processing attachment {attachment.id} for knowledge base answer",
                 exc_info=True,
+            )
+        content_type = attachment.contentType.split(";", 1)[0].lower()
+        if content_type.startswith("text/") or content_type == "application/json":
+            decoded: bytes = b64decode(data)
+            try:
+                return decoded.decode("utf-8")
+            except UnicodeDecodeError:
+                # Return raw base64 string for binary attachments
+                return data
+        else:
+            logger.warning(
+                "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                attachment.id,
+                attachment.contentType,
             )
             return None
 

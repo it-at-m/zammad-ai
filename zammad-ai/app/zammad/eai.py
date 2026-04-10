@@ -134,14 +134,6 @@ class ZammadEAIClient(BaseZammadClient):
         if not data:
             return None
         try:
-            if self.settings.document_parsing.mode == "off":
-                decoded: bytes = b64decode(data)
-                try:
-                    return decoded.decode("utf-8")
-                except UnicodeDecodeError:
-                    # Return raw base64 string for binary attachments
-                    return data
-
             document_data: Any = b64decode(data) if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
                 return await self.document_parser.parse_local(document_data)
@@ -150,13 +142,18 @@ class ZammadEAIClient(BaseZammadClient):
                     data=document_data,
                     attachment=attachment,
                 )
-            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for ticket {ticket_id}",
                 exc_info=True,
             )
-            return None
+        # If mode is off or any error occurs, return decoded text
+        decoded: bytes = b64decode(data)
+        try:
+            return decoded.decode("utf-8")
+        except UnicodeDecodeError:
+            # Return raw base64 string for binary attachments
+            return data
 
     @override
     async def close(self) -> None:

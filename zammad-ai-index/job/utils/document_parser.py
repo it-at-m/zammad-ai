@@ -26,7 +26,7 @@ class DocumentParser:
                 import langchain_kreuzberg  # noqa: F401
             except ImportError:
                 logger.error("langchain_kreuzberg is not installed. Local Kreuzberg parsing will be unavailable.")
-                self.mode = "off"
+                raise
 
         elif self.mode == "remote":
             self.client = Client(timeout=120, proxy=settings.http_proxy_url, base_url=str(settings.url))
@@ -94,3 +94,8 @@ class DocumentParser:
             raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
         logger.info("Successfully sent document to remote Kreuzberg for parsing.")
         return content
+
+    def close(self) -> None:
+        """Close any resources used by the DocumentParser."""
+        if self.mode == "remote":
+            self.client.close()

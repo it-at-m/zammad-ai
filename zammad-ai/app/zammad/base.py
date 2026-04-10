@@ -149,6 +149,7 @@ class BaseZammadClient(ABC):
     async def close(self) -> None:
         """Close HTTP client."""
         await self.client.aclose()
+        await self.document_parser.close()
 
 
 class ZammadConnectionError(Exception):

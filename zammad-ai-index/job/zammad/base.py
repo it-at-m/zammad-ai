@@ -141,6 +141,7 @@ class BaseZammadClient(ABC):
     def close(self) -> None:
         """Close HTTP client."""
         self.client.close()
+        self.document_parser.close()
 
 
 class ZammadConnectionError(Exception):
