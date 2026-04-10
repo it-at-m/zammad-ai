@@ -1,9 +1,8 @@
 """Models for Zammad knowledge base answers and attachments."""
 
-import html
-import re
 from datetime import datetime
 
+from markdownify import markdownify
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -73,26 +72,5 @@ class KnowledgeBaseAnswer(BaseModel):
     @field_validator("answerBody", mode="after")
     @classmethod
     def strip_html(cls, text: str) -> str:
-        """Normalize text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
-
-        Parameters:
-            text (str): Input string that may contain HTML.
-
-        Returns:
-            str: The input string with HTML tags removed, HTML entities unescaped, and consecutive whitespace collapsed to single spaces and trimmed.
-        """
-        # Remove HTML tags
-        clean_text: str = re.sub(
-            pattern=r"<[^>]+>",
-            repl=" ",
-            string=text,
-        )
-        # Unescape HTML entities
-        clean_text = html.unescape(clean_text)
-        # Normalize whitespace
-        clean_text = re.sub(
-            pattern=r"\s+",
-            repl=" ",
-            string=clean_text,
-        ).strip()
-        return clean_text
+        """Convert HTML content to Markdown for better readability and processing."""
+        return markdownify(text)
