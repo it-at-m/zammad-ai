@@ -1,6 +1,7 @@
 """Zammad API client using token-based authentication."""
 
 from base64 import b64decode
+from binascii import Error as BinasciiError
 from logging import Logger
 from typing import Any, override
 
@@ -124,7 +125,13 @@ class ZammadAPIClient(BaseZammadClient):
         if not (attachment.id and data):
             return None
         try:
-            document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
+            if isinstance(data, str):
+                try:
+                    document_data = b64decode(data, validate=True)
+                except (BinasciiError, ValueError):
+                    document_data = data.encode("utf-8")
+            else:
+                document_data = data
             if self.settings.document_parsing.mode == "local":
                 return self.document_parser.parse_local(document_data)
             if self.settings.document_parsing.mode == "remote":
