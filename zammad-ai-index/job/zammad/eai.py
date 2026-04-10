@@ -13,7 +13,6 @@ from pydantic import TypeAdapter
 from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.settings.zammad import ZammadEAISettings
 from job.utils.logging import getLogger
-from job.utils.parse_document import parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -32,9 +31,7 @@ class ZammadEAIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.eai_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
 
         self.settings = settings
@@ -163,15 +160,13 @@ class ZammadEAIClient(BaseZammadClient):
                     return None
             document_data: Any = b64decode(data) if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
-                return parse_document_local(document_data)
+                return self.document_parser.parse_local(document_data)
             if self.settings.document_parsing.mode == "remote":
                 if self.settings.document_parsing.url is None:
                     raise ValueError("Document parsing URL must be set for remote parsing mode.")
-                return parse_document_remote(
+                return self.document_parser.parse_remote(
                     data=document_data,
-                    url=self.settings.document_parsing.url,
                     attachment=attachment,
-                    proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:

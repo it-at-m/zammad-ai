@@ -16,8 +16,8 @@ from app.models.zammad import (
     ZammadTicket,
 )
 from app.settings.zammad import ZammadEAISettings
+from app.utils.document_parser import ArticleAttachment
 from app.utils.logging import getLogger
-from app.utils.parse_document import ArticleAttachment, parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient, ZammadConnectionError
 
@@ -36,9 +36,7 @@ class ZammadEAIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.eai_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
 
         self.settings = settings
@@ -146,15 +144,11 @@ class ZammadEAIClient(BaseZammadClient):
 
             document_data: Any = b64decode(data) if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
-                return await parse_document_local(document_data)
+                return await self.document_parser.parse_local(document_data)
             if self.settings.document_parsing.mode == "remote":
-                if self.settings.document_parsing.url is None:
-                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
-                return await parse_document_remote(
+                return await self.document_parser.parse_remote(
                     data=document_data,
-                    url=self.settings.document_parsing.url,
                     attachment=attachment,
-                    proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:

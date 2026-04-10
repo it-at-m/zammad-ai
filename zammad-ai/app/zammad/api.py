@@ -16,7 +16,6 @@ from app.models.zammad import (
 )
 from app.settings.zammad import ZammadAPISettings
 from app.utils.logging import getLogger
-from app.utils.parse_document import parse_document_local, parse_document_remote
 
 from .base import BaseZammadClient
 
@@ -35,9 +34,7 @@ class ZammadAPIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.base_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
         self.settings: ZammadAPISettings = settings
         # Set auth header
@@ -90,15 +87,11 @@ class ZammadAPIClient(BaseZammadClient):
 
             document_data: Any = data.encode("utf-8") if isinstance(data, str) else data
             if self.settings.document_parsing.mode == "local":
-                return await parse_document_local(document_data)
+                return await self.document_parser.parse_local(document_data)
             if self.settings.document_parsing.mode == "remote":
-                if self.settings.document_parsing.url is None:
-                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
-                return await parse_document_remote(
+                return await self.document_parser.parse_remote(
                     data=document_data,
-                    url=self.settings.document_parsing.url,
                     attachment=attachment,
-                    proxy=self.settings.document_parsing.http_proxy_url,
                 )
             raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:

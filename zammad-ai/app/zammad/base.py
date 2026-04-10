@@ -8,6 +8,8 @@ from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout, Timeo
 from stamina import retry_context
 
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.settings.zammad import BaseZammadSettings
+from app.utils.document_parser import DocumentParser
 from app.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.base")
@@ -98,18 +100,17 @@ class BaseZammadClient(ABC):
         """
         ...
 
-    def __init__(self, base_url: str, timeout: int, max_retries: int, proxy_url: str | None = None) -> None:
+    def __init__(self, base_url: str, settings: BaseZammadSettings) -> None:
         """Initialize Zammad client with HTTP configuration.
 
         Args:
-            base_url: Base URL for the Zammad instance
-            timeout: HTTP timeout in seconds
-            max_retries: Maximum number of retry attempts
-            proxy_url: Optional HTTP proxy URL
+            base_url: Base URL for the Zammad instance.
+            settings: ZammadSettings object containing configuration values.
 
         """
-        self.client = AsyncClient(base_url=base_url, timeout=timeout, proxy=proxy_url)
-        self.http_attempts = max_retries + 1
+        self.client = AsyncClient(base_url=base_url, timeout=settings.timeout, proxy=settings.http_proxy_url)
+        self.http_attempts = settings.max_retries + 1
+        self.document_parser = DocumentParser(settings.document_parsing)
 
     async def _request(self, method: str, url: str, **kwargs) -> Any:
         """Make HTTP request and return JSON or text."""
