@@ -141,7 +141,6 @@ class ZammadAPIClient(BaseZammadClient):
                     data=document_data,
                     attachment=attachment,
                 )
-            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
         except Exception:
             logger.error(
                 f"Error processing attachment {attachment.id} for knowledge base answer",
