@@ -125,11 +125,14 @@ class ZammadAPIClient(BaseZammadClient):
         if not (attachment.id and data):
             return None
         try:
+            content_type = attachment.contentType.split(";", 1)[0].lower()
             if isinstance(data, str):
-                try:
-                    document_data = b64decode(data, validate=True)
-                except (BinasciiError, ValueError):
+                if content_type.startswith("text/") or content_type == "application/json":
                     document_data = data.encode("utf-8")
+                else:
+                    document_data = b64decode(data)
+            else:
+                document_data = data
             else:
                 document_data = data
             if self.settings.document_parsing.mode == "local":
