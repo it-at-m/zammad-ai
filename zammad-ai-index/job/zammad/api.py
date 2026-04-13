@@ -123,31 +123,23 @@ class ZammadAPIClient(BaseZammadClient):
         )
         if not (attachment.id and data):
             return None
-        try:
-            content_type = attachment.contentType.split(";", 1)[0].lower()
-            if isinstance(data, str):
-                if content_type.startswith("text/") or content_type == "application/json":
-                    document_data = data.encode("utf-8")
-                else:
-                    document_data = b64decode(data)
-            else:
-                document_data = data
-            if self.settings.document_parsing.mode == "local":
-                return self.document_parser.parse_local(document_data)
-            if self.settings.document_parsing.mode == "remote":
-                if self.settings.document_parsing.url is None:
-                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
-                return self.document_parser.parse_remote(
-                    data=document_data,
-                    attachment=attachment,
-                )
-        except Exception:
-            logger.error(
-                f"Error processing attachment {attachment.id} for knowledge base answer",
-                exc_info=True,
-            )
-        # If mode is off or any error occurs, return original data for text/* or JSON; otherwise None
         content_type = attachment.contentType.split(";", 1)[0].lower()
+        if not self.document_parser.mode == "off":
+            try:
+                if isinstance(data, str):
+                    if content_type.startswith("text/") or content_type == "application/json":
+                        document_data = data.encode("utf-8")
+                    else:
+                        document_data = b64decode(data)
+                else:
+                    document_data = data
+                return self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for knowledge base answer",
+                    exc_info=True,
+                )
+        # If mode is off or any error occurs, return original data for text/* or JSON; otherwise None
         if content_type.startswith("text/") or content_type == "application/json":
             return data
         else:

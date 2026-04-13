@@ -31,7 +31,26 @@ class DocumentParser:
         elif self.mode == "remote":
             self.client = AsyncClient(timeout=120, proxy=settings.http_proxy_url, base_url=str(settings.url))
 
-    async def parse_local(self, data: Any) -> str:
+    async def parse(self, data: Any, attachment: ArticleAttachment) -> str | None:
+        """Parse the attachment content based on the configured mode.
+
+        Args:
+            data: Attachment payload from Zammad as bytes or a file-like object.
+            attachment: The article attachment object.
+
+        Returns:
+            The extracted document text or None if parsing mode is "off".
+
+        Raises:
+            ValueError: If the parsing mode is invalid or if parsing fails.
+        """
+        if self.mode == "local":
+            return await self._parse_local(data)
+        if self.mode == "remote":
+            return await self._parse_remote(data, attachment)
+        return None
+
+    async def _parse_local(self, data: Any) -> str:
         """Process attachment content using local Kreuzberg.
 
         Args:
@@ -64,7 +83,7 @@ class DocumentParser:
             return self._coerce_document_bytes(data.read())
         raise TypeError(f"Unsupported document payload type: {type(data).__name__}")
 
-    async def parse_remote(self, data: Any, attachment: ArticleAttachment) -> str:
+    async def _parse_remote(self, data: Any, attachment: ArticleAttachment) -> str:
         """Send attachment content to a remote Kreuzberg API server.
 
         Args:

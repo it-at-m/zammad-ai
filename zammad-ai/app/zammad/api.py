@@ -83,25 +83,20 @@ class ZammadAPIClient(BaseZammadClient):
         )
         if not data:
             return None
-        try:
-            if isinstance(data, str):
-                try:
-                    document_data = b64decode(data, validate=True)
-                except (BinasciiError, ValueError):
-                    document_data = data.encode("utf-8")
-            else:
-                document_data = data
-            if self.settings.document_parsing.mode == "local":
-                return await self.document_parser.parse_local(document_data)
-            if self.settings.document_parsing.mode == "remote":
-                return await self.document_parser.parse_remote(
-                    data=document_data,
-                    attachment=attachment,
+        if not self.settings.document_parsing.mode == "off":
+            try:
+                if isinstance(data, str):
+                    try:
+                        document_data = b64decode(data, validate=True)
+                    except (BinasciiError, ValueError):
+                        document_data = data.encode("utf-8")
+                else:
+                    document_data = data
+                return await self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
+                    exc_info=True,
                 )
-        except Exception:
-            logger.error(
-                f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
-                exc_info=True,
-            )
         # If mode is off or any error occurs, return original data
         return data

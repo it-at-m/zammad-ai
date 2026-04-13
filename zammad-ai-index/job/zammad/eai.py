@@ -141,23 +141,16 @@ class ZammadEAIClient(BaseZammadClient):
         )
         if not (attachment.id and data):
             return None
-        try:
-            document_data: Any = b64decode(data) if isinstance(data, str) else data
-            if self.settings.document_parsing.mode == "local":
-                return self.document_parser.parse_local(document_data)
-            if self.settings.document_parsing.mode == "remote":
-                if self.settings.document_parsing.url is None:
-                    raise ValueError("Document parsing URL must be set for remote parsing mode.")
-                return self.document_parser.parse_remote(
-                    data=document_data,
-                    attachment=attachment,
+        if not self.document_parser.mode == "off":
+            try:
+                document_data: Any = b64decode(data) if isinstance(data, str) else data
+                return self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for knowledge base answer",
+                    exc_info=True,
                 )
-            raise ValueError(f"Invalid document parsing mode: {self.settings.document_parsing.mode}")
-        except Exception:
-            logger.error(
-                f"Error processing attachment {attachment.id} for knowledge base answer",
-                exc_info=True,
-            )
+        # If parsing fails or is disabled, return raw base64 string for text attachments, None for unsupported types
         content_type = attachment.contentType.split(";", 1)[0].lower()
         if content_type.startswith("text/") or content_type == "application/json":
             decoded: bytes = b64decode(data)

@@ -133,20 +133,15 @@ class ZammadEAIClient(BaseZammadClient):
         )
         if not data:
             return None
-        try:
-            document_data: Any = b64decode(data) if isinstance(data, str) else data
-            if self.settings.document_parsing.mode == "local":
-                return await self.document_parser.parse_local(document_data)
-            if self.settings.document_parsing.mode == "remote":
-                return await self.document_parser.parse_remote(
-                    data=document_data,
-                    attachment=attachment,
+        if not self.settings.document_parsing.mode == "off":
+            try:
+                document_data: Any = b64decode(data) if isinstance(data, str) else data
+                return await self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for ticket {ticket_id}",
+                    exc_info=True,
                 )
-        except Exception:
-            logger.error(
-                f"Error processing attachment {attachment.id} for ticket {ticket_id}",
-                exc_info=True,
-            )
         # If mode is off or any error occurs, return decoded text
         decoded: bytes = b64decode(data)
         try:
