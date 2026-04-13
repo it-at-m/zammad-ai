@@ -45,26 +45,31 @@ class DocumentParser:
             ValueError: If the parsing mode is invalid or if parsing fails.
         """
         if self.mode == "local":
-            return self._parse_local(data)
+            return self._parse_local(data, attachment)
         if self.mode == "remote":
             return self._parse_remote(data, attachment)
         return None
 
-    def _parse_local(self, data: Any) -> str:
+    def _parse_local(self, data: Any, attachment: KnowledgeBaseAttachment) -> str:
         """Process attachment content using local Kreuzberg.
 
         Args:
             data: Attachment payload from Zammad as bytes or a file-like object.
+            attachment: The article attachment object.
 
         Returns:
             The extracted document text.
         """
         from langchain_kreuzberg import KreuzbergLoader
 
+        mime_type: str = (
+            attachment.contentType.split(";", 1)[0].lower() if attachment.contentType else DEFAULT_MIME_TYPE
+        )
+
         document_bytes: bytes = self._coerce_document_bytes(data)
         loader = KreuzbergLoader(
             data=document_bytes,
-            mime_type=DEFAULT_MIME_TYPE,
+            mime_type=mime_type,
         )
         docs: list[Document] = loader.load()
         if not isinstance(docs, list) or not docs:
@@ -95,10 +100,14 @@ class DocumentParser:
         """
         document_bytes: bytes = self._coerce_document_bytes(data)
 
+        mime_type: str = (
+            attachment.contentType.split(";", 1)[0].lower() if attachment.contentType else DEFAULT_MIME_TYPE
+        )
+
         response: Response = self.client.post(
             "extract",
             data={"output_format": "markdown"},
-            files={"files": (attachment.filename, document_bytes, "application/octet-stream")},
+            files={"files": (attachment.filename, document_bytes, mime_type)},
             headers={"Accept": "application/json"},
         )
         response.raise_for_status()
