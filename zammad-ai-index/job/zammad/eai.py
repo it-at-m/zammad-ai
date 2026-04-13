@@ -137,9 +137,11 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
         data: Any | None = (
-            self._request("GET", f"/attachments/{attachment.id}", parse_json=False) if attachment.id else None
+            self._request("GET", f"/attachments/{attachment.id}", parse_json=False)
+            if attachment.id is not None
+            else None
         )
-        if not (attachment.id and data):
+        if data is None:
             return None
         if not self.document_parser.mode == "off":
             try:

@@ -121,7 +121,7 @@ class ZammadAPIClient(BaseZammadClient):
             if attachment.id is not None
             else None
         )
-        if not (attachment.id and data):
+        if data is None:
             return None
         content_type = attachment.contentType.split(";", 1)[0].lower()
         if not self.document_parser.mode == "off":

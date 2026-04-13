@@ -128,7 +128,7 @@ class ZammadEAIClient(BaseZammadClient):
     ) -> str | None:
         data: Any | None = (
             await self._request("GET", f"/attachments/{ticket_id}/{article_id}/{attachment.id}")
-            if ticket_id and attachment.id and article_id
+            if ticket_id is not None and attachment.id is not None and article_id is not None
             else None
         )
         if not data:
