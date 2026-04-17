@@ -1,0 +1,83 @@
+name: Build and Release Core Workflow Docker Image
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - "zammad-ai-workflow-*" # Triggers only on zammad-ai-workflow tags
+  workflow_dispatch: # Allows manual triggering of the workflow
+    inputs:
+      tag:
+        description: "Core tag to release (e.g., zammad-ai-workflow-1.0.0)"
+        required: true
+        default: "zammad-ai-workflow-latest"
+
+jobs:
+  build-and-push-core-service:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      packages: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # v2.16.1
+        with:
+          egress-policy: audit
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract version from zammad-ai-workflow tag
+        id: vars
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            FULL_TAG="${{ github.event.inputs.tag }}"
+          else
+            FULL_TAG=${GITHUB_REF#refs/tags/}
+          fi
+
+          # Extract version from zammad-ai-workflow-* tag (e.g., zammad-ai-workflow-1.0.0 -> 1.0.0)
+          if [[ "$FULL_TAG" =~ ^zammad-ai-workflow-(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Error: Tag must start with 'zammad-ai-workflow-'"
+            exit 1
+          fi
+
+          echo "full_tag=${FULL_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "repo_lowercase=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - name: Set build timestamp
+        id: build_ts
+        run: echo "BUILD_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Build and push zammad-ai-workflow Docker image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: ./zammad-ai-workflow
+          file: ./zammad-ai-workflow/Dockerfile
+          push: true
+          sbom: true
+          provenance: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-workflow:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-workflow:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            IMAGE_CREATED=${{ github.event.repository.pushed_at || env.BUILD_TS }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_VERSION=${{ steps.vars.outputs.version }}
+      - name: Image digest
+        run: |
+          echo "zammad-ai-workflow image built and pushed:"
+          echo "  ghcr.io/${{ github.repository }}/zammad-ai-workflow:${{ steps.vars.outputs.version }}"
+          echo "  ghcr.io/${{ github.repository }}/zammad-ai-workflow:latest"

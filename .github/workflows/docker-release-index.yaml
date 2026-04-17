@@ -1,27 +1,27 @@
-name: Build and Release Extractor Docker Image
+name: Build and Release Index Docker Image
 permissions:
   contents: read
 
 on:
   push:
     tags:
-      - "zammad-ai-*" # Triggers only on zammad-ai tags
+      - "zammad-ai-index-*" # Triggers only on zammad-ai-index tags
   workflow_dispatch: # Allows manual triggering of the workflow
     inputs:
       tag:
-        description: "Zammad AI tag to release (e.g., zammad-ai-1.0.0)"
+        description: "Core tag to release (e.g., zammad-ai-index-1.0.0)"
         required: true
-        default: "zammad-ai-latest"
+        default: "zammad-ai-index-latest"
 
 jobs:
-  build-and-push-extractor:
+  build-and-push-core-service:
     runs-on: ubuntu-latest
     permissions:
       actions: write
       packages: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # v2.16.1
         with:
           egress-policy: audit
       - name: Checkout code
@@ -31,12 +31,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract version from zammad-ai tag
+      - name: Extract version from zammad-ai-index tag
         id: vars
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -45,11 +45,11 @@ jobs:
             FULL_TAG=${GITHUB_REF#refs/tags/}
           fi
 
-          # Extract version from zammad-ai-* tag (e.g., zammad-ai-1.0.0 -> 1.0.0)
-          if [[ "$FULL_TAG" =~ ^zammad-ai-(.+)$ ]]; then
+          # Extract version from zammad-ai-index-* tag (e.g., zammad-ai-index-1.0.0 -> 1.0.0)
+          if [[ "$FULL_TAG" =~ ^zammad-ai-index-(.+)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
           else
-            echo "Error: Tag must start with 'zammad-ai-'"
+            echo "Error: Tag must start with 'zammad-ai-index-'"
             exit 1
           fi
 
@@ -59,17 +59,17 @@ jobs:
       - name: Set build timestamp
         id: build_ts
         run: echo "BUILD_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-      - name: Build and push zammad-ai Docker image
+      - name: Build and push zammad-ai-index Docker image
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
-          context: ./zammad-ai
-          file: ./zammad-ai/Dockerfile
+          context: ./zammad-ai-index
+          file: ./zammad-ai-index/Dockerfile
           push: true
           sbom: true
           provenance: true
           tags: |
-            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai:${{ steps.vars.outputs.version }}
-            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai:latest
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-index:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-index:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -78,6 +78,6 @@ jobs:
             IMAGE_VERSION=${{ steps.vars.outputs.version }}
       - name: Image digest
         run: |
-          echo "zammad-ai image built and pushed:"
-          echo "  ghcr.io/${{ github.repository }}/zammad-ai:${{ steps.vars.outputs.version }}"
-          echo "  ghcr.io/${{ github.repository }}/zammad-ai:latest"
+          echo "zammad-ai-index image built and pushed:"
+          echo "  ghcr.io/${{ github.repository }}/zammad-ai-index:${{ steps.vars.outputs.version }}"
+          echo "  ghcr.io/${{ github.repository }}/zammad-ai-index:latest"
