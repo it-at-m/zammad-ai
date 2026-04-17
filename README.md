@@ -50,6 +50,10 @@ We keep this component separate from Zammad core to:
 - [compose.yaml](compose.yaml) - local Kafka, Qdrant, Mailpit, Prometheus, Grafana, and UI stack.
 - [observability/](observability/) - Prometheus and Grafana provisioning files.
 
+## Architecture
+
+![zammad-ai Arcitecture](docs/sketch/ki_architecture.png)
+
 ## Requirements
 
 - Python 3.14.3
