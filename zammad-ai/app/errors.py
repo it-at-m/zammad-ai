@@ -214,7 +214,14 @@ def classify_provider_error(error: Exception) -> GenAIError:
     ):
         return GenAIAuthError("GenAI authentication or authorization failed")
 
-    content_filter_tokens = ("contentfilter", "content_filter")
+    content_filter_tokens = (
+        "contentfilter",
+        "content_filter",
+        "content filter",
+        "contentpolicy",
+        "content_policy",
+        "content policy",
+    )
     if any(token in source for token in content_filter_tokens for source in (error_name, message)):
         return GenAIContentFilterError("GenAI content filter rejected request")
 
