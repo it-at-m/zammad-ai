@@ -31,7 +31,7 @@ dependencies = [
     "pydantic-settings==2.13.1",
     "pydantic==2.12.5",
     "python-dotenv==1.2.2",
-    "stamina==25.2.0",
+    "stamina==26.1.0",
     "truststore==0.10.4",
     "uvicorn==0.42.0",
 ]
