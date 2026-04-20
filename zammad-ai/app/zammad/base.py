@@ -8,6 +8,13 @@ from feedparser import FeedParserDict
 from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout, TimeoutException
 from stamina import retry_context
 
+from app.errors import (
+    TicketNotFoundError,
+    ZammadAuthError,
+    ZammadPayloadParseError,
+    ZammadPermanentError,
+    ZammadRetryableError,
+)
 from app.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase, ZammadTicket
 from app.utils.logging import getLogger
 
@@ -185,31 +192,40 @@ class BaseZammadClient(ABC):
                         response = await self.client.request(method, url, **kwargs)
                         response.raise_for_status()
                     except HTTPStatusError as e:
-                        # Only retry HTTPStatusError for transient status codes and safe methods
-                        if should_retry and (e.response.status_code == 429 or e.response.status_code >= 500):
-                            # Convert to a retryable exception to trigger retry
+                        status_code = e.response.status_code
+                        if should_retry and (status_code == 429 or status_code >= 500):
                             raise TimeoutException("Transient HTTP error") from e
-                        else:
-                            # Don't retry for client errors (4xx except 429)
-                            raise
+                        if status_code in (401, 403):
+                            raise ZammadAuthError(f"Zammad auth failed for {method} {url}") from e
+                        if status_code == 404:
+                            raise TicketNotFoundError(f"Zammad resource not found for {method} {url}") from e
+                        raise ZammadPermanentError(f"Zammad request failed for {method} {url}") from e
 
                     content_type = response.headers.get("Content-Type", "").lower()
                     if content_type.startswith("application/json"):
-                        return response.json()
+                        try:
+                            return response.json()
+                        except ValueError as e:
+                            raise ZammadPayloadParseError(f"Invalid JSON response for {method} {url}") from e
                     elif content_type.startswith("text/"):
                         return response.text
                     else:
                         return b64encode(response.content).decode("ascii")
-        except (HTTPStatusError, ConnectError, TimeoutException, ReadTimeout) as e:
+        except (ConnectError, TimeoutException, ReadTimeout) as e:
             logger.error(f"Failed to execute {method} {url} after {self.http_attempts} attempts.", exc_info=True)
-            raise ZammadConnectionError(f"Failed to execute {method} {url} after {self.http_attempts} attempts.") from e
+            raise ZammadRetryableError(
+                f"Failed to execute {method} {url} after {self.http_attempts} attempts.",
+            ) from e
+        except (TicketNotFoundError, ZammadAuthError, ZammadPayloadParseError, ZammadPermanentError):
+            logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
+            raise
 
     async def close(self) -> None:
         """Close HTTP client."""
         await self.client.aclose()
 
 
-class ZammadConnectionError(Exception):
+class ZammadConnectionError(ZammadRetryableError):
     """Custom exception for Zammad connection errors.
 
     Raised when HTTP requests to Zammad fail due to network issues,
@@ -217,4 +233,4 @@ class ZammadConnectionError(Exception):
 
     """
 
-    pass
+    retryable = True

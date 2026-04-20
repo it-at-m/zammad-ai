@@ -12,6 +12,7 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
 
+from app.errors import QdrantPermanentError, QdrantRetryableError
 from app.settings import GenAISettings, QdrantSettings
 from app.utils.logging import getLogger
 
@@ -49,7 +50,7 @@ class RetrieveDocumentsKBOutput(BaseModel):
     )
 
 
-class QdrantKBError(Exception):
+class QdrantKBError(QdrantPermanentError):
     """Custom exception for Qdrant-related errors."""
 
     ...
@@ -103,6 +104,11 @@ class QdrantKBClient:
 
         except ApiException as e:
             self.logger.error("Error checking Qdrant collection existence or retrieving collection info", exc_info=True)
+            status = getattr(e, "status", None)
+            if isinstance(status, int) and status >= 500:
+                raise QdrantRetryableError(
+                    "Failed to check Qdrant collection existence or retrieve collection info"
+                ) from e
             raise QdrantKBError("Failed to check Qdrant collection existence or retrieve collection info") from e
 
         # Create LangChain embedding model

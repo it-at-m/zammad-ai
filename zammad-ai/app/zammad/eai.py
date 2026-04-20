@@ -9,8 +9,9 @@ from typing import Any, override
 from feedparser import FeedParserDict
 from feedparser import parse as feedparser
 from httpx import HTTPStatusError, RequestError
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
+from app.errors import TicketNotFoundError, ZammadPayloadParseError
 from app.models.zammad import (
     KnowledgeBaseAnswer,
     ZammadAnswer,
@@ -105,7 +106,10 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/tickets/byId/{id}")
-        articles = TypeAdapter(list[ZammadArticle]).validate_python(data["articles"])
+        try:
+            articles = TypeAdapter(list[ZammadArticle]).validate_python(data["articles"])
+        except (KeyError, TypeError, ValidationError) as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
         return ZammadTicket(id=id, articles=articles)
 
     @override
@@ -131,7 +135,13 @@ class ZammadEAIClient(BaseZammadClient):
             return None
 
         data = await self._request("GET", f"/knowledgeBases/{self.kb_id}")
-        return TypeAdapter(ZammadKnowledgebase).validate_python(data) if data else None
+        if not data:
+            return None
+
+        try:
+            return TypeAdapter(ZammadKnowledgebase).validate_python(data)
+        except ValidationError as e:
+            raise ZammadPayloadParseError(f"Invalid knowledge base payload for id {self.kb_id}") from e
 
     @override
     async def parse_rss_feed(self) -> FeedParserDict | None:
@@ -157,16 +167,14 @@ class ZammadEAIClient(BaseZammadClient):
 
         try:
             response = await self._request("GET", f"/knowledgeBases/{self.kb_id}/answer/{answer_id}")
-        except ZammadConnectionError as e:
-            cause: BaseException | None = e.__cause__
-            if isinstance(cause, HTTPStatusError) and cause.response.status_code == 404:
-                logger.info(f"Knowledge base answer {answer_id} not found (404).")
-                return None
-            # Auth failures, 5xx, timeouts — re-raise so callers and check_if_answer_exists
-            # don't silently treat them as "answer deleted"
-            raise
+        except TicketNotFoundError:
+            logger.info(f"Knowledge base answer {answer_id} not found (404).")
+            return None
 
-        return TypeAdapter(KnowledgeBaseAnswer).validate_python(response)
+        try:
+            return TypeAdapter(KnowledgeBaseAnswer).validate_python(response)
+        except ValidationError as e:
+            raise ZammadPayloadParseError(f"Invalid knowledge base answer payload for id {answer_id}") from e
 
     @override
     async def fetch_kb_attachment_data(self, id: int) -> str | None:

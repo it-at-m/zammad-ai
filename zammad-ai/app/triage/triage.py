@@ -7,6 +7,15 @@ from dotenv import load_dotenv
 from prometheus_client import Gauge, Histogram
 from truststore import inject_into_ssl
 
+from app.errors import (
+    GenAIError,
+    TicketNotFoundError,
+    TriageCategoryWrongError,
+    ZammadRetryableError,
+)
+from app.errors import (
+    TriageError as AppTriageError,
+)
 from app.models.triage import (
     CategorizationResult,
     DaysSinceRequestResponse,
@@ -31,7 +40,7 @@ from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
 from app.zammad import BaseZammadClient, ZammadAPIClient, ZammadConnectionError, ZammadEAIClient
 
-from .genai_handler import GenAIError, GenAIHandler
+from .genai_handler import GenAIHandler
 from .helper import get_operator_function
 
 load_dotenv()
@@ -50,7 +59,7 @@ TRIAGE_RUNS_IN_PROGRESS = Gauge(
 )
 
 
-class TriageError(Exception):
+class TriageError(AppTriageError):
     """Custom exception for errors during the triage process."""
 
 
@@ -152,9 +161,12 @@ class TriageService:
         try:
             try:
                 ticket: ZammadTicket = await self.zammad_client.get_ticket(id=id)
-            except ZammadConnectionError as e:
+            except TicketNotFoundError as e:
+                logger.info(f"Ticket {id} does not exist anymore.")
+                raise TriageError("Triage failed because ticket was not found", retryable=False) from e
+            except (ZammadRetryableError, ZammadConnectionError) as e:
                 logger.error("Error connecting to Zammad", exc_info=True)
-                raise TriageError("Triage failed due to Zammad connection error") from e
+                raise TriageError("Triage failed due to Zammad connection error", retryable=True) from e
 
             # TODO: Only use the first article or concatenate all articles?
             # Normally the `0` is the customer message, the rest are internal notes
@@ -173,45 +185,33 @@ class TriageService:
                     extracted_values=None,
                 )
 
-            try:
-                # Step 3: Extract customer message and generate session ID for Langfuse
-                customer_message: str = ticket.articles[0].text
-                session_id: str = self.genai_handler.langfuse_client.generate_session_id()
+            # Step 3: Extract customer message and generate session ID for Langfuse
+            customer_message: str = ticket.articles[0].text
+            session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 
-                # Step 4: Predict category using LLM
-                categorization: CategorizationResult = await self.predict_category(
-                    message=customer_message,
-                    session_id=session_id,
-                )
+            # Step 4: Predict category using LLM
+            categorization: CategorizationResult = await self.predict_category(
+                message=customer_message,
+                session_id=session_id,
+            )
 
-                # Step 5: Determine action based on predicted category and conditions
-                action_name: str = await self.get_action_name(
-                    categorization_result=categorization,
-                    message=customer_message,
-                    session_id=session_id,
-                )
-                action: Action = self.actions_by_name.get(action_name, self.no_action)
-                # Step 6: Return the triage result
-                outcome = "success"
-                return TriageResult(
-                    user_text=customer_message,
-                    category=categorization.category if categorization.category else self.no_category,
-                    action=action,
-                    reasoning=categorization.reasoning,
-                    confidence=categorization.confidence,
-                    extracted_values=categorization.extracted_values,
-                )
-            except TriageError:
-                outcome = "fallback"
-                logger.warning(f"Processing failed for ticket {id}, returning fallback TriageResult.")
-                return TriageResult(
-                    user_text=customer_message,
-                    category=self.no_category,
-                    action=self.no_action,
-                    reasoning="Error during triage processing",
-                    confidence=1.0,
-                    extracted_values=None,
-                )
+            # Step 5: Determine action based on predicted category and conditions
+            action_name: str = await self.get_action_name(
+                categorization_result=categorization,
+                message=customer_message,
+                session_id=session_id,
+            )
+            action: Action = self.actions_by_name.get(action_name, self.no_action)
+            # Step 6: Return the triage result
+            outcome = "success"
+            return TriageResult(
+                user_text=customer_message,
+                category=categorization.category if categorization.category else self.no_category,
+                action=action,
+                reasoning=categorization.reasoning,
+                confidence=categorization.confidence,
+                extracted_values=categorization.extracted_values,
+            )
         finally:
             TRIAGE_RUN_DURATION_SECONDS.labels(outcome=outcome).observe(perf_counter() - start_time)
             TRIAGE_RUNS_IN_PROGRESS.dec()
@@ -249,10 +249,11 @@ class TriageService:
             )
 
             if not cat_result.category or cat_result.category.name not in [c.name for c in self.categories]:
-                logger.warning("Predicted category is invalid or not found, assigning no_category")
-                cat_result.category = self.no_category
-                cat_result.reasoning += " (Invalid category, 'no_category' assigned)"
-                cat_result.confidence = 1.0
+                logger.warning("Predicted category is invalid or not found")
+                raise TriageCategoryWrongError(
+                    "Predicted category is invalid or unknown",
+                    confidence=cat_result.confidence,
+                )
 
             # Log the results
             logger.debug(f"Text to categorize: {message[:100] + '...' if len(message) > 100 else message}")
@@ -264,10 +265,10 @@ class TriageService:
 
         except GenAIError as e:
             logger.error("GenAI categorization error", exc_info=True)
-            raise TriageError("Categorization failed due to GenAI error") from e
+            raise TriageError("Categorization failed due to GenAI error", retryable=e.retryable) from e
         except Exception as e:
             logger.error("Unexpected error during categorization", exc_info=True)
-            raise TriageError("Categorization failed due to unexpected error") from e
+            raise TriageError("Categorization failed due to unexpected error", retryable=True) from e
 
     async def get_action_name(
         self, categorization_result: CategorizationResult, message: str = "", session_id: str | None = None
@@ -329,10 +330,10 @@ class TriageService:
             return self.no_action.name
         except GenAIError as e:
             logger.error("GenAI extraction error during action determination", exc_info=True)
-            raise TriageError("Action determination failed due to GenAI error") from e
+            raise TriageError("Action determination failed due to GenAI error", retryable=e.retryable) from e
         except Exception as e:
             logger.error("Unexpected error during action determination", exc_info=True)
-            raise TriageError(f"Action determination failed due to unexpected error: {str(e)}") from e
+            raise TriageError("Action determination failed due to unexpected error", retryable=True) from e
 
     def _name_to_category(self, category_name: str) -> Category:
         """Return the Category for the given name or the configured fallback when no match exists.

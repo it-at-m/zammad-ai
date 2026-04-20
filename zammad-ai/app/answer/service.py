@@ -11,6 +11,7 @@ from langfuse import observe, propagate_attributes
 from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
+from app.errors import AnswerServiceError, AppError
 from app.models.answer import StructuredAgentResponse
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
@@ -168,6 +169,11 @@ class AnswerService:
                 structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
             outcome = "success"
             return structured_response
+        except AppError:
+            raise
+        except Exception as e:
+            logger.error("Answer generation failed.", exc_info=True)
+            raise AnswerServiceError("Answer generation failed", retryable=True) from e
         finally:
             ANSWER_RUN_DURATION_SECONDS.labels(outcome=outcome).observe(perf_counter() - start_time)
             ANSWER_RUNS_IN_PROGRESS.dec()
@@ -252,9 +258,12 @@ class AnswerService:
                     prompt_name=prompt_config.prompt.name,
                     prompt_label=prompt_config.prompt.label,
                 )
-            except LangfuseError:
-                logger.error(f"Failed to fetch {prompt_source_name} from Langfuse, exiting.", exc_info=True)
-                exit(1)
+            except LangfuseError as e:
+                logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
+                raise AnswerServiceError(
+                    f"Failed to fetch {prompt_source_name} from Langfuse",
+                    retryable=True,
+                ) from e
         if isinstance(prompt_config, FilePromptConfig):
             return load_prompt(file_path=prompt_config.prompt)
         if isinstance(prompt_config, StringPromptConfig):

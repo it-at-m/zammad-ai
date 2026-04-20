@@ -12,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig, RunnableSequence
 from langfuse import observe, propagate_attributes
 
+from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.observe import LangfuseClient
 from app.settings.genai import GenAISettings
@@ -20,10 +21,6 @@ from app.utils.logging import getLogger
 logger: Logger = getLogger("zammad-ai.genai_handler")
 
 T = TypeVar("T")
-
-
-class GenAIError(Exception):
-    """Raised when a GenAI operation fails."""
 
 
 class GenAIHandler:
@@ -138,7 +135,8 @@ class GenAIHandler:
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for categorization", exc_info=True)
-            raise GenAIError("GenAI operation failed") from e
+            classified = classify_provider_error(e)
+            raise classified from e
 
     @observe(as_type="span")
     async def extract_days_since_request(
@@ -168,7 +166,8 @@ class GenAIHandler:
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for days since request extraction", exc_info=True)
-            raise GenAIError("GenAI operation failed") from e
+            classified = classify_provider_error(e)
+            raise classified from e
 
     @observe(as_type="span")
     async def extract_processing_id(self, *, message: str, session_id: str | None = None) -> ProcessingIdResponse:
@@ -194,7 +193,8 @@ class GenAIHandler:
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for processing id extraction", exc_info=True)
-            raise GenAIError("GenAI operation failed") from e
+            classified = classify_provider_error(e)
+            raise classified from e
 
     def _build_chain(self, prompt: str, output_schema: type[T] | None = None) -> RunnableSequence[Any, T]:
         """Create a reusable structured-output chain for one prompt.
