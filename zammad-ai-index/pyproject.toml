@@ -10,11 +10,14 @@ dependencies = [
     "langchain-core==1.2.28",
     "langchain-openai==1.1.11",
     "langchain-qdrant==1.1.0",
+    "markdownify>=1.2.2",
     "pydantic==2.12.5",
     "pydantic-settings==2.13.1",
+    "socksio>=1.0.0",
     "stamina==25.2.0",
     "truststore==0.10.4",
 ]
 
 [dependency-groups]
 dev = ["pre-commit==4.5.1", "ruff==0.15.4", "ty==0.0.20"]
+kreuzberg = ["langchain-kreuzberg==1.0.0", "kreuzberg==4.6.3"]

@@ -24,6 +24,19 @@ wheels = [
 ]
 
 [[package]]
+name = "beautifulsoup4"
+version = "4.14.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "soupsieve" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/b0/1c6a16426d389813b48d95e26898aff79abbde42ad353958ad95cc8c9b21/beautifulsoup4-4.14.3.tar.gz", hash = "sha256:6292b1c5186d356bba669ef9f7f051757099565ad9ada5dd630bd9de5fa7fb86", size = 627737, upload-time = "2025-11-30T15:08:26.084Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/39/47f9197bdd44df24d67ac8893641e16f386c984a0619ef2ee4c51fbbc019/beautifulsoup4-4.14.3-py3-none-any.whl", hash = "sha256:0918bfe44902e6ad8d57732ba310582e98da931428d231a5ecb9e7c703a735bb", size = 107721, upload-time = "2025-11-30T15:08:24.087Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.2.25"
 source = { registry = "https://pypi.org/simple" }
@@ -281,6 +294,18 @@ wheels = [
 ]
 
 [[package]]
+name = "kreuzberg"
+version = "4.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/6e/a04a24f901e772ccdc06920fe3c0b5d366239dd5a11c4ce77c5f6815ca15/kreuzberg-4.6.3.tar.gz", hash = "sha256:eaea80d5395f35761cce9396660cf6cb06d9b94ed20d616b137c736b236c4eb0", size = 2173464, upload-time = "2026-03-27T07:54:35.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/6d/ca7f91c7da9d22841a618350dc085ec0d543e0bc916dab1c905029412e24/kreuzberg-4.6.3-cp310-abi3-macosx_14_0_arm64.whl", hash = "sha256:2a01e9bbdf0d0d316bbc26873fb40a648ce5a2cd60fdcafc62d046cfe1bace4b", size = 51045873, upload-time = "2026-03-27T07:54:21.728Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/4c/c6a777d3a90e4fb8bb3bc128d15b9767f47dac52fa5fc93b3f86bcfb3390/kreuzberg-4.6.3-cp310-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:c265ebd92e5ce4ab3d90cc6ff74a100abe6de92c067a3cffd7988e75d205e9ca", size = 59278814, upload-time = "2026-03-27T07:54:25.443Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/cc/87494127d7b991852b3e2e53b975203e1ca6296076d1886448574d526433/kreuzberg-4.6.3-cp310-abi3-manylinux_2_39_x86_64.whl", hash = "sha256:43f3db7ada83f11bf297a14a151769b0d8572e1d0931c7bb6fe20a70c70d26ea", size = 59017388, upload-time = "2026-03-27T07:54:29.036Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/7a/d8fe90973f1047576832f019d1cc716e8c00be52fee8a48fe89712d299ab/kreuzberg-4.6.3-cp310-abi3-win_amd64.whl", hash = "sha256:fc0afd51f0a22808e87a76351b105bb82f7b352b2e7b3b33cbbc09e4b54e55df", size = 58766457, upload-time = "2026-03-27T07:54:32.361Z" },
+]
+
+[[package]]
 name = "langchain"
 version = "1.2.10"
 source = { registry = "https://pypi.org/simple" }
@@ -311,6 +336,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f8/a4/317a1a3ac1df33a64adb3670bf88bbe3b3d5baa274db6863a979db472897/langchain_core-1.2.28.tar.gz", hash = "sha256:271a3d8bd618f795fdeba112b0753980457fc90537c46a0c11998516a74dc2cb", size = 846119, upload-time = "2026-04-08T18:19:34.867Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/92/32f785f077c7e898da97064f113c73fbd9ad55d1e2169cf3a391b183dedb/langchain_core-1.2.28-py3-none-any.whl", hash = "sha256:80764232581eaf8057bcefa71dbf8adc1f6a28d257ebd8b95ba9b8b452e8c6ac", size = 508727, upload-time = "2026-04-08T18:19:32.823Z" },
+]
+
+[[package]]
+name = "langchain-kreuzberg"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "kreuzberg" },
+    { name = "langchain-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7b/46/0666d39a97c25fcfb2b3ec449a5a413e7409a40933d3b6ef6bb3b1043fea/langchain_kreuzberg-1.0.0.tar.gz", hash = "sha256:ba925e0464568c444fa911dde0c4fd31548d2113f73f6e42aec791bf05ef1e02", size = 8390, upload-time = "2026-02-24T19:42:21.376Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6e/c4/9600d74ff7c52d8a2533c09a0af8cf4dc8465f401296d15e06fd90d34511/langchain_kreuzberg-1.0.0-py3-none-any.whl", hash = "sha256:97a9c9f33bc332c30f54640be858d6808e87cef3af17f6bcfd6d2201fa341114", size = 8676, upload-time = "2026-02-24T19:42:20.043Z" },
 ]
 
 [[package]]
@@ -415,6 +453,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4d/18/b240d33e32d3f71a3c3375781cb11f3be6b27c275acdcf18c08a65a560cc/langsmith-0.7.16.tar.gz", hash = "sha256:87267d32c1220ec34bd0074d3d04b57c7394328a39a02182b62ab4ae09d28144", size = 1115428, upload-time = "2026-03-09T21:11:16.985Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d0/a8/4202ca65561213ec84ca3800b1d4e5d37a1441cddeec533367ecbca7f408/langsmith-0.7.16-py3-none-any.whl", hash = "sha256:c84a7a06938025fe0aad992acc546dd75ce3f757ba8ee5b00ad914911d4fc02e", size = 347538, upload-time = "2026-03-09T21:11:15.02Z" },
+]
+
+[[package]]
+name = "markdownify"
+version = "1.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3f/bc/c8c8eea5335341306b0fa7e1cb33c5e1c8d24ef70ddd684da65f41c49c92/markdownify-1.2.2.tar.gz", hash = "sha256:b274f1b5943180b031b699b199cbaeb1e2ac938b75851849a31fd0c3d6603d09", size = 18816, upload-time = "2025-11-16T19:21:18.565Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/ce/f1e3e9d959db134cedf06825fae8d5b294bd368aacdd0831a3975b7c4d55/markdownify-1.2.2-py3-none-any.whl", hash = "sha256:3f02d3cc52714084d6e589f70397b6fc9f2f3a8531481bf35e8cc39f975e186a", size = 15724, upload-time = "2025-11-16T19:21:17.622Z" },
 ]
 
 [[package]]
@@ -822,12 +873,39 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9e/bd/3704a8c3e0942d711c1299ebf7b9091930adae6675d7c8f476a7ce48653c/sgmllib3k-1.0.0.tar.gz", hash = "sha256:7868fb1c8bfa764c1ac563d3cf369c381d1325d36124933a726f29fcdaa812e9", size = 5750, upload-time = "2010-08-24T14:33:52.445Z" }
 
 [[package]]
+name = "six"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "socksio"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/5c/48a7d9495be3d1c651198fd99dbb6ce190e2274d0f28b9051307bdec6b85/socksio-1.0.0.tar.gz", hash = "sha256:f88beb3da5b5c38b9890469de67d0cb0f9d494b78b106ca1845f96c10b91c4ac", size = 19055, upload-time = "2020-04-17T15:50:34.664Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/c3/6eeb6034408dac0fa653d126c9204ade96b819c936e136c5e8a6897eee9c/socksio-1.0.0-py3-none-any.whl", hash = "sha256:95dc1f15f9b34e8d7b16f06d74b8ccf48f609af32ab33c608d08761c5dcbb1f3", size = 12763, upload-time = "2020-04-17T15:50:31.878Z" },
+]
+
+[[package]]
+name = "soupsieve"
+version = "2.8.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/ae/2d9c981590ed9999a0d91755b47fc74f74de286b0f5cee14c9269041e6c4/soupsieve-2.8.3.tar.gz", hash = "sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349", size = 118627, upload-time = "2026-01-20T04:27:02.457Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl", hash = "sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95", size = 37016, upload-time = "2026-01-20T04:27:01.012Z" },
 ]
 
 [[package]]
@@ -1037,8 +1115,10 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langchain-qdrant" },
+    { name = "markdownify" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "socksio" },
     { name = "stamina" },
     { name = "truststore" },
 ]
@@ -1049,6 +1129,10 @@ dev = [
     { name = "ruff" },
     { name = "ty" },
 ]
+kreuzberg = [
+    { name = "kreuzberg" },
+    { name = "langchain-kreuzberg" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1057,8 +1141,10 @@ requires-dist = [
     { name = "langchain-core", specifier = "==1.2.28" },
     { name = "langchain-openai", specifier = "==1.1.11" },
     { name = "langchain-qdrant", specifier = "==1.1.0" },
+    { name = "markdownify", specifier = ">=1.2.2" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pydantic-settings", specifier = "==2.13.1" },
+    { name = "socksio", specifier = ">=1.0.0" },
     { name = "stamina", specifier = "==25.2.0" },
     { name = "truststore", specifier = "==0.10.4" },
 ]
@@ -1068,6 +1154,10 @@ dev = [
     { name = "pre-commit", specifier = "==4.5.1" },
     { name = "ruff", specifier = "==0.15.4" },
     { name = "ty", specifier = "==0.0.20" },
+]
+kreuzberg = [
+    { name = "kreuzberg", specifier = "==4.6.3" },
+    { name = "langchain-kreuzberg", specifier = "==1.0.0" },
 ]
 
 [[package]]

@@ -6,20 +6,17 @@ from datetime import datetime, timedelta
 from logging import Logger
 from typing import Any, override
 
-from feedparser import FeedParserDict
-from feedparser import parse as feedparser
 from httpx import HTTPStatusError, RequestError
 from pydantic import TypeAdapter
 
 from app.models.zammad import (
-    KnowledgeBaseAnswer,
     ZammadAnswer,
     ZammadArticle,
     ZammadEAISharedDraft,
-    ZammadKnowledgebase,
     ZammadTicket,
 )
 from app.settings.zammad import ZammadEAISettings
+from app.utils.document_parser import ArticleAttachment
 from app.utils.logging import getLogger
 
 from .base import BaseZammadClient, ZammadConnectionError
@@ -39,9 +36,7 @@ class ZammadEAIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.eai_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
 
         self.settings = settings
@@ -125,81 +120,35 @@ class ZammadEAIClient(BaseZammadClient):
         raise NotImplementedError("Adding tag is not implemented yet.")
 
     @override
-    async def kb_info(self) -> ZammadKnowledgebase | None:
-        if not self.kb_id:
-            logger.warning("Knowledge base ID is not set. Cannot fetch KB info.")
-            return None
-
-        data = await self._request("GET", f"/knowledgeBases/{self.kb_id}")
-        return TypeAdapter(ZammadKnowledgebase).validate_python(data) if data else None
-
-    @override
-    async def parse_rss_feed(self) -> FeedParserDict | None:
-        if not self.kb_id:
-            logger.warning("Knowledge base ID is not set. Cannot parse RSS feed.")
-            return None
-
-        response = await self._request("GET", f"/knowledgeBases/{self.kb_id}/rss")
-
-        try:
-            text = b64decode(response).decode("utf-8")
-        except Exception:
-            # If decoding fails, assume it's already plain text
-            text = response
-
-        return feedparser(text)
-
-    @override
-    async def get_kb_answer_by_id(self, answer_id: int) -> KnowledgeBaseAnswer | None:
-        if not self.kb_id:
-            logger.warning("Knowledge base ID is not set. Cannot fetch KB answer.")
-            return None
-
-        try:
-            response = await self._request("GET", f"/knowledgeBases/{self.kb_id}/answer/{answer_id}")
-        except ZammadConnectionError as e:
-            cause: BaseException | None = e.__cause__
-            if isinstance(cause, HTTPStatusError) and cause.response.status_code == 404:
-                logger.info(f"Knowledge base answer {answer_id} not found (404).")
-                return None
-            # Auth failures, 5xx, timeouts — re-raise so callers and check_if_answer_exists
-            # don't silently treat them as "answer deleted"
-            raise
-
-        return TypeAdapter(KnowledgeBaseAnswer).validate_python(response)
-
-    @override
-    async def fetch_kb_attachment_data(self, id: int) -> str | None:
-        data = await self._request("GET", f"/attachments/{id}") if id else None
-        if not (id and data):
-            return None
-        decoded = b64decode(data)
-        try:
-            return decoded.decode("utf-8")
-        except UnicodeDecodeError:
-            # Return raw base64 string for binary attachments
-            return data
-
-    @override
-    async def fetch_ticket_attachment_data(self, ticket_id: int, attachment_id: int, article_id: int) -> str | None:
-        data = (
-            await self._request("GET", f"/attachments/{ticket_id}/{article_id}/{attachment_id}")
-            if ticket_id and attachment_id and article_id
+    async def fetch_ticket_attachment_data(
+        self,
+        ticket_id: int,
+        article_id: int,
+        attachment: ArticleAttachment,
+    ) -> str | None:
+        data: Any | None = (
+            await self._request("GET", f"/attachments/{ticket_id}/{article_id}/{attachment.id}")
+            if ticket_id is not None and attachment.id is not None and article_id is not None
             else None
         )
         if not data:
             return None
-        decoded = b64decode(data)
+        if not self.settings.document_parsing.mode == "off":
+            try:
+                document_data: Any = b64decode(data) if isinstance(data, str) else data
+                return await self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for ticket {ticket_id}",
+                    exc_info=True,
+                )
+        # If mode is off or any error occurs, return decoded text
+        decoded: bytes = b64decode(data)
         try:
             return decoded.decode("utf-8")
         except UnicodeDecodeError:
             # Return raw base64 string for binary attachments
             return data
-
-    @override
-    async def check_if_answer_exists(self, answer_id: int) -> bool:
-        answer: KnowledgeBaseAnswer | None = await self.get_kb_answer_by_id(answer_id)
-        return answer is not None
 
     @override
     async def close(self) -> None:

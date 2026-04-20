@@ -10,13 +10,13 @@ from feedparser import parse as feedparser
 from httpx import HTTPStatusError, RequestError
 from pydantic import TypeAdapter
 
-from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
+from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
 from job.settings.zammad import ZammadEAISettings
 from job.utils.logging import getLogger
 
 from .base import BaseZammadClient, ZammadConnectionError
 
-logger: Logger = getLogger("zammad-ai.zammad.eai")
+logger: Logger = getLogger("zammad-ai-index.zammad.eai")
 
 
 class ZammadEAIClient(BaseZammadClient):
@@ -31,9 +31,7 @@ class ZammadEAIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.eai_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
 
         self.settings = settings
@@ -137,16 +135,39 @@ class ZammadEAIClient(BaseZammadClient):
         return TypeAdapter(KnowledgeBaseAnswer).validate_python(response)
 
     @override
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
-        data = self._request("GET", f"/attachments/{id}", parse_json=False) if id else None
-        if not (id and data):
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
+        data: Any | None = (
+            self._request("GET", f"/attachments/{attachment.id}", parse_json=False)
+            if attachment.id is not None
+            else None
+        )
+        if data is None:
             return None
-        decoded = b64decode(data)
-        try:
-            return decoded.decode("utf-8")
-        except UnicodeDecodeError:
-            # Return raw base64 string for binary attachments
-            return data
+        if not self.document_parser.mode == "off":
+            try:
+                document_data: Any = b64decode(data) if isinstance(data, str) else data
+                return self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for knowledge base answer",
+                    exc_info=True,
+                )
+        # If parsing fails or is disabled, return raw base64 string for text attachments, None for unsupported types
+        content_type = attachment.contentType.split(";", 1)[0].lower()
+        if content_type.startswith("text/") or content_type == "application/json":
+            decoded: bytes = b64decode(data)
+            try:
+                return decoded.decode("utf-8")
+            except UnicodeDecodeError:
+                # Return raw base64 string for binary attachments
+                return data
+        else:
+            logger.warning(
+                "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                attachment.id,
+                attachment.contentType,
+            )
+            return None
 
     @override
     def check_if_answer_exists(self, answer_id: int) -> bool:

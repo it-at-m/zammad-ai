@@ -50,6 +50,10 @@ loggers:
     level: WARNING
     handlers: [httpx]
     propagate: no
+  PIL.Image:
+    level: WARNING
+    handlers: [console]
+    propagate: no
 root:
   level: DEBUG
   handlers: [console]

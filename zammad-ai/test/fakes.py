@@ -270,3 +270,12 @@ class FakeZammadClient:
             "check_if_answer_exists should not be called in these tests".
         """
         raise AssertionError("check_if_answer_exists should not be called in these tests")
+
+    async def fetch_ticket_attachment_data(
+        self,
+        ticket_id: int,
+        article_id: int,
+        attachment: dict,
+    ) -> str | None:
+        """Fail the test if code attempts to fetch ticket attachment data."""
+        raise AssertionError("fetch_ticket_attachment_data should not be called in these tests")

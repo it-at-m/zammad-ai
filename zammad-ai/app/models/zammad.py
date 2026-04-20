@@ -1,101 +1,7 @@
 """Models for Zammad knowledge base, tickets, and answer payloads."""
 
-import html
-import re
-from datetime import datetime
-
+from markdownify import markdownify
 from pydantic import AliasChoices, BaseModel, Field, field_validator
-
-
-class ZammadKnowledgebase(BaseModel):
-    """Knowledge base metadata returned by Zammad."""
-
-    id: int = Field(
-        description="ID of the knowledge base",
-    )
-    active: bool = Field(
-        description="Whether the knowledge base is active",
-        default=True,
-    )
-    createdAt: datetime = Field(
-        description="Creation timestamp of the knowledge base",
-    )
-    updatedAt: datetime = Field(
-        description="Last update timestamp of the knowledge base",
-    )
-    categoryIds: list[int] = Field(
-        description="List of category IDs associated with the knowledge base",
-        default_factory=list,
-    )
-    answerIds: list[int] = Field(
-        description="List of answer IDs associated with the knowledge base",
-        default_factory=list,
-    )
-
-
-class KnowledgeBaseAttachment(BaseModel):
-    """Attachment metadata for a knowledge base answer."""
-
-    id: int = Field(
-        description="ID of the attachment",
-    )
-    filename: str = Field(
-        description="Filename of the attachment",
-    )
-    contentType: str = Field(
-        description="Content type of the attachment",
-    )
-
-
-class KnowledgeBaseAnswer(BaseModel):
-    """Knowledge base answer with normalized HTML-free body text."""
-
-    id: int = Field(
-        description="The ID of the answer",
-    )
-    answerTitle: str = Field(
-        description="The title of the answer",
-    )
-    answerBody: str = Field(
-        description="The content of the answer",
-    )
-    createdAt: str = Field(
-        description="The creation timestamp of the answer",
-    )
-    updatedAt: str = Field(
-        description="The last update timestamp of the answer",
-    )
-    attachments: list[KnowledgeBaseAttachment] = Field(
-        description="List of attachments associated with the answer",
-        default_factory=list,
-    )
-
-    @field_validator("answerBody", mode="after")
-    @classmethod
-    def strip_html(cls, text: str) -> str:
-        """Normalize text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
-
-        Parameters:
-            text (str): Input string that may contain HTML.
-
-        Returns:
-            str: The input string with HTML tags removed, HTML entities unescaped, and consecutive whitespace collapsed to single spaces and trimmed.
-        """
-        # Remove HTML tags
-        clean_text: str = re.sub(
-            pattern=r"<[^>]+>",
-            repl="",
-            string=text,
-        )
-        # Unescape HTML entities
-        clean_text = html.unescape(clean_text)
-        # Normalize whitespace
-        clean_text = re.sub(
-            pattern=r"\s+",
-            repl=" ",
-            string=clean_text,
-        ).strip()
-        return clean_text
 
 
 class ZammadTicket(BaseModel):
@@ -154,30 +60,8 @@ class ZammadArticle(BaseModel):
     @field_validator("text", mode="after")
     @classmethod
     def strip_html(cls, text: str) -> str:
-        """Normalize article text by removing HTML tags, unescaping HTML entities, and collapsing whitespace.
-
-        Args:
-            text: Input string that may contain HTML.
-
-        Returns:
-            The input string with HTML tags removed, HTML entities unescaped,
-            and runs of whitespace collapsed to single spaces and trimmed.
-        """
-        # Remove HTML tags
-        clean_text: str = re.sub(
-            pattern=r"<[^>]+>",
-            repl="",
-            string=text,
-        )
-        # Unescape HTML entities
-        clean_text = html.unescape(clean_text)
-        # Normalize whitespace
-        clean_text = re.sub(
-            pattern=r"\s+",
-            repl=" ",
-            string=clean_text,
-        ).strip()
-        return clean_text
+        """Convert HTML content to Markdown for better readability and processing."""
+        return markdownify(text)
 
 
 class ZammadAnswer(BaseModel):
