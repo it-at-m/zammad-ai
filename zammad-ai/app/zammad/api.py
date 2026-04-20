@@ -144,7 +144,7 @@ class ZammadAPIClient(BaseZammadClient):
                 createdAt=response["assets"]["KnowledgeBaseAnswer"][str(answer_id)]["created_at"],
                 updatedAt=response["assets"]["KnowledgeBaseAnswer"][str(answer_id)]["updated_at"],
             )
-        except (KeyError, TypeError) as e:
+        except (KeyError, TypeError, ValidationError) as e:
             raise ZammadPayloadParseError(f"Invalid knowledge base answer payload for id {answer_id}") from e
 
     @override

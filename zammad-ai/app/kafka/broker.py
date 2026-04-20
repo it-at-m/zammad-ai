@@ -101,7 +101,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
                 )
                 logger.error(
-                    f"Kafka event decision={decision.decision} reason={decision.reason} error_class={decision.error_class} ticket={parsed_event.ticket if parsed_event is not None else event.get('ticket', 'unknown')} caught_class={type(e).__name__}",
+                    f"Kafka event decision={decision.decision} reason={decision.reason} error_class={decision.error_class} ticket={parsed_event.ticket} caught_class={type(e).__name__}",
                     exc_info=True,
                 )
                 if decision.decision == AckDecision.NACK_RETRY:

@@ -232,5 +232,3 @@ class ZammadConnectionError(ZammadRetryableError):
     authentication problems, or server errors.
 
     """
-
-    retryable = True
