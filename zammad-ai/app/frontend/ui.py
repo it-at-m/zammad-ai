@@ -54,6 +54,11 @@ def _empty_result(message: str = "") -> FrontendResult:
     return message, "", "", "", "", ""
 
 
+def _ui_error_result(message: str) -> FrontendResult:
+    """Create a consistent frontend result for user-visible processing errors."""
+    return "Fehler", "", message, "", "", ""
+
+
 def _format_documents(documents: list[dict[str, Any]]) -> str:
     """Format a list of document dictionaries into a single newline-separated string.
 
@@ -140,39 +145,45 @@ async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float
         category = triage_result.get("category", {}).get("name", "Unbekannt")
         action = str(triage_result.get("action", {}).get("name", "Unbekannt"))
         reasoning = triage_result.get("reasoning", "")
-        confidence = float(triage_result.get("confidence", 0.0))
+        try:
+            confidence = float(triage_result.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
 
         answer = ""
         answer_documents = ""
 
-        try:
-            answer_data = await _request_json(
-                client=client,
-                url=answer_url,
-                payload={
-                    "text": text,
-                    "category": category,
-                    "session_id": session_id,
-                    "action": action,
-                },
-            )
-            answer = str(answer_data.get("response", ""))
-            documents = answer_data.get("documents", [])
-            if isinstance(documents, list):
-                answer_documents = _format_documents(documents=documents)
-        except httpx.ConnectError:
-            gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
-            answer = "Fehler bei Answer-Generierung"
-        except httpx.TimeoutException:
-            gr.Warning("Timeout: Answer-Generierung dauert zu lange")
-            answer = "Fehler bei Answer-Generierung"
-        except httpx.HTTPStatusError as e:
-            gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
-            answer = "Fehler bei Answer-Generierung"
-        except Exception as e:
-            logger.error("Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__})
-            gr.Warning("Fehler bei Answer-Generierung")
-            answer = "Fehler bei Answer-Generierung"
+        if action == "AI_Answer":
+            try:
+                answer_data = await _request_json(
+                    client=client,
+                    url=answer_url,
+                    payload={
+                        "text": text,
+                        "category": category,
+                        "session_id": session_id,
+                        "action": action,
+                    },
+                )
+                answer = str(answer_data.get("response", ""))
+                documents = answer_data.get("documents", [])
+                if isinstance(documents, list):
+                    answer_documents = _format_documents(documents=documents)
+            except httpx.ConnectError:
+                gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
+                answer = "Fehler bei Answer-Generierung"
+            except httpx.TimeoutException:
+                gr.Warning("Timeout: Answer-Generierung dauert zu lange")
+                answer = "Fehler bei Answer-Generierung"
+            except httpx.HTTPStatusError as e:
+                gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
+                answer = "Fehler bei Answer-Generierung"
+            except Exception as e:
+                logger.error(
+                    "Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__}
+                )
+                gr.Warning("Fehler bei Answer-Generierung")
+                answer = "Fehler bei Answer-Generierung"
 
     confidence_str = f"{confidence * 100:.1f}%"
     return category, action, reasoning, confidence_str, answer, answer_documents
@@ -192,11 +203,20 @@ def build_frontend(frontend_settings: FrontendSettings) -> gr.Blocks:
                 (category, action, reasoning, confidence, answer, answer_documents).
                 `confidence` is formatted as a percentage string with one decimal place (e.g., "87.5%").
         """
-        return await process_ticket(
-            text=text,
-            api_base_url=API_BASE_URL,
-            timeout_seconds=frontend_settings.request_timeout_seconds,
-        )
+        try:
+            return await process_ticket(
+                text=text,
+                api_base_url=API_BASE_URL,
+                timeout_seconds=frontend_settings.request_timeout_seconds,
+            )
+        except gr.Error as e:
+            message = str(e) if str(e) else "Fehler bei der Verarbeitung"
+            return _ui_error_result(message=message)
+        except Exception as e:
+            logger.error(
+                "Unexpected frontend processing error.", exc_info=True, extra={"exception_type": type(e).__name__}
+            )
+            return _ui_error_result(message="Unerwarteter Fehler bei der Verarbeitung")
 
     with gr.Blocks(title="Zammad AI Triage Demo") as frontend:
         gr.Markdown("# Zammad AI Triage & Answer Demo")
