@@ -29,7 +29,7 @@ dependencies = [
     "openai==2.32.0",
     "pandas==3.0.2",
     "pydantic-settings==2.14.0",
-    "pydantic==2.12.3",
+    "pydantic==2.13.3",
     "python-dotenv==1.2.2",
     "stamina==26.1.0",
     "truststore==0.10.4",
