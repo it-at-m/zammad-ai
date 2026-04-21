@@ -12,7 +12,7 @@ It provides:
 
 ## Prerequisites
 
-- Python 3.14.3
+- Python 3.14.4
 - uv
 - Optional for local full stack: Docker + Docker Compose
 

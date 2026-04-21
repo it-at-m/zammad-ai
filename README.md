@@ -56,7 +56,7 @@ We keep this component separate from Zammad core to:
 
 ## Requirements
 
-- Python 3.14.3
+- Python 3.14.4
 - [uv](https://github.com/astral-sh/uv)
 - Docker and Docker Compose
 
