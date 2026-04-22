@@ -4,11 +4,12 @@ from abc import ABC, abstractmethod
 from base64 import b64encode
 from typing import Any
 
-from feedparser import FeedParserDict
 from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout, TimeoutException
 from stamina import retry_context
 
-from app.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase, ZammadTicket
+from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.settings.zammad import BaseZammadSettings
+from app.utils.document_parser import DocumentParser
 from app.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.base")
@@ -83,59 +84,14 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
-    async def parse_rss_feed(self) -> FeedParserDict | None:
-        """Parse RSS feed from the knowledge base.
-
-        Returns:
-            feedparser.FeedParserDict: Parsed feed object or None if parsing fails.
-
-        """
-        ...
-
-    @abstractmethod
-    async def kb_info(self) -> ZammadKnowledgebase | None:
-        """Fetch knowledge base information.
-
-        Returns:
-            ZammadKnowledgebase | None: Knowledge base information or None if fetching fails.
-
-        """
-        ...
-
-    @abstractmethod
-    async def get_kb_answer_by_id(self, answer_id: int) -> KnowledgeBaseAnswer | None:
-        """Fetch a knowledge base answer by its ID.
-
-        Args:
-            answer_id: The ID of the answer to fetch.
-
-        Returns:
-            KnowledgeBaseAnswer | None: Knowledge base answer data or None if not found.
-
-        """
-        ...
-
-    @abstractmethod
-    async def fetch_kb_attachment_data(self, id: int) -> str | None:
-        """Fetch an attachment and return its content as text or base64.
-
-        Args:
-            id: ID of the attachment to fetch.
-
-        Returns:
-            str: Decoded text for text/* or JSON; base64 string for binary content.
-            None: On error or if id is falsy.
-
-        """
-        ...
-
-    @abstractmethod
-    async def fetch_ticket_attachment_data(self, ticket_id: int, attachment_id: int, article_id: int) -> str | None:
+    async def fetch_ticket_attachment_data(
+        self, ticket_id: int, article_id: int, attachment: ArticleAttachment
+    ) -> str | None:
         """Fetch an attachment and return its content as text or base64.
 
         Args:
             ticket_id: ID of the ticket to which the attachment belongs.
-            attachment_id: ID of the attachment to fetch.
+            attachment: The attachment object containing ID and metadata.
             article_id: ID of the article to which the attachment belongs.
 
         Returns:
@@ -144,31 +100,17 @@ class BaseZammadClient(ABC):
         """
         ...
 
-    @abstractmethod
-    async def check_if_answer_exists(self, answer_id: int) -> bool:
-        """Check if a knowledge base answer still exists.
-
-        Args:
-            answer_id: The ID of the answer to check.
-
-        Returns:
-            bool: True if answer exists, False if deleted/not found.
-
-        """
-        ...
-
-    def __init__(self, base_url: str, timeout: int, max_retries: int, proxy_url: str | None = None) -> None:
+    def __init__(self, base_url: str, settings: BaseZammadSettings) -> None:
         """Initialize Zammad client with HTTP configuration.
 
         Args:
-            base_url: Base URL for the Zammad instance
-            timeout: HTTP timeout in seconds
-            max_retries: Maximum number of retry attempts
-            proxy_url: Optional HTTP proxy URL
+            base_url: Base URL for the Zammad instance.
+            settings: ZammadSettings object containing configuration values.
 
         """
-        self.client = AsyncClient(base_url=base_url, timeout=timeout, proxy=proxy_url)
-        self.http_attempts = max_retries + 1
+        self.client = AsyncClient(base_url=base_url, timeout=settings.timeout, proxy=settings.http_proxy_url)
+        self.http_attempts = settings.max_retries + 1
+        self.document_parser = DocumentParser(settings.document_parsing)
 
     async def _request(self, method: str, url: str, **kwargs) -> Any:
         """Make HTTP request and return JSON or text."""
@@ -207,6 +149,7 @@ class BaseZammadClient(ABC):
     async def close(self) -> None:
         """Close HTTP client."""
         await self.client.aclose()
+        await self.document_parser.close()
 
 
 class ZammadConnectionError(Exception):

@@ -182,24 +182,14 @@ def fetch_attachments_for_answer(
 
     for attachment in answer.attachments:
         data: str | None = None
-
-        if attachment.contentType.startswith("text/"):
-            try:
-                data: str | None = client.fetch_kb_attachment_data(attachment.id)
-            except Exception:
-                logger.error(
-                    "Failed to fetch attachment %d for answer ID %d",
-                    attachment.id,
-                    answer.id,
-                    exc_info=True,
-                )
-        else:
-            logger.info(
-                "Skipping non-text attachment %s (ID: %d) for answer ID %d due to unsupported content type: %s",
-                attachment.filename,
+        try:
+            data: str | None = client.fetch_kb_attachment_data(attachment)
+        except Exception:
+            logger.error(
+                "Failed to fetch attachment %d for answer ID %d",
                 attachment.id,
                 answer.id,
-                attachment.contentType,
+                exc_info=True,
             )
 
         attachment_data[attachment.id] = (attachment.filename, data)

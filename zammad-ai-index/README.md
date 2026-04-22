@@ -25,7 +25,7 @@ The indexing run follows a fixed, fault-tolerant workflow:
 
 ## Prerequisites
 
-- Python 3.13
+- Python 3.14.4
 - uv as dependency and execution tool
 - reachable Qdrant server
 - valid Zammad credentials
@@ -58,10 +58,39 @@ At minimum, configure:
 - Qdrant connection settings
 - index parameters such as batch size
 
+Recommended: keep secrets in `.env` and non-secret defaults in `config.yaml`.
+
 ## Run
 
 ```bash
-uv run main.py
+uv run python main.py
+```
+
+## Configuration
+
+Settings source priority (highest first):
+
+1. CLI arguments
+2. Environment variables (`ZAMMAD_AI_` prefix)
+3. `.env`
+4. `config.yaml`
+
+Typical environment variables:
+
+- `ZAMMAD_AI_GENAI__API_KEY`
+- `ZAMMAD_AI_QDRANT__API_KEY`
+- `ZAMMAD_AI_ZAMMAD__AUTH_TOKEN` or `ZAMMAD_AI_ZAMMAD__OAUTH2_CLIENT_SECRET`
+
+## Modes
+
+- `development`: local-friendly logging and behavior
+- `production`: production defaults
+- `unittest`: test mode
+
+Set mode via config or env, for example:
+
+```bash
+export ZAMMAD_AI_MODE=development
 ```
 
 ## Runtime Behavior
@@ -69,3 +98,13 @@ uv run main.py
 - The run exits without writing if no new or updated documents are detected.
 - If snapshot creation fails, the run is aborted before any update is written.
 - Connections to Zammad and Qdrant are closed in a controlled way at the end of the run.
+
+## Testing and Quality
+
+Run from this service directory (`zammad-ai-index/`):
+
+```bash
+uv run ruff check .
+uv run ruff format .
+uv run ty check
+```

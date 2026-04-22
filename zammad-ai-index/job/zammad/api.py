@@ -2,7 +2,7 @@
 
 from base64 import b64decode
 from logging import Logger
-from typing import override
+from typing import Any, override
 
 from feedparser import FeedParserDict
 from feedparser import parse as feedparser
@@ -18,7 +18,7 @@ from job.utils.logging import getLogger
 
 from .base import BaseZammadClient, ZammadConnectionError
 
-logger: Logger = getLogger("zammad-ai.zammad.api")
+logger: Logger = getLogger("zammad-ai-index.zammad.api")
 
 
 class ZammadAPIClient(BaseZammadClient):
@@ -33,11 +33,9 @@ class ZammadAPIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.base_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
-
+        self.settings: ZammadAPISettings = settings
         # Set auth header
         self.client.headers.update({"Authorization": f"Token token={settings.auth_token.get_secret_value()}"})
 
@@ -117,8 +115,40 @@ class ZammadAPIClient(BaseZammadClient):
         )
 
     @override
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
-        return self._request("GET", f"/api/v1/attachments/{id}", parse_json=False) if id else None
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
+        data: Any | None = (
+            self._request("GET", f"/api/v1/attachments/{attachment.id}", parse_json=False)
+            if attachment.id is not None
+            else None
+        )
+        if data is None:
+            return None
+        content_type = attachment.contentType.split(";", 1)[0].lower()
+        if not self.document_parser.mode == "off":
+            try:
+                if isinstance(data, str):
+                    if content_type.startswith("text/") or content_type == "application/json":
+                        document_data = data.encode("utf-8")
+                    else:
+                        document_data = b64decode(data)
+                else:
+                    document_data = data
+                return self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for knowledge base answer",
+                    exc_info=True,
+                )
+        # If mode is off or any error occurs, return original data for text/* or JSON; otherwise None
+        if content_type.startswith("text/") or content_type == "application/json":
+            return data
+        else:
+            logger.warning(
+                "Attachment %d has unsupported content type '%s'. Skipping content retrieval.",
+                attachment.id,
+                attachment.contentType,
+            )
+            return None
 
     @override
     def check_if_answer_exists(self, answer_id: int) -> bool:

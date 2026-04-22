@@ -1,21 +1,17 @@
 """Zammad API client using token-based authentication."""
 
 from base64 import b64decode
+from binascii import Error as BinasciiError
 from logging import Logger
-from typing import override
+from typing import Any, override
 
-from feedparser import FeedParserDict
-from feedparser import parse as feedparser
-from httpx import HTTPStatusError
 from pydantic import TypeAdapter
 
 from app.models.zammad import (
-    KnowledgeBaseAnswer,
-    KnowledgeBaseAttachment,
+    ArticleAttachment,
     ZammadAnswer,
     ZammadAPISharedDraft,
     ZammadArticle,
-    ZammadKnowledgebase,
     ZammadSharedDraftArticle,
     ZammadTagAdd,
     ZammadTicket,
@@ -23,7 +19,7 @@ from app.models.zammad import (
 from app.settings.zammad import ZammadAPISettings
 from app.utils.logging import getLogger
 
-from .base import BaseZammadClient, ZammadConnectionError
+from .base import BaseZammadClient
 
 logger: Logger = getLogger("zammad-ai.zammad.api")
 
@@ -40,11 +36,9 @@ class ZammadAPIClient(BaseZammadClient):
         """
         super().__init__(
             base_url=settings.base_url.encoded_string(),
-            timeout=settings.timeout,
-            max_retries=settings.max_retries,
-            proxy_url=settings.http_proxy_url,
+            settings=settings,
         )
-
+        self.settings: ZammadAPISettings = settings
         # Set auth header
         self.client.headers.update({"Authorization": f"Bearer {settings.auth_token.get_secret_value()}"})
 
@@ -76,89 +70,33 @@ class ZammadAPIClient(BaseZammadClient):
         logger.info(f"Added tag '{tag}' to ticket {ticket_id}")
 
     @override
-    async def kb_info(self) -> ZammadKnowledgebase | None:
-        if not self.kb_id:
-            logger.warning("Knowledge base ID is not set. Cannot fetch KB info.")
-            return None
-
-        data = await self._request("GET", f"/api/v1/knowledge_bases/{self.kb_id}")
-        return (
-            ZammadKnowledgebase(
-                id=data["id"],
-                active=data["active"],
-                createdAt=data["created_at"],
-                updatedAt=data["updated_at"],
-                categoryIds=data.get("category_ids", []),
-                answerIds=data.get("answer_ids", []),
-            )
-            if data
+    async def fetch_ticket_attachment_data(
+        self,
+        ticket_id: int,
+        article_id: int,
+        attachment: ArticleAttachment,
+    ) -> str | None:
+        data: Any | None = (
+            await self._request("GET", f"/api/v1/ticket_attachment/{ticket_id}/{article_id}/{attachment.id}")
+            if ticket_id is not None and attachment.id is not None and article_id is not None
             else None
         )
-
-    @override
-    async def parse_rss_feed(self) -> FeedParserDict | None:
-        if not self.kb_id or not self.rss_token:
-            logger.warning("Knowledge base ID or RSS feed token is not set. Cannot parse RSS feed.")
+        if not data:
             return None
-
-        url = f"/api/v1/knowledge_bases/{self.kb_id}/de-de/feed"
-        text = await self._request("GET", url, params={"token": self.rss_token.get_secret_value()})
-
-        try:
-            decoded_text = b64decode(text).decode("utf-8")
-            return feedparser(decoded_text)
-        except Exception:
-            return feedparser(text)
-
-    @override
-    async def get_kb_answer_by_id(self, answer_id: int) -> KnowledgeBaseAnswer | None:
-        if not self.kb_id:
-            logger.warning("Knowledge base ID is not set. Cannot fetch KB answer.")
-            return None
-
-        try:
-            response = await self._request(
-                "GET",
-                f"/api/v1/knowledge_bases/{self.kb_id}/answers/{answer_id}?include_contents={answer_id}",
-            )
-        except ZammadConnectionError as e:
-            cause: BaseException | None = e.__cause__
-            if isinstance(cause, HTTPStatusError) and cause.response.status_code == 404:
-                logger.info(f"Knowledge base answer {answer_id} not found (404).")
-                return None
-            # Auth failures, 5xx, timeouts — re-raise so callers and check_if_answer_exists
-            # don't silently treat them as "answer deleted"
-            raise
-
-        return KnowledgeBaseAnswer(
-            id=response["id"],
-            answerTitle=response["assets"]["KnowledgeBaseAnswerTranslation"][str(answer_id)]["title"],
-            answerBody=response["assets"]["KnowledgeBaseAnswerTranslationContent"][str(answer_id)]["body"],
-            attachments=[
-                KnowledgeBaseAttachment(
-                    id=attachment["id"],
-                    filename=attachment["filename"],
-                    contentType=attachment["preferences"]["Content-Type"],
+        if not self.settings.document_parsing.mode == "off":
+            try:
+                if isinstance(data, str):
+                    try:
+                        document_data = b64decode(data, validate=True)
+                    except (BinasciiError, ValueError):
+                        document_data = data.encode("utf-8")
+                else:
+                    document_data = data
+                return await self.document_parser.parse(document_data, attachment)
+            except Exception:
+                logger.error(
+                    f"Error processing attachment {attachment.id} for ticket {ticket_id}, article {article_id}",
+                    exc_info=True,
                 )
-                for attachment in response["assets"]["KnowledgeBaseAnswer"][str(answer_id)]["attachments"]
-            ],
-            createdAt=response["assets"]["KnowledgeBaseAnswer"][str(answer_id)]["created_at"],
-            updatedAt=response["assets"]["KnowledgeBaseAnswer"][str(answer_id)]["updated_at"],
-        )
-
-    @override
-    async def fetch_kb_attachment_data(self, id: int) -> str | None:
-        return await self._request("GET", f"/api/v1/attachments/{id}") if id else None
-
-    @override
-    async def fetch_ticket_attachment_data(self, ticket_id: int, attachment_id: int, article_id: int) -> str | None:
-        return (
-            await self._request("GET", f"/api/v1/ticket_attachment/{ticket_id}/{article_id}/{attachment_id}")
-            if ticket_id and attachment_id and article_id
-            else None
-        )
-
-    @override
-    async def check_if_answer_exists(self, answer_id: int) -> bool:
-        answer: KnowledgeBaseAnswer | None = await self.get_kb_answer_by_id(answer_id)
-        return answer is not None
+        # If mode is off or any error occurs, return original data
+        return data

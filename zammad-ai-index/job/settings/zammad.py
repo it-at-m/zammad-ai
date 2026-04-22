@@ -3,9 +3,35 @@
 from abc import ABC
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr
+from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, model_validator
 
 ZammadEndpoint = Literal["api", "eai"]
+
+
+class DocumentParsingSettings(BaseModel):
+    """Settings for parsing documents retrieved from Zammad."""
+
+    mode: Literal["off", "local", "remote"] = Field(
+        description="Mode for parsing documents retrieved from Zammad. 'off' to disable parsing, 'local' to use local Kreuzberg, 'remote' to send documents to a remote Kreuzberg API.",
+        default="off",
+    )
+
+    url: HttpUrl | None = Field(
+        description="Optional URL to send documents for remote parsing. If not set, local parsing will be used.",
+        default=None,
+    )
+
+    http_proxy_url: str | None = Field(
+        description="Optional proxy URL for routing requests to remote Kreuzberg API through a proxy server.",
+        default=None,
+    )
+
+    @model_validator(mode="after")
+    def validate_url(self) -> "DocumentParsingSettings":
+        """Validate that URL is set when mode is 'remote'."""
+        if self.mode == "remote" and not self.url:
+            raise ValueError("URL must be set for remote parsing mode.")
+        return self
 
 
 class BaseZammadSettings(BaseModel, ABC):
@@ -31,6 +57,11 @@ class BaseZammadSettings(BaseModel, ABC):
     base_url: HttpUrl = Field(
         description="Zammad base URL",
         examples=["https://my-zammad.example.com"],
+    )
+
+    document_parsing: DocumentParsingSettings = Field(
+        description="Settings for parsing documents retrieved from Zammad.",
+        default_factory=DocumentParsingSettings,
     )
 
 
