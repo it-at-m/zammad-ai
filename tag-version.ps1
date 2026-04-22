@@ -391,7 +391,6 @@ if ($pushConfirmation -eq "y") {
     Write-Host "Pushing tag to origin..." -ForegroundColor Cyan
 
     # Capture error output
-    $errorOutput = $null
     $pushResult = $null
 
     try {

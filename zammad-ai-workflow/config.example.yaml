@@ -25,9 +25,12 @@ usecase:
 # ============================================================================
 genai:
   sdk: "openai" # Currently only "openai" is supported
+  max_retries: 3 # Maximum number of retries for API calls
   chat_model: "gpt-4.1-mini" # Model for chat completions
-  embeddings_model: "text-embedding-3-large" # Model for embeddings
+  triage_model: null # Optional override for triage model (fallback: chat_model)
+  answer_model: null # Optional override for answer model (fallback: chat_model)
   judge_model: "gpt-4.1-mini" # Model for triage judgment (can be same as chat_model)
+  embedding_model: "text-embedding-3-large" # Model for embeddings
   # Migration note:
   # - old `temperature` -> use `triage_temperature` / `answer_temperature` / `judge_temperature`
   # - old `reasoning_effort` -> use `triage_reasoning_effort` / `answer_reasoning_effort` / `judge_reasoning_effort`
@@ -36,9 +39,8 @@ genai:
   answer_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   judge_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   triage_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
-  answer_temperature: 0.7 # Temperature for chat completions (0.7 = more creative, less deterministic)
+  answer_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
-  max_retries: 3 # Maximum number of retries for API calls
 
 # Note: OpenAI SDK requires environment variables (set in .env):
 #   OPENAI_API_KEY (required)
@@ -61,6 +63,10 @@ zammad:
   timeout: 30 # Request timeout in seconds
   max_retries: 3 # Maximum number of retries for API calls
   http_proxy_url: null # Optional: proxy URL for routing requests (e.g. "http://proxy.example.com:8080")
+  # auth_token is required for type "api" and should be provided via:
+  # ZAMMAD_AI_ZAMMAD__AUTH_TOKEN
+  # rss_feed_token is optional and should be provided via:
+  # ZAMMAD_AI_ZAMMAD__RSS_FEED_TOKEN
   document_parsing:
     mode: "off" # Options: "off" (no document parsing), "local" (parse documents locally), "remote" (use external document parsing service)
     url: null # Optional: URL of document parsing service (e.g. "https://kreuzberg.example.com"), if null, document parsing is used locally without calling an external service
@@ -82,20 +88,35 @@ zammad:
 # Set secret in .env file:
 #   ZAMMAD_AI_ANSWER__QDRANT__API_KEY (required)
 answer:
+  agent_prompt:
+    type: "file" # Options: "string", "file", "langfuse"
+    prompt: "prompts/answer/agent.prompt.md"
   qdrant:
     url: "https://your-qdrant-instance.example.com"
     api_key: null # Set in .env: ZAMMAD_AI_ANSWER__QDRANT__API_KEY
     collection_name: "your-collection-name"
     vector_name: null # Optional: name of the vector field in Qdrant
     vector_dimension: 1024
-    timeout: 10 # Request timeout in seconds
+    timeout: 60 # Request timeout in seconds
     retrieval_num_documents: 5 # Number of documents to retrieve from Qdrant for context
   dlf:
     url: "https://your-dlf-backend.example.com/api"
     filter_categories: [] # Optional: list of categories to filter DLF results, or null for no filtering
-    timeout: 10 # Request timeout in seconds
-    max_retries: 3 # Maximum number of retries for DLF API calls
-  agent_prompt: "" # Optional: custom prompt for the agent (overrides default prompt if set)
+    timeout: 60 # Request timeout in seconds
+    max_retries: 2 # Maximum number of retries for DLF API calls
+  judge:
+    enabled: false # Set to true to enable LLM judge checks after answer generation
+    thresholds:
+      context_relevance: 0.75
+      groundedness: 0.75
+      answer_relevance: 0.75
+    prompt:
+      type: "file" # Options: "string", "file", "langfuse"
+      prompt: "prompts/judge/judge.prompt.md"
+    repair_prompt:
+      type: "file" # Options: "string", "file", "langfuse"
+      prompt: "prompts/answer/repair.prompt.md"
+    max_repairs: 0
   ai_answer_disclaimer: "" # Optional: disclaimer text for AI-generated answers
 
 # ============================================================================
@@ -151,15 +172,15 @@ triage:
   no_category_name: "Cannot Categorize"
 
   # Action setup: Define automated actions
-  # type options: "AI_Answer" (generate AI response), "No_Action" (do nothing), "Standard_Answer" (post predefined answer)
-  # answer: optional static answer text (used with type "Standard_Answer")
+  # type options: "AIAnswer" (generate AI response), "NoAction" (do nothing), "StaticAnswer" (post predefined answer)
+  # answer: optional static answer text (used with type "StaticAnswer")
   actions:
     - name: "no_action"
       description: "No automated action"
-      type: "No_Action"
+      type: "NoAction"
     - name: "ai_response"
       description: "Generate AI-powered response"
-      type: "AI_Answer"
+      type: "AIAnswer"
 
   # Fallback action name when no rule matches (must match an action name above)
   no_action_name: "no_action"
@@ -189,28 +210,30 @@ triage:
   # Prompt configuration
   prompts:
     type: "langfuse" # Options: "langfuse", "string", or "file"
-
-    categories:
-      label: "latest" # Prompt version label
-      name: "your-usecase/categories" # Prompt name in Langfuse
-    examples:
-      label: "latest"
-      name: "your-usecase/examples"
-    role:
-      label: "latest"
-      name: "your-usecase/role"
+    prompt_map:
+      categories:
+        label: "latest" # Prompt version label
+        name: "your-usecase/categories" # Prompt name in Langfuse
+      examples:
+        label: "latest"
+        name: "your-usecase/examples"
+      role:
+        label: "latest"
+        name: "your-usecase/role"
 
     # For type: "string" (inline prompts), use:
     # type: "string"
-    # categories: "Your inline categories prompt..."
-    # examples: "Your inline examples prompt..."
-    # role: "Your inline role prompt..."
+    # prompt_map:
+    #   categories: "Your inline categories prompt..."
+    #   examples: "Your inline examples prompt..."
+    #   role: "Your inline role prompt..."
 
     # For type: "file" (prompts from files), use:
     # type: "file"
-    # categories: "/path/to/categories.txt"
-    # examples: "/path/to/examples.txt"
-    # role: "/path/to/role.txt"
+    # prompt_map:
+    #   categories: "/path/to/categories.txt"
+    #   examples: "/path/to/examples.txt"
+    #   role: "/path/to/role.txt"
 
 # ============================================================================
 # Optional Settings
@@ -220,8 +243,8 @@ triage:
 frontend:
   enabled: false # Set to true to mount Gradio UI at '/'
   request_timeout_seconds: 30.0 # API timeout for frontend requests
-  auth_username: "admin" # Basic auth username for local development
-  auth_password: "change-me" # Basic auth password for local development
+  auth_username: "demo" # Basic auth username for local development
+  auth_password: "zammad-ai" # Basic auth password for local development
 
 # Logging configuration
 log:
