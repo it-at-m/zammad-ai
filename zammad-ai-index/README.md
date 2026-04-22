@@ -25,7 +25,7 @@ The indexing run follows a fixed, fault-tolerant workflow:
 
 ## Prerequisites
 
-- Python 3.14.3
+- Python 3.14.4
 - uv as dependency and execution tool
 - reachable Qdrant server
 - valid Zammad credentials
