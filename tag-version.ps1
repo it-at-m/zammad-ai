@@ -15,13 +15,13 @@ $serviceConfig = @{
     workflow = @{
         Prefix       = "zammad-ai-workflow-"
         PackageUrl   = "https://github.com/it-at-m/zammad-ai/pkgs/container/zammad-ai%2Fzammad-ai-workflow"
-        ManifestPath = [System.IO.Path]::Combine("zammad-ai", "pyproject.toml")
+        ManifestPath = [System.IO.Path]::Combine("zammad-ai-workflow", "pyproject.toml")
         ManifestType = "pyproject"
     }
     indexer  = @{
-        Prefix       = "zammad-ai-indexer-"
-        PackageUrl   = "https://github.com/it-at-m/zammad-ai/pkgs/container/zammad-ai%2Fzammad-ai-indexer"
-        ManifestPath = [System.IO.Path]::Combine("zammad-ai-indexer", "pyproject.toml")
+        Prefix       = "zammad-ai-index-"
+        PackageUrl   = "https://github.com/it-at-m/zammad-ai/pkgs/container/zammad-ai%2Fzammad-ai-index"
+        ManifestPath = [System.IO.Path]::Combine("zammad-ai-index", "pyproject.toml")
         ManifestType = "pyproject"
     }
 }

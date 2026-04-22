@@ -13,7 +13,6 @@ inject_into_ssl()
 from logging import Logger
 
 import uvicorn
-
 from app.api.backend import backend
 from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import get_log_config, getLogger
