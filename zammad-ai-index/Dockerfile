@@ -40,7 +40,7 @@ LABEL org.opencontainers.image.authors='Landeshauptstadt München <opensource@mu
     org.opencontainers.image.source='https://github.com/it-at-m/zammad-ai' \
     org.opencontainers.image.licenses='MIT' \
     org.opencontainers.image.title='zammad-ai' \
-    org.opencontainers.image.description="Index-Pipeline for zammad-ai, responsible for creating and maintaining the vector database used by zammad-ai" \
+    org.opencontainers.image.description="Index-Pipeline for zammad-ai, responsible for creating and maintaining the vector database used by zammad-ai"
 
 # Give permissions to all so random UID can write
 # This should be compatible with OpenShift and plain K8s
