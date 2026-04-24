@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from app.action.service import ActionService, get_action_service
 from app.answer.service import AnswerService, get_answer_service
-from app.errors import AckDecision, KafkaPayloadError, classify_exception
+from app.errors import AckDecision, ExceptionDecision, KafkaPayloadError, classify_exception
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.settings import ZammadAISettings
@@ -24,6 +24,25 @@ from app.utils.status import track_activity
 from .security import setup_security
 
 logger: Logger = getLogger(name="zammad-ai.kafka.broker")
+
+
+def _handle_processing_exception(
+    error: Exception,
+    ticket: object,
+    category_wrong_retry_confidence_threshold: float,
+) -> None:
+    """Classify processing errors and raise the corresponding ack/nack signal."""
+    decision: ExceptionDecision = classify_exception(
+        error,
+        category_wrong_retry_confidence_threshold=category_wrong_retry_confidence_threshold,
+    )
+    logger.error(
+        f"Kafka event decision={decision.decision} reason={decision.reason} error_class={decision.error_class} ticket={ticket} caught_class={type(error).__name__}",
+        exc_info=True,
+    )
+    if decision.decision == AckDecision.NACK_RETRY:
+        raise NackMessage()
+    raise AckMessage()
 
 
 def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
@@ -73,40 +92,42 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         """
         async with track_activity():
             logger.debug(f"Received event: {event}")
+
+            # Parse and validate the incoming event
             try:
                 parsed_event: Event = Event.model_validate(event)
             except ValidationError as e:
                 logger.error("Failed to parse Kafka event payload", exc_info=True)
                 raise AckMessage() from e
 
+            # Skip events with unsupported request types
+            if parsed_event.request_type not in settings.valid_request_types:
+                logger.info(f"Skipping event with request type: {parsed_event.request_type}")
+                raise AckMessage()
+
+            # Extract ticket ID
             try:
-                # Filter here because information from body is needed
-                if parsed_event.request_type not in settings.valid_request_types:
-                    logger.info(f"Skipping event with request type: {parsed_event.request_type}")
-                    raise AckMessage()
+                ticket_id: int = int(parsed_event.ticket)
+            except (TypeError, ValueError):
+                _handle_processing_exception(
+                    KafkaPayloadError("Invalid ticket id in Kafka payload"),
+                    ticket=parsed_event.ticket,
+                    category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+                )
 
-                try:
-                    ticket_id: int = int(parsed_event.ticket)
-                except (TypeError, ValueError) as e:
-                    raise KafkaPayloadError("Invalid ticket id in Kafka payload") from e
-
+            # Perform triage and execute corresponding actions
+            try:
                 result: TriageResult = await triage_service.perform_triage(id=ticket_id)
                 logger.debug(
                     f"Triage result for ticket {ticket_id}: category: {result.category.name}, action: {result.action.name}"
                 )
                 await action_service.execute_action(ticket_id=ticket_id, triage=result)
             except Exception as e:
-                decision = classify_exception(
+                _handle_processing_exception(
                     e,
+                    ticket=parsed_event.ticket,
                     category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
                 )
-                logger.error(
-                    f"Kafka event decision={decision.decision} reason={decision.reason} error_class={decision.error_class} ticket={parsed_event.ticket} caught_class={type(e).__name__}",
-                    exc_info=True,
-                )
-                if decision.decision == AckDecision.NACK_RETRY:
-                    raise NackMessage()
-                raise AckMessage()
             raise AckMessage()
 
     return router, event_handler
