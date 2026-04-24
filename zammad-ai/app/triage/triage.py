@@ -22,7 +22,7 @@ from app.models.triage import (
     ProcessingIdResponse,
     TriageResult,
 )
-from app.models.zammad import ZammadTicket
+from app.models.zammad import ArticleAttachment, ZammadTicket
 from app.settings import ZammadAISettings
 from app.settings.triage import (
     Action,
@@ -185,8 +185,24 @@ class TriageService:
                     extracted_values=None,
                 )
 
-            # Step 3: Extract customer message and generate session ID for Langfuse
+            # Step 3: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
+            attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
+            for attachment in attachments:
+                data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
+                    ticket_id=id,
+                    article_id=ticket.articles[0].id,
+                    attachment=attachment,
+                )
+                if not data:
+                    logger.warning(
+                        f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+                    )
+                    continue
+                customer_message += (
+                    f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
+                )
+
             session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 
             # Step 4: Predict category using LLM

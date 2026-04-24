@@ -2,7 +2,8 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from markdownify import markdownify
+from pydantic import BaseModel, Field, field_validator
 
 
 class ZammadKnowledgebase(BaseModel):
@@ -67,3 +68,9 @@ class KnowledgeBaseAnswer(BaseModel):
         description="List of attachments associated with the answer",
         default_factory=list,
     )
+
+    @field_validator("answerBody", mode="after")
+    @classmethod
+    def strip_html(cls, text: str) -> str:
+        """Convert HTML content to Markdown for better readability and processing."""
+        return markdownify(text)

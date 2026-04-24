@@ -8,10 +8,12 @@ from feedparser import FeedParserDict
 from httpx import Client, ConnectError, HTTPStatusError, ReadTimeout, TimeoutException
 from stamina import retry_context
 
-from job.models.zammad import KnowledgeBaseAnswer, ZammadKnowledgebase
+from job.models.zammad import KnowledgeBaseAnswer, KnowledgeBaseAttachment, ZammadKnowledgebase
+from job.settings.zammad import BaseZammadSettings
+from job.utils.document_parser import DocumentParser
 from job.utils.logging import getLogger
 
-logger = getLogger("zammad-ai.base")
+logger = getLogger("zammad-ai-index.base")
 
 
 class BaseZammadClient(ABC):
@@ -51,11 +53,11 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
-    def fetch_kb_attachment_data(self, id: int) -> str | None:
+    def fetch_kb_attachment_data(self, attachment: KnowledgeBaseAttachment) -> str | None:
         """Fetch an attachment and return its content as text or base64.
 
         Args:
-            id: ID of the attachment to fetch.
+            attachment: The attachment object to fetch.
 
         Returns:
             str: Decoded text for text/* or JSON; base64 string for binary content.
@@ -77,18 +79,17 @@ class BaseZammadClient(ABC):
         """
         ...
 
-    def __init__(self, base_url: str, timeout: int, max_retries: int, proxy_url: str | None = None) -> None:
+    def __init__(self, base_url: str, settings: BaseZammadSettings) -> None:
         """Initialize Zammad client with HTTP configuration.
 
         Args:
             base_url: Base URL for the Zammad instance
-            timeout: HTTP timeout in seconds
-            max_retries: Maximum number of retry attempts
-            proxy_url: Optional HTTP proxy URL
+            settings: Zammad client settings
 
         """
-        self.client = Client(base_url=base_url, timeout=timeout, proxy=proxy_url)
-        self.http_attempts = max_retries + 1
+        self.client = Client(base_url=base_url, timeout=settings.timeout, proxy=settings.http_proxy_url)
+        self.http_attempts = settings.max_retries + 1
+        self.document_parser = DocumentParser(settings.document_parsing)
 
     def _request(self, method: str, url: str, *, parse_json: bool = True, **kwargs) -> Any:
         """Make HTTP request and return JSON, text, or base64.
@@ -140,6 +141,7 @@ class BaseZammadClient(ABC):
     def close(self) -> None:
         """Close HTTP client."""
         self.client.close()
+        self.document_parser.close()
 
 
 class ZammadConnectionError(Exception):
