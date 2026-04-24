@@ -135,8 +135,10 @@ class BaseZammadClient(ABC):
                         response.raise_for_status()
                     except HTTPStatusError as e:
                         status_code = e.response.status_code
-                        if should_retry and (status_code == 429 or status_code >= 500):
-                            raise TimeoutException("Transient HTTP error") from e
+                        if status_code == 429 or status_code >= 500:
+                            if should_retry:
+                                raise TimeoutException("Transient HTTP error") from e
+                            raise ZammadRetryableError(f"Transient Zammad HTTP error for {method} {url}") from e
                         if status_code in (401, 403):
                             raise ZammadAuthError(f"Zammad auth failed for {method} {url}") from e
                         if status_code == 404:
@@ -158,6 +160,9 @@ class BaseZammadClient(ABC):
             raise ZammadRetryableError(
                 f"Failed to execute {method} {url} after {self.http_attempts} attempts.",
             ) from e
+        except ZammadRetryableError:
+            logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
+            raise
         except (TicketNotFoundError, ZammadAuthError, ZammadPayloadParseError, ZammadPermanentError):
             logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
             raise
