@@ -282,6 +282,8 @@ class TriageService:
         except GenAIError as e:
             logger.error("GenAI categorization error", exc_info=True)
             raise TriageError("Categorization failed due to GenAI error", retryable=e.retryable) from e
+        except AppTriageError:
+            raise
         except Exception as e:
             logger.error("Unexpected error during categorization", exc_info=True)
             raise TriageError("Categorization failed due to unexpected error", retryable=True) from e

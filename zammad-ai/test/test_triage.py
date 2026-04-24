@@ -212,18 +212,17 @@ async def test_perform_triage_returns_defaults_when_no_articles(patched_triage: 
 
 
 @pytest.mark.asyncio
-async def test_predict_category_falls_back_to_no_category(patched_triage: TriageService) -> None:
-    """Invalid category predictions should raise TriageError (category wrong)."""
+async def test_predict_category_raises_on_invalid_category(patched_triage: TriageService) -> None:
+    """Invalid category predictions should raise TriageCategoryWrongError."""
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="Unknown-Invalid"),
         reasoning="mismatch",
         confidence=0.42,
     )
-    with pytest.raises(TriageError, match="Categorization failed due to unexpected error") as exc_info:
+    with pytest.raises(TriageCategoryWrongError) as exc_info:
         await patched_triage.predict_category(message="some text", session_id="session-id")
 
-    assert isinstance(exc_info.value.__cause__, TriageCategoryWrongError)
-    assert exc_info.value.__cause__.confidence == 0.42
+    assert exc_info.value.confidence == 0.42
 
 
 @pytest.mark.asyncio
