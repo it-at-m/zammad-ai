@@ -9,7 +9,7 @@ from typing import Any, override
 from httpx import HTTPStatusError, RequestError
 from pydantic import TypeAdapter, ValidationError
 
-from app.errors import TicketNotFoundError, ZammadPayloadParseError
+from app.errors import ZammadPayloadParseError
 from app.models.zammad import (
     ZammadAnswer,
     ZammadArticle,

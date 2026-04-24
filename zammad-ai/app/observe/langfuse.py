@@ -74,7 +74,7 @@ class LangfuseClient:
             session_id = self.generate_session_id()
 
         return RunnableConfig(
-            callbacks=[self.langfuse_handler],  # type: ignore
+            callbacks=[self.langfuse_handler],
             metadata={
                 "langfuse_session_id": session_id,
             },
