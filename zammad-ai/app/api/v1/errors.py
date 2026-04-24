@@ -91,6 +91,6 @@ def unexpected_error_to_http() -> HTTPException:
         detail={
             "error": "InternalServerError",
             "message": "Unexpected server error",
-            "retryable": True,
+            "retryable": False,
         },
     )
