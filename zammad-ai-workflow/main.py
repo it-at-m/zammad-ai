@@ -14,8 +14,9 @@ from logging import Logger
 
 import uvicorn
 from app.api.backend import backend
-from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import get_log_config, getLogger
+
+from app.settings import ZammadAISettings, get_settings
 
 if __name__ == "__main__":
     logger: Logger = getLogger()

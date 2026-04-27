@@ -54,6 +54,8 @@ We keep this component separate from Zammad core to:
 
 ![zammad-ai Arcitecture](docs/sketch/ki_architecture.png)
 
+For the Digital Citizen Service architecture, see the [DBS Architecture documentation](https://it-at-m.github.io/dbs/architecture.html#architecture).
+
 ## Requirements
 
 - Python 3.14.4

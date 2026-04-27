@@ -4,9 +4,10 @@ from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
+from app.models.kafka import Event
 from app.models.triage import TriageResult
-from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
 from app.settings.kafka import KafkaSettings
 from app.settings.triage import (
@@ -17,8 +18,10 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings
-from fastapi.exceptions import RequestValidationError
+from faststream.exceptions import AckMessage, NackMessage
 from faststream.kafka import TestKafkaBroker
+
+from app.settings import ZammadAISettings
 
 
 def create_mock_settings() -> ZammadAISettings:
@@ -128,6 +131,15 @@ def mock_get_answer_service(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return answer_service
 
 
+@pytest.fixture(autouse=True)
+def mock_get_action_service(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Patch Kafka router action lookup to return a mocked action service."""
+    action_service = MagicMock()
+    action_service.execute_action = AsyncMock()
+    monkeypatch.setattr("app.kafka.broker.get_action_service", lambda *args, **kwargs: action_service)
+    return action_service
+
+
 @pytest.mark.asyncio
 async def test_event_handler_valid_message(
     kafka_message_factory: Callable[..., dict[str, str]],
@@ -140,7 +152,7 @@ async def test_event_handler_valid_message(
     Publishes a message to the router's broker configured with a single allowed request type and asserts that `perform_triage` is called once with `id=3720`.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
@@ -157,7 +169,7 @@ async def test_event_handler_with_requestType_alias(
 ) -> None:
     """Test event handler accepts requestType as alias for anliegenart."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory()
         # Use alias instead of anliegenart
@@ -181,7 +193,7 @@ async def test_event_handler_invalid_request_type(
     When a message contains an invalid request type, the handler logs an informational "Skipping" message and does not invoke the triage service.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="invalid_request_type")
         message["anliegenart"] = "invalid_request_type"
@@ -198,17 +210,18 @@ async def test_event_handler_invalid_message_format(
     mock_get_triage: None,
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """Test event handler with malformed message that fails Pydantic validation."""
+    """Malformed payloads should be treated as permanent payload errors and dropped."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         # Missing required fields
         invalid_message: dict = {
             "action": "created",
             # Missing required fields: ticket, status, statusId, request_type
         }
-        with pytest.raises(expected_exception=RequestValidationError):
-            await test_broker.publish(topic=settings.kafka.topic, message=invalid_message)
+        await test_broker.publish(topic=settings.kafka.topic, message=invalid_message)
+
+    mock_triage.perform_triage.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -223,7 +236,7 @@ async def test_event_handler_with_multiple_valid_request_types(
     Publishes a Kafka message with `anliegenart` set to "general support" while the settings allow ["technischer Bürgersupport", "general support", "other"], and asserts `perform_triage` was called with `id=3720`.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport", "general support", "other"])
-    router, event_handler = build_router(settings=settings)
+    router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="general support")
         await test_broker.publish(topic=settings.kafka.topic, message=message)
@@ -249,3 +262,97 @@ async def test_event_handler_case_sensitive_request_type(
         assert "Skipping event" in caplog.text
         # Verify triage was NOT called for case mismatch
         mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_nack_on_retryable_typed_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retryable typed triage errors must produce NACK to trigger broker retry."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(NackMessage):
+        await event_handler(event=event)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_ack_on_permanent_typed_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Permanent typed triage errors must be dropped with ACK."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageError("permanent triage", retryable=False)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_ack_on_invalid_ticket_id(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Non-numeric ticket ids are treated as payload errors and dropped."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, event_handler = build_router(settings=settings)
+
+    event = Event.model_validate(kafka_message_factory(ticket="bad-ticket-id"))
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_category_wrong_retries_below_threshold(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Category wrong errors with low confidence are retried."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.triage.category_wrong_retry_confidence_threshold = 0.7
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageCategoryWrongError(
+        "category mismatch",
+        confidence=0.2,
+    )
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(NackMessage):
+        await event_handler(event=event)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_category_wrong_drops_above_threshold(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Category wrong errors with high confidence are dropped."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.triage.category_wrong_retry_confidence_threshold = 0.7
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageCategoryWrongError(
+        "category mismatch",
+        confidence=0.9,
+    )
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)

@@ -2,8 +2,9 @@
 
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadTicket
-from app.settings import GenAISettings
 from app.settings.zammad import ZammadAPISettings
+
+from app.settings import GenAISettings
 
 
 class FakeZammadConnectionError(Exception):

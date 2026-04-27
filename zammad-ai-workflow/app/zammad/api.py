@@ -5,8 +5,9 @@ from binascii import Error as BinasciiError
 from logging import Logger
 from typing import Any, override
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
+from app.errors import ZammadPayloadParseError
 from app.models.zammad import (
     ArticleAttachment,
     ZammadAnswer,
@@ -48,7 +49,10 @@ class ZammadAPIClient(BaseZammadClient):
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
-        articles = TypeAdapter(list[ZammadArticle]).validate_python(data)
+        try:
+            articles = TypeAdapter(list[ZammadArticle]).validate_python(data)
+        except ValidationError as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
         return ZammadTicket(id=id, articles=articles)
 
     @override
@@ -83,6 +87,7 @@ class ZammadAPIClient(BaseZammadClient):
         )
         if not data:
             return None
+
         if not self.settings.document_parsing.mode == "off":
             try:
                 if isinstance(data, str):
@@ -100,3 +105,4 @@ class ZammadAPIClient(BaseZammadClient):
                 )
         # If mode is off or any error occurs, return original data
         return data
+

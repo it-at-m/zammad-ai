@@ -4,12 +4,13 @@ from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
 import pytest
-from app.answer import service as answer_module
 from app.answer.judge import JudgeResult
 from app.answer.service import AnswerService
 from app.models.answer import DocumentDict, StructuredAgentResponse
-from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConfig
+
+from app.answer import service as answer_module
+from app.settings import ZammadAISettings
 
 
 class FakePromptTemplate:

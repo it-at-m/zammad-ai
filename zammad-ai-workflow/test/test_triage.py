@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from app.errors import TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings.triage import (
@@ -15,10 +16,10 @@ from app.settings.triage import (
     LangfuseTriagePrompts,
     TriageSettings,
 )
-from app.triage import triage as triage_module
 from app.triage.triage import TriageError, TriageService
 from pydantic import ValidationError
 
+from app.triage import triage as triage_module
 from test.fakes import FakeGenAIHandler, FakeZammadClient, FakeZammadConnectionError
 
 
@@ -211,17 +212,17 @@ async def test_perform_triage_returns_defaults_when_no_articles(patched_triage: 
 
 
 @pytest.mark.asyncio
-async def test_predict_category_falls_back_to_no_category(patched_triage: TriageService) -> None:
-    """Invalid category predictions should be replaced with no_category."""
+async def test_predict_category_raises_on_invalid_category(patched_triage: TriageService) -> None:
+    """Invalid category predictions should raise TriageCategoryWrongError."""
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="Unknown-Invalid"),
         reasoning="mismatch",
         confidence=0.42,
     )
-    result = await patched_triage.predict_category(message="some text", session_id="session-id")
-    assert result.category == patched_triage.no_category
-    assert "no_category" in result.reasoning
-    assert result.confidence == 1.0
+    with pytest.raises(TriageCategoryWrongError) as exc_info:
+        await patched_triage.predict_category(message="some text", session_id="session-id")
+
+    assert exc_info.value.confidence == 0.42
 
 
 @pytest.mark.asyncio
@@ -416,7 +417,7 @@ async def test_predict_category_handles_genai_exception(patched_triage: TriageSe
 
 @pytest.mark.asyncio
 async def test_perform_triage_handles_processing_triage_error(patched_triage: TriageService) -> None:
-    """A TriageError during processing in perform_triage is caught and returns a fallback result."""
+    """A TriageError during processing in perform_triage must bubble to caller."""
 
     async def _boom(*_args, **_kwargs):
         """Always raises a TriageError to simulate a processing failure.
@@ -435,12 +436,8 @@ async def test_perform_triage_handles_processing_triage_error(patched_triage: Tr
     fake_zammad_client = cast(FakeZammadClient, patched_triage.zammad_client)
     fake_zammad_client.ticket = ZammadTicket(id=123, articles=[ZammadArticle(id=1, ticket_id=123, text="Help me")])
 
-    result = await patched_triage.perform_triage(id=123)
-
-    assert result.category == patched_triage.no_category
-    assert result.action == patched_triage.no_action
-    assert "Error during triage processing" in result.reasoning
-    assert result.confidence == 1.0
+    with pytest.raises(TriageError, match="Simulated processing error"):
+        await patched_triage.perform_triage(id=123)
 
 
 # ---------------------------------------------------------------------------

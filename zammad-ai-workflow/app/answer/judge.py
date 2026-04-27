@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnableConfig, RunnableSequence
 from langchain_openai import ChatOpenAI
 from langfuse import propagate_attributes
 
+from app.errors import TriageJudgeError, classify_provider_error
 from app.models.answer import JudgeResult
 from app.observe import LangfuseClient
 from app.settings.genai import GenAISettings
@@ -77,7 +78,8 @@ class JudgeHandler:
             return response
         except Exception as e:
             logger.error("Error during judge invocation", exc_info=True)
-            raise RuntimeError("Judge operation failed") from e
+            provider_error = classify_provider_error(e)
+            raise TriageJudgeError("Judge operation failed", retryable=provider_error.retryable) from e
 
     def _build_runnable_config(self, session_id: str | None) -> tuple[str, RunnableConfig]:
         """Build a runnable config, creating a session id when needed."""
