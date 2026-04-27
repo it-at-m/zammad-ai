@@ -76,6 +76,7 @@ class TriageService:
             ValueError: If the configured triage prompts type or Zammad settings type is unsupported.
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
+        self.settings: ZammadAISettings = settings
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -188,20 +189,24 @@ class TriageService:
             # Step 3: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
-            for attachment in attachments:
-                data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
-                    ticket_id=id,
-                    article_id=ticket.articles[0].id,
-                    attachment=attachment,
-                )
-                if not data:
-                    logger.warning(
-                        f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+            if self.settings.zammad.document_parsing.mode == "off":
+                logger.debug("Document parsing is turned off, skipping attachment content.")
+                customer_message += f"\n\n{len(attachments)} attachments were included."
+            else:
+                for attachment in attachments:
+                    data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
+                        ticket_id=id,
+                        article_id=ticket.articles[0].id,
+                        attachment=attachment,
                     )
-                    continue
-                customer_message += (
-                    f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
-                )
+                    if not data:
+                        logger.warning(
+                            f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+                        )
+                        continue
+                    customer_message += (
+                        f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
+                    )
 
             session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 
