@@ -6,6 +6,7 @@ from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout, Respo
 from pydantic import BaseModel, Field
 from stamina import retry_context
 
+from app.errors import DLFPermanentError, DLFRetryableError
 from app.settings.answer import DLFSettings
 from app.utils.logging import getLogger
 
@@ -47,7 +48,7 @@ class SearchDLFInput(BaseModel):
     )
 
 
-class DLFError(Exception):
+class DLFError(DLFPermanentError):
     """Custom exception for errors related to DLF operations."""
 
     ...
@@ -108,6 +109,12 @@ class DLFClient:
                     # Parse response
                     dlf_response: DLFAPIResponse = DLFAPIResponse.model_validate(response.json())
                     return dlf_response.documents
+        except (ConnectError, TimeoutException, ReadTimeout) as e:
+            self.logger.error(
+                msg="Failed to retrieve documents from DLF.",
+                exc_info=True,
+            )
+            raise DLFRetryableError("Failed to retrieve documents from DLF.") from e
         except Exception as e:
             self.logger.error(
                 msg="Failed to retrieve documents from DLF.",

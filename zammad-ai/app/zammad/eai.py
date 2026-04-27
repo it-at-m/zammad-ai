@@ -7,8 +7,9 @@ from logging import Logger
 from typing import Any, override
 
 from httpx import HTTPStatusError, RequestError
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
+from app.errors import ZammadPayloadParseError
 from app.models.zammad import (
     ZammadAnswer,
     ZammadArticle,
@@ -100,7 +101,10 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/tickets/byId/{id}")
-        articles = TypeAdapter(list[ZammadArticle]).validate_python(data["articles"])
+        try:
+            articles = TypeAdapter(list[ZammadArticle]).validate_python(data["articles"])
+        except (KeyError, TypeError, ValidationError) as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
         return ZammadTicket(id=id, articles=articles)
 
     @override

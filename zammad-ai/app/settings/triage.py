@@ -20,6 +20,12 @@ class TriageSettings(BaseModel):
         description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references.",
         discriminator="type",
     )
+    category_wrong_retry_confidence_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Retry triage category mismatches only when confidence is below this threshold.",
+    )
 
     _required_prompt_keys: ClassVar[set[str]] = {"categories", "examples", "role"}
 

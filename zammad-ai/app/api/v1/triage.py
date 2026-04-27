@@ -1,11 +1,17 @@
 """Version 1 triage endpoint for Zammad AI."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.errors import AppError
 from app.models.api_v1 import TriageInput, TriageOutput
 from app.models.triage import CategorizationResult, TriageResult
 from app.settings.triage import Action, Category
 from app.triage.triage import TriageService
+from app.utils.logging import getLogger
+
+from .errors import app_error_to_http, unexpected_error_to_http
+
+logger = getLogger("zammad-ai.api.v1.triage")
 
 
 def triage_dependency(request: Request) -> TriageService:
@@ -41,27 +47,35 @@ async def triage(
     """
     import uuid
 
-    if not input.session_id:
-        input.session_id = str(uuid.uuid4())
-    text: str = input.text
+    try:
+        if not input.session_id:
+            input.session_id = str(uuid.uuid4())
+        text: str = input.text
 
-    # Get categorization result
-    categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)
+        # Get categorization result
+        categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)
 
-    # Determine action based on category
+        # Determine action based on category
+        action_name: str = await service.get_action_name(categorization, message=text, session_id=input.session_id)
+        action: Action = service._name_to_action(action_name)
+        final_category: Category = categorization.category if categorization.category else service.no_category
 
-    action_name: str = await service.get_action_name(categorization, message=text, session_id=input.session_id)
-    action: Action = service._name_to_action(action_name)
-    final_category: Category = categorization.category if categorization.category else service.no_category
-
-    return TriageOutput(
-        triage=TriageResult(
-            user_text=text,
-            category=final_category,
-            action=action,
-            reasoning=categorization.reasoning,
-            confidence=categorization.confidence,
-            extracted_values=categorization.extracted_values,
-        ),
-        session_id=input.session_id,
-    )
+        return TriageOutput(
+            triage=TriageResult(
+                user_text=text,
+                category=final_category,
+                action=action,
+                reasoning=categorization.reasoning,
+                confidence=categorization.confidence,
+                extracted_values=categorization.extracted_values,
+            ),
+            session_id=input.session_id,
+        )
+    except AppError as e:
+        logger.warning(f"Triage request failed with application error type {type(e).__name__}.", exc_info=True)
+        raise app_error_to_http(e) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Triage request failed with unexpected error.", exc_info=True)
+        raise unexpected_error_to_http() from e
