@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, PositiveInt, model_validator
 from pydantic_settings import (
     BaseSettings,
     CliSettingsSource,
@@ -113,6 +113,11 @@ class ZammadAISettings(BaseSettings):
     valid_request_types: list[str] = Field(
         min_length=1,
         description="List of valid request types to be processed",
+    )
+
+    max_user_text_length: PositiveInt = Field(
+        description="Maximum allowed user text length for triage/answer processing.",
+        default=2000,
     )
 
     langfuse_enabled: bool = Field(

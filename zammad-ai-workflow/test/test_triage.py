@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from app.errors import TriageCategoryWrongError
+from app.errors import InputTooLongError, TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings.triage import (
@@ -368,6 +368,15 @@ async def test_predict_category_empty_message(patched_triage: TriageService) -> 
     assert result.category == patched_triage.no_category
     assert "Empty message cannot be categorized" in result.reasoning
     assert result.confidence == 1.0
+
+
+@pytest.mark.asyncio
+async def test_predict_category_rejects_too_long_message(patched_triage: TriageService) -> None:
+    """Messages longer than the configured limit should be rejected."""
+    patched_triage.max_user_text_length = 4096
+
+    with pytest.raises(InputTooLongError, match="configured maximum length"):
+        await patched_triage.predict_category(message="x" * 4097, session_id="session-id")
 
 
 # ---------------------------------------------------------------------------

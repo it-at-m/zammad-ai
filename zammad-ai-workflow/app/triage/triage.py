@@ -9,6 +9,7 @@ from truststore import inject_into_ssl
 
 from app.errors import (
     GenAIError,
+    InputTooLongError,
     TicketNotFoundError,
     TriageCategoryWrongError,
     ZammadRetryableError,
@@ -87,6 +88,7 @@ class TriageService:
         self.no_action: Action = self.actions_by_name[settings.triage.no_action_name]
 
         self.action_rules: list[ActionRule] = settings.triage.action_rules
+        self.max_user_text_length: int = settings.max_user_text_length
 
         # Prompt setup based on the type of prompts provided in settings
         self.prompts: dict[TriagePrompt, str]
@@ -252,6 +254,14 @@ class TriageService:
                 reasoning="Empty message cannot be categorized",
                 confidence=1.0,
                 extracted_values=None,
+            )
+
+        if len(message) > self.max_user_text_length:
+            logger.warning(
+                f"Message too long for categorization: length={len(message)} exceeds max_user_text_length={self.max_user_text_length}"
+            )
+            raise InputTooLongError(
+                f"Input text exceeds the configured maximum length of {self.max_user_text_length} characters"
             )
 
         try:

@@ -3,7 +3,7 @@
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
-from app.errors import ActionExecutionError, AppError
+from app.errors import ActionExecutionError, AppError, InputTooLongError
 from app.models.answer import DocumentDict, StructuredAgentResponse
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
@@ -84,6 +84,14 @@ class ActionService:
         session_id: str | None,
     ) -> tuple[str | None, list[DocumentDict], bool]:
         """Resolve an answer payload for the given action and category."""
+        if len(user_text) > self.settings.max_user_text_length:
+            self.logger.warning(
+                f"Message too long for answer generation: length={len(user_text)} exceeds max_user_text_length={self.settings.max_user_text_length}"
+            )
+            raise InputTooLongError(
+                f"Input text exceeds the configured maximum length of {self.settings.max_user_text_length} characters"
+            )
+
         action: Action | None = next(
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )
