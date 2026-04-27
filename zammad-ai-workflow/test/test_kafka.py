@@ -4,9 +4,6 @@ from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from faststream.exceptions import AckMessage, NackMessage
-from faststream.kafka import TestKafkaBroker
-
 from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
 from app.models.kafka import Event
@@ -22,6 +19,8 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings
+from faststream.exceptions import AckMessage, NackMessage
+from faststream.kafka import TestKafkaBroker
 
 
 def create_mock_settings() -> ZammadAISettings:

@@ -13,6 +13,9 @@ hero:
     - theme: secondary
       text: Components
       link: /components
+    - theme: secondary
+      text: Release Workflow
+      link: /release-workflow
 
 features:
   - title: Integrate Easily

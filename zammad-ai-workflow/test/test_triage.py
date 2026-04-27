@@ -5,8 +5,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from pydantic import ValidationError
-
 from app.errors import TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadArticle, ZammadTicket
@@ -20,6 +18,8 @@ from app.settings.triage import (
 )
 from app.triage import triage as triage_module
 from app.triage.triage import TriageError, TriageService
+from pydantic import ValidationError
+
 from test.fakes import FakeGenAIHandler, FakeZammadClient, FakeZammadConnectionError
 
 

@@ -35,16 +35,18 @@ LABEL org.opencontainers.image.authors='Landeshauptstadt München <opensource@mu
     org.opencontainers.image.created="$IMAGE_CREATED" \
     org.opencontainers.image.revision="$IMAGE_REVISION" \
     org.opencontainers.image.version="$IMAGE_VERSION" \
-    org.opencontainers.image.url='https://github.com/it-at-m/riski/pkgs/container/riski-extractor' \
-    org.opencontainers.image.documentation='https://github.com/it-at-m/riski/README.md' \
-    org.opencontainers.image.source='https://github.com/it-at-m/riski' \
+    org.opencontainers.image.url='https://github.com/it-at-m/zammad-ai' \
+    org.opencontainers.image.documentation='https://github.com/it-at-m/zammad-ai/blob/main/README.md' \
+    org.opencontainers.image.source='https://github.com/it-at-m/zammad-ai' \
     org.opencontainers.image.licenses='MIT' \
-    org.opencontainers.image.title='riski-extractor' \
-    org.opencontainers.image.description="Python application for extracting information from munich's political information system RIS"
+    org.opencontainers.image.title='zammad-ai' \
+    org.opencontainers.image.description="GenAI-powered agent for Zammad"
 
 # Give permissions to all so random UID can write
 # This should be compatible with OpenShift and plain K8s
 RUN chown -R root:0 /app && chmod -R g=u /app
+
+USER 1001:0
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"

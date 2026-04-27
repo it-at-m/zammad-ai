@@ -94,7 +94,7 @@ zammad:
   rss_feed_token: null
   # Optional locale for RSS feed (e.g., 'de-de').
   rss_feed_locale: de-de
-  # Document parsing configuration for attachments. Set `enabled` to true to enable.
+  # Document parsing configuration for attachments. Use `mode`: off | local | remote.
   document_parsing:
     mode: "off" # Options: "off" (no document parsing), "local" (parse documents locally), "remote" (use external document parsing service)
     url: null # Optional: URL of document parsing service (e.g. "https://kreuzberg.example.com"), if null, document parsing is used locally without calling an external service
