@@ -7,10 +7,10 @@ Zammad-AI uses semantic release to create version tags, and each tag push immedi
 - `zammad-ai-workflow` and `zammad-ai-index` both use `python-semantic-release` on `main`.
 - Conventional commits drive the version bump.
 - Examples:
-	- `fix:` usually creates a patch release, for example `fix: handle missing ticket metadata`.
-	- `feat:` usually creates a minor release, for example `feat: add reply draft preview`.
-	- `feat!:` or a commit with a `BREAKING CHANGE:` footer usually creates a major release.
-	- Non-user-facing changes like `docs:` or `chore:` typically do not create a release by themselves.
+  - `fix:` usually creates a patch release, for example `fix: handle missing ticket metadata`.
+  - `feat:` usually creates a minor release, for example `feat: add reply draft preview`.
+  - `feat!:` or a commit with a `BREAKING CHANGE:` footer usually creates a major release.
+  - Non-user-facing changes like `docs:` or `chore:` typically do not create a release by themselves.
 - A release commit updates the package version and creates a tag in the form `zammad-ai-workflow-{version}` or `zammad-ai-index-{version}`.
 - The release job only runs when the corresponding service directory changes, which keeps version bumps scoped to that service.
 
