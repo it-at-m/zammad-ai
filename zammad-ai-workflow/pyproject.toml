@@ -54,3 +54,15 @@ add-bounds = "exact"
 pythonpath = ["."]
 testpaths = ["test"]
 asyncio_mode = "auto"
+
+[tool.semantic_release]
+tag_format = "zammad-ai-workflow-{version}"
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = false

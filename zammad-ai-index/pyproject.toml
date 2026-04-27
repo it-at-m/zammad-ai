@@ -21,3 +21,15 @@ dependencies = [
 [dependency-groups]
 dev = ["pre-commit==4.5.1", "ruff==0.15.11", "ty==0.0.32"]
 kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.9.2"]
+
+[tool.semantic_release]
+tag_format = "zammad-ai-index-{version}"
+version_toml = ["pyproject.toml:project.version"]
+commit_parser = "conventional"
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = false
