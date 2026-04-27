@@ -10,11 +10,6 @@ from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
-from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
-from fastapi.testclient import TestClient
-from faststream.kafka import TestKafkaBroker
-from pydantic import HttpUrl, SecretStr
-
 from app.settings import (
     AnswerSettings,
     GenAISettings,
@@ -23,6 +18,11 @@ from app.settings import (
     ZammadAISettings,
     ZammadAPISettings,
 )
+from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
+from fastapi.testclient import TestClient
+from faststream.kafka import TestKafkaBroker
+from pydantic import HttpUrl, SecretStr
+
 from test.fakes import FakeGenAIHandler, FakeLangfuseClient, FakeZammadClient
 
 _TEST_ENV_DEFAULTS: dict[str, str] = {

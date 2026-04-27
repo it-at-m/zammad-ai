@@ -16,10 +16,10 @@ from app.settings.triage import (
     LangfuseTriagePrompts,
     TriageSettings,
 )
+from app.triage import triage as triage_module
 from app.triage.triage import TriageError, TriageService
 from pydantic import ValidationError
 
-from app.triage import triage as triage_module
 from test.fakes import FakeGenAIHandler, FakeZammadClient, FakeZammadConnectionError
 
 

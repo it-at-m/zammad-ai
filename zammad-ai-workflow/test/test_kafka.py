@@ -8,6 +8,7 @@ from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
 from app.models.kafka import Event
 from app.models.triage import TriageResult
+from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
 from app.settings.kafka import KafkaSettings
 from app.settings.triage import (
@@ -20,8 +21,6 @@ from app.settings.triage import (
 from app.settings.zammad import ZammadAPISettings
 from faststream.exceptions import AckMessage, NackMessage
 from faststream.kafka import TestKafkaBroker
-
-from app.settings import ZammadAISettings
 
 
 def create_mock_settings() -> ZammadAISettings:
