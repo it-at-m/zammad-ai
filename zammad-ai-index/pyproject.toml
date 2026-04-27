@@ -13,7 +13,7 @@ dependencies = [
     "markdownify==1.2.2",
     "pydantic==2.12.3",
     "pydantic-settings==2.14.0",
-    "socksio>=1.0.0",
+    "socksio==1.0.0",
     "stamina==26.1.0",
     "truststore==0.10.4",
 ]
