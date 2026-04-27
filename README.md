@@ -39,7 +39,7 @@ We keep this component separate from Zammad core to:
 - Consumes ticket events from Kafka and exposes REST endpoints for triage and answer generation.
 - Uses Qdrant for knowledge base retrieval.
 - Integrates with Langfuse for tracing and prompt management.
-- Supports Zammad API and EAI based integrations.
+- Supports Zammad API and [EAI](https://github.com/it-at-m/dbs/tree/main/ticketing-eai) based integrations.
 - Exposes Prometheus metrics and an optional Gradio frontend for local workflows.
 
 ## Repository layout
