@@ -26,13 +26,14 @@ def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch)
 
 def test_max_user_text_length_defaults_to_2000() -> None:
     """Settings should default max user text length to 2000 characters."""
+    get_settings.cache_clear()
     settings = get_settings()
     assert settings.max_user_text_length == 2000
 
 
-@pytest.mark.parametrize("value", [4096, 8192])
+@pytest.mark.parametrize("value", [1, 100, 4096])
 def test_max_user_text_length_accepts_supported_values(monkeypatch, value: int) -> None:
-    """Settings should accept configured max length values 4096 and 8192."""
+    """Settings should accept configured PositiveInt."""
     monkeypatch.setenv("ZAMMAD_AI_MAX_USER_TEXT_LENGTH", str(value))
     get_settings.cache_clear()
     try:
@@ -44,9 +45,10 @@ def test_max_user_text_length_accepts_supported_values(monkeypatch, value: int) 
     assert settings.max_user_text_length == value
 
 
-def test_max_user_text_length_rejects_unsupported_values(monkeypatch) -> None:
-    """Settings should reject unsupported max length values."""
-    monkeypatch.setenv("ZAMMAD_AI_MAX_USER_TEXT_LENGTH", "0")
+@pytest.mark.parametrize("value", [0, -1, -100])
+def test_max_user_text_length_rejects_non_positive_int(monkeypatch, value: int) -> None:
+    """Settings should reject non positive values."""
+    monkeypatch.setenv("ZAMMAD_AI_MAX_USER_TEXT_LENGTH", str(value))
     get_settings.cache_clear()
     try:
         with pytest.raises(ValidationError):
