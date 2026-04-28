@@ -87,6 +87,7 @@ class TriageService:
         self.no_action: Action = self.actions_by_name[settings.triage.no_action_name]
 
         self.action_rules: list[ActionRule] = settings.triage.action_rules
+        self.max_user_text_length: int = settings.max_user_text_length
 
         # Prompt setup based on the type of prompts provided in settings
         self.prompts: dict[TriagePrompt, str]
@@ -187,6 +188,12 @@ class TriageService:
 
             # Step 3: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
+            if len(customer_message) > self.max_user_text_length:
+                logger.warning(
+                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+                )
+                customer_message: str = customer_message[: self.max_user_text_length]
+
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
             for attachment in attachments:
                 data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
@@ -199,9 +206,24 @@ class TriageService:
                         f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
                     )
                     continue
-                customer_message += (
+
+                attachment_message = (
                     f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
                 )
+                remaining_length: int = self.max_user_text_length - len(customer_message)
+                if remaining_length <= 0:
+                    logger.warning(
+                        f"Customer message for ticket {id} already reached max_user_text_length={self.max_user_text_length}; stopping attachment processing"
+                    )
+                    break
+                if len(attachment_message) > remaining_length:
+                    logger.warning(
+                        f"Truncating attachment {attachment.filename} for ticket {id} to keep customer_message within max_user_text_length={self.max_user_text_length}"
+                    )
+                    customer_message += attachment_message[:remaining_length]
+                    break
+
+                customer_message += attachment_message
 
             session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 
@@ -253,6 +275,13 @@ class TriageService:
                 confidence=1.0,
                 extracted_values=None,
             )
+
+        if len(message) > self.max_user_text_length:
+            logger.warning(
+                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+                )
+            message: str = message[: self.max_user_text_length]
+            
 
         try:
             cat_result: CategorizationResult = await self.genai_handler.categorize_ticket(
