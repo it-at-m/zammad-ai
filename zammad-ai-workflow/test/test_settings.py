@@ -25,7 +25,7 @@ def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch)
 
 
 def test_max_user_text_length_defaults_to_2000() -> None:
-    """Settings should default max user text length to 8192 characters."""
+    """Settings should default max user text length to 2000 characters."""
     settings = get_settings()
     assert settings.max_user_text_length == 2000
 
