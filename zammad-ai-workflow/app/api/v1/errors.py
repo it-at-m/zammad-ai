@@ -8,7 +8,6 @@ from app.errors import (
     GenAIContentFilterError,
     GenAIQuotaError,
     GenAITimeoutError,
-    InputTooLongError,
     TriageCategoryWrongError,
 )
 
@@ -58,16 +57,6 @@ def app_error_to_http(error: AppError) -> HTTPException:
     if isinstance(error, GenAIContentFilterError):
         return HTTPException(
             status_code=422,
-            detail={
-                "error": type(error).__name__,
-                "message": str(error),
-                "retryable": error.retryable,
-            },
-        )
-
-    if isinstance(error, InputTooLongError):
-        return HTTPException(
-            status_code=413,
             detail={
                 "error": type(error).__name__,
                 "message": str(error),

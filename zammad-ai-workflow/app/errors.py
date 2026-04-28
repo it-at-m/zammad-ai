@@ -152,12 +152,6 @@ class TriageJudgeError(TriageError):
     """Raised for judge-phase failures."""
 
 
-class InputTooLongError(AppError):
-    """Raised when incoming user text exceeds configured safety limits."""
-
-    retryable = False
-
-
 class AnswerServiceError(AppError):
     """Base exception for answer service orchestration failures."""
 

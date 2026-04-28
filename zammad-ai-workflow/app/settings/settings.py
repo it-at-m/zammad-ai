@@ -116,7 +116,7 @@ class ZammadAISettings(BaseSettings):
     )
 
     max_user_text_length: PositiveInt = Field(
-        description="Maximum allowed user text length for triage/answer processing.",
+        description="Maximum combined length of article text and attachment content for triage/answer processing. Messages exceeding this length will be truncated to this limit.",
         default=2000,
     )
 
