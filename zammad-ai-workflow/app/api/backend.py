@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from logging import Logger
 from socket import create_connection
 from time import perf_counter
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -47,15 +47,24 @@ def _parse_bootstrap_servers(broker_url: str) -> list[tuple[str, int]]:
     endpoints: list[tuple[str, int]] = []
 
     for raw_server in broker_url.split(","):
-        server = raw_server.strip()
+        server: str = raw_server.strip()
         if not server:
             continue
 
-        parsed = urlparse(f"//{server}")
+        parsed: ParseResult = urlparse(f"//{server}")
         if parsed.hostname is None:
             continue
 
-        endpoints.append((parsed.hostname, parsed.port or 9092))
+        try:
+            port: int | None = parsed.port
+        except ValueError:
+            logger.warning(
+                "Kafka bootstrap server has an invalid port; skipping entry.",
+                exc_info=True,
+            )
+            continue
+
+        endpoints.append((parsed.hostname, port or 9092))
 
     return endpoints
 
@@ -140,9 +149,20 @@ if _is_kafka_reachable(settings.kafka.broker_url):
         kafka_router, _ = build_router(settings=settings)
         logger.info("Kafka broker is reachable; Kafka router enabled.")
     except Exception:
-        logger.warning("Kafka router could not be initialized; continuing with REST-only mode.", exc_info=True)
+        if settings.kafka.silent_fallback:
+            logger.warning(
+                "Kafka router could not be initialized; continuing with REST-only mode.",
+                exc_info=True,
+            )
+        else:
+            logger.error("Kafka router could not be initialized and silent fallback is disabled.", exc_info=True)
+            raise
 else:
-    logger.warning("Kafka broker is not reachable; continuing with REST-only mode.")
+    if settings.kafka.silent_fallback:
+        logger.warning("Kafka broker is not reachable; continuing with REST-only mode.")
+    else:
+        logger.error("Kafka broker is not reachable and silent fallback is disabled.")
+        raise RuntimeError("Kafka broker is not reachable and silent fallback is disabled.")
 
 # Create FastAPI app with lifespan
 backend = FastAPI(
