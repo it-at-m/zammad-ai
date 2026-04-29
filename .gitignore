@@ -343,6 +343,9 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# VSCode settings
+.vscode/
+
 # yarn v3
 .pnp.*
 .yarn/*
@@ -362,3 +365,6 @@ qdrant_data/
 
 # config
 config.yaml
+
+# certs
+ca-bundle.crt
