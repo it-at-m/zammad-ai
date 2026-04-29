@@ -51,7 +51,8 @@ def _parse_bootstrap_servers(broker_url: str) -> list[tuple[str, int]]:
         if not server:
             continue
 
-        parsed: ParseResult = urlparse(f"//{server}")
+        normalized_server = server if "://" in server else f"//{server}"
+        parsed: ParseResult = urlparse(normalized_server)
         if parsed.hostname is None:
             continue
 
