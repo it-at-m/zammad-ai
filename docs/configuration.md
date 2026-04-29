@@ -56,6 +56,10 @@ Event streaming configuration.
 - `group_id`: Consumer group identifier.
 - `security`: mTLS security settings (optional).
 
+### Limits
+
+- `max_user_text_length`: Maximum combined length of article text and attachment content accepted during triage and answer processing. Messages exceeding this length will be truncated to this limit.
+
 ### Triage
 
 Defines the business logic for categorization and automation.

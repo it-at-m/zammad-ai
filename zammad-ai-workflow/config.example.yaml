@@ -154,6 +154,9 @@ kafka:
 valid_request_types:
   - "example_request_type"
 
+# Maximum combined article and attachment text length accepted for triage/answer processing.
+max_user_text_length: 2000
+
 # ============================================================================
 # Triage Configuration
 # ============================================================================

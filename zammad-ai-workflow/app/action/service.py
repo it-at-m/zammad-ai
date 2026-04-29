@@ -24,6 +24,7 @@ class ActionService:
         """Initialize action execution with settings, answer service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
+        self.max_user_text_length: int = settings.max_user_text_length
         # Zammad client setup
         if isinstance(self.settings.zammad, ZammadAPISettings):
             self.zammad_client = ZammadAPIClient(settings=self.settings.zammad)
@@ -84,6 +85,12 @@ class ActionService:
         session_id: str | None,
     ) -> tuple[str | None, list[DocumentDict], bool]:
         """Resolve an answer payload for the given action and category."""
+        if len(user_text) > self.settings.max_user_text_length:
+            self.logger.warning(
+                f"User text for ticket {ticket_id if ticket_id is not None else 'unknown'} exceeds max_user_text_length={self.settings.max_user_text_length} and will be truncated for answer generation"
+            )
+            user_text = user_text[: self.max_user_text_length]
+
         action: Action | None = next(
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )
