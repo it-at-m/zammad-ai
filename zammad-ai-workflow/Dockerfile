@@ -1,5 +1,5 @@
 # Smallest ubi10 image
-FROM registry.access.redhat.com/ubi10/ubi-micro:latest@sha256:f86852f349dcd2b9ebccef4c8a46fdb75ff2fef9fde8581cef1feddb706be7ba
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:b01cbd6a4c538ea1002ca774d5e09adcae15a1c095804400ea201ea5811431b1
 
 COPY --from=ghcr.io/astral-sh/uv:latest@sha256:3b7b60a81d3c57ef471703e5c83fd4aaa33abcd403596fb22ab07db85ae91347 /uv /uvx /bin/
 
