@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.action.service import ActionService
 from app.errors import AppError
+from app.models.answer import StructuredAgentResponse
 from app.models.api_v1 import AnswerInput, AnswerOutput
 from app.utils.logging import getLogger
 
@@ -44,20 +45,20 @@ async def answer(
         AnswerOutput: The agent's response and any supporting documents.
     """
     try:
-        answer, documents, auto_publish = await service.get_answer(
+        response: StructuredAgentResponse = await service.get_answer(
             ticket_id=input.ticket_id,
             category_name=input.category,
             action_name=input.action,
             user_text=input.text,
             session_id=input.session_id,
         )
-        if answer is None:
-            answer = "No answer generated based on the provided input and current configuration."
+        if response.response.strip() == "":
+            response.response = "No answer generated based on the provided input and current configuration."
 
         return AnswerOutput(
-            response=answer,
-            documents=documents,
-            auto_publish=auto_publish,
+            response=response.response,
+            documents=response.documents,
+            auto_publish=response.auto_publish,
         )
     except AppError as e:
         logger.warning(f"Answer request failed with application error type {type(e).__name__}.", exc_info=True)
