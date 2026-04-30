@@ -15,6 +15,10 @@ class TriageSettings(BaseModel):
     no_category_name: str
     actions: list["Action"]
     no_action_name: str
+    no_action_internal_note: str | None = Field(
+        default=None,
+        description="Internal note text to post when triage results in no action. When None, no internal note will be posted. Use the following variables in the note: {category} for the assigned category, {action} for the assigned action, and {reason} for the reason behind the triage decision.",
+    )
     action_rules: list["ActionRule"]
     prompts: StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts = Field(
         description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references.",
