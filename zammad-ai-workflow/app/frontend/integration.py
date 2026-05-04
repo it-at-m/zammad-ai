@@ -33,12 +33,12 @@ def mount_frontend(app: FastAPI, frontend_settings: FrontendSettings) -> FastAPI
         frontend_settings.auth_password.get_secret_value(),
     )
 
-    logger.info("Mounting frontend at /ui.")
+    logger.info("Mounting frontend at root path.")
     frontend = build_frontend(frontend_settings=frontend_settings)
 
     return gr.mount_gradio_app(
         app=app,
         blocks=frontend,
-        path="/ui",
+        path="/",
         auth=auth,
     )
