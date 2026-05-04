@@ -4,7 +4,7 @@ from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
-from app.models.answer import DocumentDict, StructuredAgentResponse
+from app.models.answer import StructuredAgentResponse
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
 from app.settings.triage import ActionTypes
@@ -35,41 +35,53 @@ class ActionService:
 
     async def execute_action(self, ticket_id: int, triage: TriageResult, session_id: str | None = None) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
-        category_name: str = triage.category.name
-        action: Action = triage.action
         try:
-            (
-                answer,
-                documents,
-                judge_auto_publish,
-            ) = await self.get_answer(  # TODO what to do with documents here? Internal Note?
-                ticket_id=ticket_id,
-                category_name=category_name,
-                action_name=action.name,
-                user_text=triage.user_text,
-                session_id=session_id,
+            category: str = triage.category.name
+            action: str = triage.action.name
+            reason: str = triage.reasoning
+
+            agent_response: StructuredAgentResponse = (
+                await self.get_answer(  # TODO what to do with documents here? Internal Note?
+                    ticket_id=ticket_id,
+                    category_name=category,
+                    action_name=action,
+                    user_text=triage.user_text,
+                    session_id=session_id,
+                )
             )
 
-            if answer is None:
-                self.logger.info(
-                    f"No answer generated for ticket {ticket_id} with category {category_name}; skipping action execution."
+            if agent_response.response.strip() == "":
+                self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
+                if not self.settings.triage.no_action_internal_note:
+                    return
+                text: str = _safe_format(
+                    template=self.settings.triage.no_action_internal_note,
+                    category=category,
+                    action=action,
+                    reason=reason,
                 )
-                return
 
-            if triage.category.auto_publish and judge_auto_publish:
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
-                    text=answer,
-                    subject=None,  # TODO
+                    text=text,
+                    subject=agent_response.subject,
+                    internal=True,  # Post an internal note if no answer is generated to document the triage result and action execution
+                )
+                self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
+            elif triage.category.auto_publish and agent_response.auto_publish:
+                await self.zammad_client.post_answer(
+                    ticket_id=ticket_id,
+                    text=agent_response.response,
+                    subject=agent_response.subject,
                     internal=False,
                 )
-                self.logger.info(f"Posted answer for ticket {ticket_id} with category {category_name}")
+                self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
             else:
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
-                    text=answer,
+                    text=agent_response.response,
                 )
-                self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category_name}")
+                self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
         except AppError:
             raise
         except Exception as e:
@@ -83,7 +95,7 @@ class ActionService:
         action_name: str,
         user_text: str,
         session_id: str | None,
-    ) -> tuple[str | None, list[DocumentDict], bool]:
+    ) -> StructuredAgentResponse:
         """Resolve an answer payload for the given action and category."""
         if len(user_text) > self.settings.max_user_text_length:
             self.logger.warning(
@@ -94,9 +106,13 @@ class ActionService:
         action: Action | None = next(
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )
-        answer: str | None = None
-        documents: list[DocumentDict] = []
-        judge_auto_publish: bool = True
+
+        response: StructuredAgentResponse = StructuredAgentResponse(
+            subject=None,
+            response="",
+            documents=[],
+            auto_publish=True,
+        )
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
@@ -104,18 +120,19 @@ class ActionService:
                 f"Action {action.name} is of type No_Action. No answer will be generated for ticket {ticket_id if ticket_id is not None else 'unknown'}."
             )
         elif action.type == ActionTypes.AIAnswer:
-            response: StructuredAgentResponse = await self.answer_service.generate_answer(
+            response = await self.answer_service.generate_answer(
                 user_text=user_text, category=category_name, session_id=session_id
             )
-            answer = response.response
-            documents = response.documents
-            judge_auto_publish = response.auto_publish
         elif action.type == ActionTypes.StaticAnswer:
             # The settings validator ensures that if the type is StaticAnswer, the answer field is not None, so we can safely access it here
-            answer = action.answer
+            if not action.answer:
+                raise ActionExecutionError(
+                    f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
+                )
+            response.response = action.answer
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
-        return answer, documents, judge_auto_publish
+        return response
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
@@ -127,6 +144,15 @@ class ActionService:
         finally:
             global _service
             _service = None
+
+
+class _SafeFormatDict(dict[str, str]):
+    def __missing__(self, key: str) -> str:
+        return f"{{{key}}}"
+
+
+def _safe_format(template: str, **values: str) -> str:
+    return template.format_map(_SafeFormatDict(values))
 
 
 _service: ActionService | None = None

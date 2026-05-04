@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from string import Formatter
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, FilePath, model_validator
@@ -15,6 +16,10 @@ class TriageSettings(BaseModel):
     no_category_name: str
     actions: list["Action"]
     no_action_name: str
+    no_action_internal_note: str | None = Field(
+        default=None,
+        description="Internal note text to post when triage results in no action. When None, no internal note will be posted. Use the following variables in the note: {category} for the assigned category, {action} for the assigned action, and {reason} for the reason behind the triage decision.",
+    )
     action_rules: list["ActionRule"]
     prompts: StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts = Field(
         description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references.",
@@ -128,6 +133,29 @@ class TriageSettings(BaseModel):
             raise ValueError("Invalid triage configuration:\n- " + "\n- ".join(errors))
 
         return self
+
+    @model_validator(mode="before")
+    def validate_no_action_internal_note_variables(cls, values: dict) -> dict:
+        """Validate that the no_action_internal_note only contains valid variables."""
+        note: str | None = values.get("no_action_internal_note")
+        if note is None:
+            return values
+
+        try:
+            list(Formatter().parse(note))
+        except ValueError as e:
+            raise ValueError(f"no_action_internal_note has invalid format syntax: {e}")
+
+        valid_variables = {"{category}", "{action}", "{reason}"}
+        used_variables = {part for part in note.split() if part.startswith("{") and part.endswith("}")}
+        invalid_variables = used_variables - valid_variables
+
+        if invalid_variables:
+            raise ValueError(
+                f"no_action_internal_note contains invalid variables: {invalid_variables}. Valid variables are: {valid_variables}"
+            )
+
+        return values
 
 
 class Category(BaseModel):

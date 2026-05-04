@@ -13,6 +13,11 @@ class DocumentDict(BaseModel):
 class StructuredAgentResponse(BaseModel):
     """Structured response returned by the answer agent."""
 
+    subject: str | None = Field(
+        description="The subject line for the answer, if applicable.",
+        default=None,
+        max_length=200,
+    )
     response: str = Field(description="The final answer to the user's question.")
     documents: list[DocumentDict] = Field(description="List of documents supporting the answer.")
     auto_publish: bool = Field(
