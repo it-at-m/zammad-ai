@@ -8,6 +8,11 @@ from pydantic import BaseModel, Field, FilePath
 class KafkaSettings(BaseModel):
     """Settings related to Kafka integration."""
 
+    silent_fallback: bool = Field(
+        description="Whether to silently fallback to REST only mode if Kafka is unreachable at startup. If false, the application will fail to start if Kafka is not reachable.",
+        default=False,
+    )
+
     broker_url: str = Field(
         description="URL of the Kafka message broker notifying ticket events.",
         default="localhost:9092",

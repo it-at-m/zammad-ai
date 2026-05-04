@@ -1,10 +1,12 @@
 """FastAPI backend wiring for Zammad AI services and routes."""
 
-import asyncio
+from asyncio import CancelledError
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from logging import Logger
+from socket import create_connection
 from time import perf_counter
+from urllib.parse import ParseResult, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -15,7 +17,6 @@ from app.action.service import ActionService, get_action_service
 from app.answer import get_answer_service
 from app.answer.service import AnswerService
 from app.frontend import mount_frontend
-from app.kafka.broker import build_router
 from app.models.api_v1 import HealthCheckResponse
 from app.settings import ZammadAISettings, get_settings
 from app.triage import get_triage_service
@@ -39,6 +40,46 @@ HTTP_REQUEST_DURATION_SECONDS = Histogram(
     documentation="HTTP request processing duration in seconds.",
     labelnames=("method", "path", "status"),
 )
+
+
+def _parse_bootstrap_servers(broker_url: str) -> list[tuple[str, int]]:
+    """Return host and port pairs parsed from a Kafka bootstrap server string."""
+    endpoints: list[tuple[str, int]] = []
+
+    for raw_server in broker_url.split(","):
+        server: str = raw_server.strip()
+        if not server:
+            continue
+
+        normalized_server = server if "://" in server else f"//{server}"
+        parsed: ParseResult = urlparse(normalized_server)
+        if parsed.hostname is None:
+            continue
+
+        try:
+            port: int | None = parsed.port
+        except ValueError:
+            logger.warning(
+                "Kafka bootstrap server has an invalid port; skipping entry.",
+                exc_info=True,
+            )
+            continue
+
+        endpoints.append((parsed.hostname, port or 9092))
+
+    return endpoints
+
+
+def _is_kafka_reachable(broker_url: str, timeout_seconds: float = 1.0) -> bool:
+    """Check whether at least one Kafka bootstrap server is reachable over TCP."""
+    for host, port in _parse_bootstrap_servers(broker_url):
+        try:
+            with create_connection((host, port), timeout=timeout_seconds):
+                return True
+        except OSError:
+            continue
+
+    return False
 
 
 @asynccontextmanager
@@ -72,6 +113,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings=settings, answer_service=app.state.answer_service
         )
 
+        if kafka_router is None:
+            set_status("ready")
+
         yield
 
         logger.info("Shutting down shared Triage instance")
@@ -80,7 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await app.state.triage_service.cleanup()
             await app.state.answer_service.cleanup()
             await app.state.action_service.cleanup()
-        except asyncio.CancelledError:
+        except CancelledError:
             logger.info("Cleanup cancelled during shutdown.")
     except Exception as e:
         logger.error(
@@ -97,7 +141,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 settings: ZammadAISettings = get_settings()
-kafka_router, _ = build_router(settings=settings)
+
+kafka_router = None
+if _is_kafka_reachable(settings.kafka.broker_url):
+    try:
+        from app.kafka.broker import build_router
+
+        kafka_router, _ = build_router(settings=settings)
+        logger.info("Kafka broker is reachable; Kafka router enabled.")
+    except Exception:
+        if settings.kafka.silent_fallback:
+            logger.warning(
+                "Kafka router could not be initialized; continuing with REST-only mode.",
+                exc_info=True,
+            )
+        else:
+            logger.error("Kafka router could not be initialized and silent fallback is disabled.", exc_info=True)
+            raise
+else:
+    if settings.kafka.silent_fallback:
+        logger.warning("Kafka broker is not reachable; continuing with REST-only mode.")
+    else:
+        logger.error("Kafka broker is not reachable and silent fallback is disabled.")
+        raise RuntimeError("Kafka broker is not reachable and silent fallback is disabled.")
 
 # Create FastAPI app with lifespan
 backend = FastAPI(
@@ -139,17 +205,14 @@ async def prometheus_http_metrics_middleware(
     return response
 
 
-# Include Kafka router (this handles broker lifecycle automatically)
-backend.include_router(
-    router=kafka_router,
-)
+if kafka_router is not None:
+    backend.include_router(router=kafka_router)
 
-
-@kafka_router.after_startup
-async def mark_ready(_app: FastAPI) -> None:
-    """Mark the application status as ready after Kafka startup completes."""
-    set_status("ready")
-    logger.info("Kafka broker connected and application startup completed.")
+    @kafka_router.after_startup
+    async def mark_ready(_app: FastAPI) -> None:
+        """Mark the application status as ready after Kafka startup completes."""
+        set_status("ready")
+        logger.info("Kafka broker connected and application startup completed.")
 
 
 # Mount API routers
