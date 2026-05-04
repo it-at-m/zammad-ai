@@ -57,7 +57,7 @@ ENV TQDM_DISABLE=1
 ENV HF_HUB_DISABLE_PROGRESS_BARS=1
 
 # Set tiktoken cache dir
-ENV TIKTOKEN_CACHE_DIR="/tiktoken_cache"
+ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
 
 # Disable python warnings
 ENV PYTHONWARNINGS="ignore"
