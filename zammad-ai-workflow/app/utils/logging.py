@@ -141,11 +141,3 @@ class MetricsFilter(logging.Filter):
     def filter(self, record):
         """Return True for non-metrics records and False for /metrics requests."""
         return record.getMessage().find("/metrics") == -1
-
-
-class HealthFilter(logging.Filter):
-    """Filter out health check endpoint access logs."""
-
-    def filter(self, record):
-        """Return True for non-health check records and False for /api/v1/health requests."""
-        return record.getMessage().find("/api/v1/health") == -1

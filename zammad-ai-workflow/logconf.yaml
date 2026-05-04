@@ -10,8 +10,6 @@ formatters:
 filters:
   metrics_filter:
     (): app.utils.logging.MetricsFilter
-  health_filter:
-    (): app.utils.logging.HealthFilter
 handlers:
   console:
     class: logging.StreamHandler
@@ -19,7 +17,6 @@ handlers:
     formatter: json
     filters:
       - metrics_filter
-      - health_filter
     stream: ext://sys.stdout
   httpx:
     class: logging.StreamHandler

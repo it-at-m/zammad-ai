@@ -226,17 +226,6 @@ backend.include_router(
     prefix="/api/v1",
 )
 
-
-@backend.get("/api/v1/health", tags=["health"])
-async def health_check() -> HealthCheckResponse:
-    """Provide a basic application health check response.
-
-    Returns:
-        HealthCheckResponse: An instance containing the application's default health status.
-    """
-    return HealthCheckResponse()
-
-
 if settings.frontend.enabled:
     backend = mount_frontend(app=backend, frontend_settings=settings.frontend)
 
@@ -251,3 +240,13 @@ if not settings.frontend.enabled and settings.mode == "development":
             RedirectResponse: A response that redirects the client to "/api/docs".
         """
         return RedirectResponse(url="/api/docs")
+
+
+@backend.get("/api/v1/health", tags=["health"])
+async def health_check() -> HealthCheckResponse:
+    """Provide a basic application health check response.
+
+    Returns:
+        HealthCheckResponse: An instance containing the application's default health status.
+    """
+    return HealthCheckResponse()
