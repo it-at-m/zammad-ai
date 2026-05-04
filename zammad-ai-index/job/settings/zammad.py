@@ -7,6 +7,104 @@ from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, model
 
 ZammadEndpoint = Literal["api", "eai"]
 
+KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
+    {
+        "pdf",
+        "docx",
+        "docm",
+        "dotx",
+        "dotm",
+        "dot",
+        "doc",
+        "pptx",
+        "pptm",
+        "ppsx",
+        "potx",
+        "potm",
+        "pot",
+        "ppt",
+        "odt",
+        "xlsx",
+        "xlsm",
+        "xlsb",
+        "xls",
+        "xlam",
+        "xla",
+        "xltx",
+        "xlt",
+        "ods",
+        "dbf",
+        "hwp",
+        "hwpx",
+        "pages",
+        "numbers",
+        "key",
+        "txt",
+        "md",
+        "markdown",
+        "html",
+        "htm",
+        "xml",
+        "svg",
+        "rst",
+        "org",
+        "rtf",
+        "djot",
+        "mdx",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "csv",
+        "tsv",
+        "eml",
+        "msg",
+        "png",
+        "jpg",
+        "jpeg",
+        "webp",
+        "bmp",
+        "tiff",
+        "tif",
+        "gif",
+        "jp2",
+        "jpx",
+        "jpm",
+        "mj2",
+        "jbig2",
+        "jb2",
+        "pnm",
+        "pbm",
+        "pgm",
+        "ppm",
+        "zip",
+        "tar",
+        "tgz",
+        "7z",
+        "gz",
+        "tex",
+        "latex",
+        "epub",
+        "bib",
+        "typst",
+        "typ",
+        "ipynb",
+        "fb2",
+        "docbook",
+        "dbk",
+        "jats",
+        "opml",
+        "ris",
+        "enw",
+        "nbib",
+        "csl",
+        "mdoc",
+        "troff",
+        "pod",
+        "dokuwiki",
+    }
+)
+
 
 class DocumentParsingSettings(BaseModel):
     """Settings for parsing documents retrieved from Zammad."""
@@ -25,6 +123,22 @@ class DocumentParsingSettings(BaseModel):
         description="Optional proxy URL for routing requests to remote Kreuzberg API through a proxy server.",
         default=None,
     )
+    document_types: list[str] = Field(
+        description="List of document types to parse from Zammad attachments, e.g. ['pdf', 'docx'].",
+        default_factory=list,
+    )
+
+    @model_validator(mode="after")
+    def validate_document_types(self) -> "DocumentParsingSettings":
+        """Validate that all specified document types are supported."""
+        if self.mode != "off" and self.document_types:
+            unsupported_types: list[str] = sorted(set(self.document_types) - KREUZBERG_DOCUMENT_TYPES)
+            if unsupported_types:
+                raise ValueError(
+                    "Unsupported document types specified: "
+                    f"{unsupported_types}. Supported types are: {sorted(KREUZBERG_DOCUMENT_TYPES)}"
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_url(self) -> "DocumentParsingSettings":

@@ -121,6 +121,9 @@ class ZammadAPIClient(BaseZammadClient):
             if attachment.id is not None
             else None
         )
+        if attachment.filename.split(".")[-1].lower() not in self.settings.document_parsing.document_types:
+            logger.debug(f"Skipping attachment {attachment.id} due to unsupported document type.")
+            return None
         if data is None:
             return None
         content_type = attachment.contentType.split(";", 1)[0].lower()

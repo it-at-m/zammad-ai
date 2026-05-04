@@ -76,6 +76,7 @@ class TriageService:
             ValueError: If the configured triage prompts type or Zammad settings type is unsupported.
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
+        self.settings: ZammadAISettings = settings
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -195,35 +196,39 @@ class TriageService:
                 customer_message: str = customer_message[: self.max_user_text_length]
 
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
-            for attachment in attachments:
-                data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
-                    ticket_id=id,
-                    article_id=ticket.articles[0].id,
-                    attachment=attachment,
-                )
-                if not data:
-                    logger.warning(
-                        f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+            if self.settings.zammad.document_parsing.mode == "off":
+                logger.debug("Document parsing is turned off, skipping attachment content.")
+                customer_message += f"\n\n{len(attachments)} attachments were included."
+            else:
+                for attachment in attachments:
+                    data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
+                        ticket_id=id,
+                        article_id=ticket.articles[0].id,
+                        attachment=attachment,
                     )
-                    continue
+                    if not data:
+                        logger.warning(
+                            f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+                        )
+                        continue
 
-                attachment_message = (
-                    f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
-                )
-                remaining_length: int = self.max_user_text_length - len(customer_message)
-                if remaining_length <= 0:
-                    logger.warning(
-                        f"Customer message for ticket {id} already reached max_user_text_length={self.max_user_text_length}; stopping attachment processing"
+                    attachment_message = (
+                        f"\n\nAttachment: {attachment.filename}\nContent:\n{data}\nEnd of {attachment.filename}.\n"
                     )
-                    break
-                if len(attachment_message) > remaining_length:
-                    logger.warning(
-                        f"Truncating attachment {attachment.filename} for ticket {id} to keep customer_message within max_user_text_length={self.max_user_text_length}"
-                    )
-                    customer_message += attachment_message[:remaining_length]
-                    break
+                    remaining_length: int = self.max_user_text_length - len(customer_message)
+                    if remaining_length <= 0:
+                        logger.warning(
+                            f"Customer message for ticket {id} already reached max_user_text_length={self.max_user_text_length}; stopping attachment processing"
+                        )
+                        break
+                    if len(attachment_message) > remaining_length:
+                        logger.warning(
+                            f"Truncating attachment {attachment.filename} for ticket {id} to keep customer_message within max_user_text_length={self.max_user_text_length}"
+                        )
+                        customer_message += attachment_message[:remaining_length]
+                        break
 
-                customer_message += attachment_message
+                    customer_message += attachment_message
 
             session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 

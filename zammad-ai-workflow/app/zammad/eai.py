@@ -130,6 +130,11 @@ class ZammadEAIClient(BaseZammadClient):
         article_id: int,
         attachment: ArticleAttachment,
     ) -> str | None:
+        if attachment.filename.split(".")[-1].lower() not in self.settings.document_parsing.document_types:
+            logger.debug(
+                f"Skipping attachment {attachment.id} for ticket {ticket_id}, article {article_id} due to unsupported document type."
+            )
+            return None
         data: Any | None = (
             await self._request("GET", f"/attachments/{ticket_id}/{article_id}/{attachment.id}")
             if ticket_id is not None and attachment.id is not None and article_id is not None
