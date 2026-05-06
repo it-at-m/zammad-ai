@@ -1,17 +1,26 @@
 """Version 1 triage endpoint for Zammad AI."""
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import APIKeyHeader
 
 from app.errors import AppError
 from app.models.api_v1 import TriageInput, TriageOutput
 from app.models.triage import CategorizationResult, TriageResult
+from app.settings import ZammadAISettings, get_settings
 from app.settings.triage import Action, Category
 from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 
 from .errors import app_error_to_http, unexpected_error_to_http
+from .utils import check_api_key
 
 logger = getLogger("zammad-ai.api.v1.triage")
+
+settings: ZammadAISettings = get_settings()
+
+header_scheme = APIKeyHeader(name=settings.api.api_key_header_name, auto_error=False)
 
 
 def triage_dependency(request: Request) -> TriageService:
@@ -36,6 +45,7 @@ triage_router = APIRouter(
 async def triage(
     input: TriageInput,
     service: TriageService = Depends(triage_dependency),
+    api_key: str | None = Depends(header_scheme),
 ) -> TriageOutput:
     """Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
 
@@ -45,11 +55,14 @@ async def triage(
     Returns:
         TriageOutput: Contains `triage` (a TriageResult with `category`, `action`, `reasoning`, and `confidence`) and the request `session_id`.
     """
-    import uuid
+    logger.debug(f"api_key: {'provided' if api_key else 'not provided'}")
+    if not check_api_key(api_key):
+        logger.warning("Unauthorized triage request with invalid API key.")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
         if not input.session_id:
-            input.session_id = str(uuid.uuid4())
+            input.session_id = str(uuid4())
         text: str = input.text
 
         # Get categorization result
