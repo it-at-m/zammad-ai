@@ -155,6 +155,11 @@ class BaseZammadSettings(BaseModel, ABC):
         description="The ID of the knowledge base to use for retrieving documents.",
         examples=[1],
     )
+    category_ids: list[int] = Field(
+        description="List of category IDs to filter documents by. If empty, documents from all categories will be retrieved.",
+        default_factory=list,
+        examples=[[1, 2, 3]],
+    )
     timeout: int = Field(
         description="HTTP timeout in seconds for requests to Zammad.",
         default=30,

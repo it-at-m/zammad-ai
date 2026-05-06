@@ -18,7 +18,7 @@ logger: Logger = getLogger("zammad-ai-index.data-retrieval")
 settings: ZammadAIIndexSettings = get_settings()
 
 
-def retrieve_answer_ids(client: ZammadAPIClient | ZammadEAIClient) -> list[int]:
+def retrieve_answer_ids(client: ZammadAPIClient | ZammadEAIClient, aIDs_in_category: list[int] = []) -> list[int]:
     """Retrieve knowledge base answer IDs for indexing.
 
     Depending on application configuration, either performs full indexing (all answers)
@@ -34,9 +34,19 @@ def retrieve_answer_ids(client: ZammadAPIClient | ZammadEAIClient) -> list[int]:
 
     """
     if settings.index.full_indexing:
-        return _get_all_answer_ids(client)
+        answer_ids: list[int] = _get_all_answer_ids(client)
+    else:
+        answer_ids: list[int] = _get_recent_answer_ids_from_rss(settings.index.interval, client)
 
-    return _get_recent_answer_ids_from_rss(settings.index.interval, client)
+    # Filter answer IDs by category if category IDs are specified
+    if len(aIDs_in_category) > 0:
+        answer_ids = [aid for aid in answer_ids if aid in aIDs_in_category]
+        logger.info(
+            "Filtered answer IDs by category. %d answers match the specified category IDs.",
+            len(answer_ids),
+        )
+
+    return answer_ids
 
 
 def _get_all_answer_ids(client: ZammadAPIClient | ZammadEAIClient) -> list[int]:
@@ -197,7 +207,9 @@ def fetch_attachments_for_answer(
     return attachment_data
 
 
-def retrieve_deleted_answer_ids(all_points: list[Record], client: ZammadAPIClient | ZammadEAIClient) -> list[UUID]:
+def retrieve_deleted_answer_ids(
+    all_points: list[Record], client: ZammadAPIClient | ZammadEAIClient, aIDs_in_category: list[int]
+) -> list[UUID]:
     """Retrieve IDs of knowledge base answers deleted since the last indexing run.
 
     This method checks for answers that were previously indexed but have been
@@ -226,11 +238,19 @@ def retrieve_deleted_answer_ids(all_points: list[Record], client: ZammadAPIClien
                 answer_id = metadata.get("answer_id")
                 if answer_id is not None:
                     answer_id = int(answer_id)
-                    if not client.check_if_answer_exists(answer_id):
-                        logger.debug(
-                            "Answer ID %d no longer exists in knowledge base, marking for deletion.", answer_id
-                        )
-                        deleted_ids.append(UUID(str(point.id)))
+                    if aIDs_in_category != []:
+                        if answer_id not in aIDs_in_category:
+                            logger.debug(
+                                "Answer ID %d no longer belongs to specified categories, marking for deletion.",
+                                answer_id,
+                            )
+                            deleted_ids.append(UUID(str(point.id)))
+                    else:
+                        if not client.check_if_answer_exists(answer_id):
+                            logger.debug(
+                                "Answer ID %d no longer exists in knowledge base, marking for deletion.", answer_id
+                            )
+                            deleted_ids.append(UUID(str(point.id)))
             except Exception:
                 logger.error(
                     "Failed to process point ID %s for deletion check (answer ID: %s).",

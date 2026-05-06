@@ -100,6 +100,10 @@ class ZammadEAIClient(BaseZammadClient):
         return TypeAdapter(ZammadKnowledgebase).validate_python(data) if data else None
 
     @override
+    def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
+        raise NotImplementedError("get_answer_ids_of_categories is not implemented for EAI client.")
+
+    @override
     def parse_rss_feed(self) -> FeedParserDict | None:
         if not self.kb_id:
             logger.warning("Knowledge base ID is not set. Cannot parse RSS feed.")

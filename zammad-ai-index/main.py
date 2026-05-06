@@ -47,8 +47,11 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
     logger.info("Starting indexing process...")
 
     try:
+        # Step 0: Retrieve answer IDs of filtered categories if category filtering is enabled
+        aIDs_in_category: list[int] = zammad_client.get_answer_ids_of_categories(settings.zammad.category_ids)
+
         # Step 1: Retrieve answer IDs for processing
-        answer_ids: list[int] = retrieve_answer_ids(zammad_client)
+        answer_ids: list[int] = retrieve_answer_ids(zammad_client, aIDs_in_category)
 
         if not answer_ids:
             logger.warning("No answer IDs found for processing. Exiting.")
@@ -72,7 +75,7 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
         qdrant_items: list[QdrantDocumentItem] = _prepare_and_filter_data(answers, all_points, zammad_client)
 
         # Step 5: Check for deleted documents
-        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client)
+        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, aIDs_in_category)
 
         if not qdrant_items:
             logger.info("No new or changed documents to index.")

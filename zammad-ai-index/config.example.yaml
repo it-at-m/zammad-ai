@@ -82,6 +82,8 @@ zammad:
   base_url: https://my-zammad.example.com
   # ID of the knowledge base to index.
   knowledge_base_id: 1
+  # Optional list of category IDs to filter documents by. If empty, documents from all categories will be retrieved.
+  category_ids: []
   # HTTP timeout in seconds for Zammad requests (minimum 5).
   timeout: 30
   # Maximum retry attempts for failed HTTP requests.

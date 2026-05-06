@@ -40,6 +40,19 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
+    def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
+        """Fetch IDs of knowledge base answers belonging to specified categories.
+
+        Args:
+            category_ids: List of category IDs to filter answers by.
+
+        Returns:
+            list[int]: List of answer IDs.
+
+        """
+        ...
+
+    @abstractmethod
     def get_kb_answer_by_id(self, answer_id: int) -> KnowledgeBaseAnswer | None:
         """Fetch a knowledge base answer by its ID.
 
