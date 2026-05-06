@@ -18,7 +18,10 @@ class StructuredAgentResponse(BaseModel):
         default=None,
         max_length=200,
     )
-    response: str = Field(description="The final answer to the user's question.")
+    response: str | None = Field(
+        description="The final answer to the user's question. Can be None if the agent determines that an answer cannot be provided based on the retrieved context.",
+        default=None,
+    )
     documents: list[DocumentDict] = Field(description="List of documents supporting the answer.")
     auto_publish: bool = Field(
         default=True,
