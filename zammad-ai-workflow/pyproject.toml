@@ -20,7 +20,7 @@ dependencies = [
     "feedparser==6.0.12",
     "gradio==6.13.0",
     "httpx[socks]==0.28.1",
-    "langchain-core==1.3.2",
+    "langchain-core==1.3.3",
     "langchain-openai==1.2.1",
     "langchain-qdrant==1.1.0",
     "langchain==1.2.15",
