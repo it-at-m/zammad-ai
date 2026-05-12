@@ -1,5 +1,7 @@
 """Utility helpers for API request validation."""
 
+from secrets import compare_digest
+
 from app.settings.settings import ZammadAISettings, get_settings
 from app.utils.logging import getLogger
 
@@ -17,12 +19,9 @@ def check_api_key(provided_key: str | None) -> bool:
         bool: True if the provided API key is valid, False otherwise.
     """
     expected_key = settings.api.api_key
-    logger.debug(
-        f"Expected API key is {'set' if expected_key else 'not set'}; provided API key is {'provided' if provided_key else 'not provided'}"
-    )
     if expected_key is None:
         # If no API key is set in settings, allow all requests
         return True
     if provided_key is None:
         return False
-    return provided_key == expected_key
+    return compare_digest(provided_key, expected_key)
