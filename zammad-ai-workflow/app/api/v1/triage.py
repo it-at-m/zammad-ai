@@ -55,7 +55,6 @@ async def triage(
     Returns:
         TriageOutput: Contains `triage` (a TriageResult with `category`, `action`, `reasoning`, and `confidence`) and the request `session_id`.
     """
-    logger.debug(f"api_key: {'provided' if api_key else 'not provided'}")
     if not check_api_key(api_key):
         logger.warning("Unauthorized triage request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")

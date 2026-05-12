@@ -92,7 +92,6 @@ async def _request_json(
         httpx.HTTPStatusError: If the response status is not successful (`raise_for_status()`).
         ValueError: If the response JSON is not an object (dict).
     """
-    logger.debug(f"Sending POST request to {url} with payload: {payload} and headers: {headers}")
     response = await client.post(url=url, json=payload, headers=headers)
     response.raise_for_status()
     data = response.json()
