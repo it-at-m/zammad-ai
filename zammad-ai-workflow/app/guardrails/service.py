@@ -1,6 +1,8 @@
 """Lightweight guardrail service using GLiNER for content safety."""
 
 # ruff: noqa: E402
+from asyncio import to_thread
+
 from dotenv import load_dotenv
 from truststore import inject_into_ssl
 
@@ -75,7 +77,8 @@ class GuardrailService:
 
         try:
             # Run classification tasks
-            result = self._model.classify_text(
+            result = await to_thread(
+                self._model.classify_text,
                 text,
                 {
                     "prompt_safety": SAFETY_LABELS,
@@ -128,7 +131,8 @@ class GuardrailService:
             combined_text = f"Prompt: {text}\nResponse: {response}"
 
             # Run classification tasks
-            result = self._model.classify_text(
+            result = await to_thread(
+                self._model.classify_text,
                 combined_text,
                 {
                     "response_safety": SAFETY_LABELS,
