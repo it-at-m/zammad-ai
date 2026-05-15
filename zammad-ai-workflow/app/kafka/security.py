@@ -27,7 +27,7 @@ def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
         BaseSecurity: A security object containing an SSLContext configured with the CA and client certificate/key and with use_ssl=True; returns a default no-security BaseSecurity when security is disabled.
 
     Raises:
-        ValueError: If any required base64-encoded input is invalid, if the PKCS#12 archive or its password cannot be decoded or loaded, if the PKCS#12 archive lacks a private key or certificate, or if the kafka_settings.security type is unsupported.
+        ValueError: If any required base64-encoded input is invalid, if the PKCS#12 archive cannot be loaded with the provided password, if the PKCS#12 archive lacks a private key or certificate, or if the kafka_settings.security type is unsupported.
     """
     if isinstance(kafka_settings.security, DisableKafkaSecurity):
         logger.debug("No Kafka security configuration provided; using no security.")
@@ -55,7 +55,7 @@ def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
             try:
                 loaded_pkcs12 = pkcs12.load_pkcs12(
                     pkcs12_bytes,
-                    kafka_settings.security.pkcs12_pw_base64.encode(encoding="utf-8"),
+                    kafka_settings.security.pkcs12_pw.encode(encoding="utf-8"),
                 )
             except Exception as e:
                 raise ValueError(
