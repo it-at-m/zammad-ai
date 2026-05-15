@@ -1,7 +1,7 @@
 [project]
 name = "zammad-ai"
 license = "MIT"
-version = "0.1.4"
+version = "0.1.6"
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
 requires-python = "==3.14.4"
@@ -34,6 +34,7 @@ dependencies = [
     "stamina==26.1.0",
     "truststore==0.10.4",
     "uvicorn==0.46.0",
+    "gliner2==1.3.1",
 ]
 
 [dependency-groups]
