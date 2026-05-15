@@ -52,24 +52,21 @@ def setup_security(kafka_settings: KafkaSettings) -> BaseSecurity:
                 raise ValueError(
                     f"Setting 'settings.kafka.security.pkcs12_base64' contains invalid base64 data: {e}"
                 ) from e
-
-            # Unpack PKCS#12 password
             try:
-                pkcs12_pw_bytes: bytes = b64decode(s=kafka_settings.security.pkcs12_pw_base64)
-            except binascii.Error as e:
-                raise ValueError(
-                    f"Setting 'settings.kafka.security.pkcs12_pw_base64' contains invalid base64 data: {e}"
-                ) from e
-
-            # Extract the private key and certificate from the PKCS#12 file
-            try:
-                private_key, certificate, _ = pkcs12.load_key_and_certificates(
-                    data=pkcs12_bytes,
-                    password=pkcs12_pw_bytes,
+                loaded_pkcs12 = pkcs12.load_pkcs12(
+                    pkcs12_bytes,
+                    kafka_settings.security.pkcs12_pw_base64.encode(encoding="utf-8"),
                 )
             except Exception as e:
-                raise ValueError(f"Failed to load PKCS#12 file: {e}")
+                raise ValueError(
+                    f"Failed to load PKCS#12 data from 'settings.kafka.security.pkcs12_base64': {e}"
+                ) from e
 
+            private_key = loaded_pkcs12.key
+            if loaded_pkcs12.cert is None:
+                raise ValueError("PKCS#12 file does not contain a certificate.")
+
+            certificate = loaded_pkcs12.cert.certificate
             if private_key is None or certificate is None:
                 raise ValueError("PKCS#12 file does not contain a private key and certificate.")
 
