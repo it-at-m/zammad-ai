@@ -54,8 +54,8 @@ class MTLSKafkaEnvSecurity(BaseModel):
         description="Base64-encoded PKCS#12 payload.",
     )
 
-    pkcs12_pw_base64: str = Field(
-        description="Base64-encoded PKCS#12 password.",
+    pkcs12_pw: str = Field(
+        description="PKCS#12 password in cleartext.",
     )
 
 
