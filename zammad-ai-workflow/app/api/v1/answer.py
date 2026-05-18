@@ -1,7 +1,7 @@
 """Version 1 answer endpoint for Zammad AI."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.security import APIKeyHeader
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.action.service import ActionService
 from app.errors import AppError
@@ -16,7 +16,7 @@ from .utils import check_api_key
 logger = getLogger("zammad-ai.api.v1.answer")
 settings: ZammadAISettings = get_settings()
 
-header_scheme = APIKeyHeader(name=settings.api.api_key_header_name, auto_error=False)
+header_scheme = HTTPBearer(auto_error=False)
 
 
 def action_dependency(request: Request) -> ActionService:
@@ -41,7 +41,7 @@ answer_router = APIRouter(
 async def answer(
     input: AnswerInput,
     service: ActionService = Depends(action_dependency),
-    api_key: str | None = Depends(header_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> AnswerOutput:
     """Process an answer request and produce the agent's response based on the provided input.
 
@@ -51,7 +51,7 @@ async def answer(
     Returns:
         AnswerOutput: The agent's response and any supporting documents.
     """
-    if not check_api_key(api_key):
+    if not check_api_key(credentials):
         logger.warning("Unauthorized answer request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
 

@@ -1,75 +1,61 @@
-# REST API Reference
+## API Reference
 
-The Zammad-AI service provides a REST API for synchronous triage and processing. This is useful for testing, manual trigger, or integration with systems that do not use Kafka.
+This document describes the HTTP API for the Zammad-AI service (v1).
 
-## Base URL
+**Base path:** `/api/v1`
 
-By default, the API is available at `http://localhost:8080/api/v1`.
+**Authentication**
 
-## Endpoints
+- The API uses a simple token-based authentication. Provide the token using the `Authorization` header with the `Bearer` scheme:
+  - Header name: `Authorization`
+  - Format: `Authorization: Bearer <token>`
 
-### Triage
+  If no API key is configured in the server settings, authentication is disabled and requests are accepted without a header.
 
-Analyze text and determine the best action.
+**Endpoints**
 
-- **URL**: `/triage`
-- **Method**: `POST`
-- **Request Body**: `TriageInput`
+- `POST /api/v1/triage`
+  - Description: Classify ticket text and determine an action.
+  - Request JSON: `{ "text": "...", "session_id": "optional-uuid" }`
+  - Response JSON (example):
+    ```json
+    {
+      "triage": {
+        "user_text": "...",
+        "category": { "name": "Fragen" },
+        "action": { "name": "AI_Answer" },
+        "reasoning": "...",
+        "confidence": 0.87
+      },
+      "session_id": "..."
+    }
+    ```
 
-| Field        | Type                | Description                                                                     |
-| :----------- | :------------------ | :------------------------------------------------------------------------------ |
-| `text`       | `string`            | The text to be analyzed (e.g., ticket content).                                 |
-| `session_id` | `string` (optional) | A unique identifier for the request. If not provided, a UUID will be generated. |
+- `POST /api/v1/answer`
+  - Description: Request an AI-generated answer for a ticket when the action requires it.
+  - Request JSON: `{ "text": "...", "category": "...", "action": "...", "session_id": "..." }`
+  - Response JSON (example):
+    ```json
+    {
+      "response": "Generated answer text...",
+      "documents": [{ "id": "...", "source": "..." }],
+      "auto_publish": false
+    }
+    ```
 
-- **Response Body**: `TriageOutput`
+**Examples (curl)**
 
-| Field        | Type     | Description                       |
-| :----------- | :------- | :-------------------------------- |
-| `session_id` | `string` | The request ID.                   |
-| `triage`     | `object` | The result of the triage process. |
-
-#### Triage Result Object
-
-| Field        | Type     | Description                                        |
-| :----------- | :------- | :------------------------------------------------- |
-| `category`   | `object` | The determined category (ID and name).             |
-| `action`     | `object` | The determined action (ID, name, and description). |
-| `reasoning`  | `string` | The LLM's reasoning for the categorization.        |
-| `confidence` | `float`  | Confidence score between 0 and 1.                  |
-
-- **Example Request**:
-
-```json
-{
-  "text": "My email is not working and I cannot see any new messages.",
-  "session_id": "req-123"
-}
+- Triage:
+```bash
+  curl -X POST "http://localhost:8080/api/v1/triage" \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer <token>" \
+   -d '{"text": "Meine Frage..."}'
 ```
-
-- **Example Response**:
-
-```json
-{
-  "session_id": "req-123",
-  "triage": {
-    "category": { "id": 1, "name": "Technical Support" },
-    "action": {
-      "id": 2,
-      "name": "Auto-Reply",
-      "description": "Send standard help article link."
-    },
-    "reasoning": "The user mentions email issues which typically falls under technical support.",
-    "confidence": 0.95
-  }
-}
+- Answer:
+```bash
+  curl -X POST "http://localhost:8080/api/v1/answer" \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer <token>" \
+   -d '{"text": "...", "category": "Fragen", "action": "AI_Answer", "session_id": "..."}'
 ```
-
-## Internal Endpoints
-
-### Health Check
-
-Check the status of the service.
-
-- **URL**: `/health`
-- **Method**: `GET`
-- **Response**: `{"status": "healthy"}`

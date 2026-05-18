@@ -207,7 +207,10 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 (category, action, reasoning, confidence, answer, answer_documents).
                 `confidence` is formatted as a percentage string with one decimal place (e.g., "87.5%").
         """
-        api_key_dict = {settings.api.api_key_header_name: api_key_value} if api_key_value else {}
+        if api_key_value:
+            api_key_dict = {"Authorization": f"Bearer {api_key_value}"}
+        else:
+            api_key_dict = {}
         try:
             return await process_ticket(
                 text=text,

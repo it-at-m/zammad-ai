@@ -278,5 +278,4 @@ prometheus:
 
 # API configuration
 api:
-  api_key_header_name: "X-API-Key" # Name of the HTTP header for API key authentication
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
