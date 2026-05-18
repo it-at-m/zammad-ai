@@ -46,13 +46,16 @@ This document describes the HTTP API for the Zammad-AI service (v1).
 **Examples (curl)**
 
 - Triage:
+
 ```bash
   curl -X POST "http://localhost:8080/api/v1/triage" \
    -H "Content-Type: application/json" \
    -H "Authorization: Bearer <token>" \
    -d '{"text": "Meine Frage..."}'
 ```
+
 - Answer:
+
 ```bash
   curl -X POST "http://localhost:8080/api/v1/answer" \
    -H "Content-Type: application/json" \
