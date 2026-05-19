@@ -100,7 +100,6 @@ class QdrantKBClient:
             )
             if collection_info.points_count == 0:
                 self.logger.warning(f"Qdrant collection '{qdrant_settings.collection_name}' exists but is empty.")
-                raise QdrantKBError(f"Qdrant collection '{qdrant_settings.collection_name}' exists but is empty.")
 
         except ApiException as e:
             self.logger.error("Error checking Qdrant collection existence or retrieving collection info", exc_info=True)
