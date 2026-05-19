@@ -12,6 +12,8 @@ filters:
     (): app.utils.logging.MetricsFilter
   health_filter:
     (): app.utils.logging.HealthFilter
+  gradio_filter:
+    (): app.utils.logging.GradioFilter
 handlers:
   console:
     class: logging.StreamHandler
@@ -20,6 +22,7 @@ handlers:
     filters:
       - metrics_filter
       - health_filter
+      - gradio_filter
     stream: ext://sys.stdout
   httpx:
     class: logging.StreamHandler
@@ -54,6 +57,10 @@ loggers:
     handlers: [httpx]
     propagate: no
   PIL.Image:
+    level: WARNING
+    handlers: [console]
+    propagate: no
+  python_multipart.multipart:
     level: WARNING
     handlers: [console]
     propagate: no
