@@ -62,6 +62,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     # Kafka Router
     router = KafkaRouter(
         bootstrap_servers=settings.kafka.broker_url,
+        client_id=settings.kafka.client_id,
         security=security,
         middlewares=(
             KafkaPrometheusMiddleware(

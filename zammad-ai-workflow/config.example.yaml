@@ -127,6 +127,7 @@ answer:
 kafka:
   broker_url: "localhost:29092" # Kafka broker URL (compose stack)
   topic: "ticket-events" # Kafka topic to consume from
+  client_id: "zammad-ai" # Kafka client ID shown as the consumer name
   group_id: null # Consumer group ID (defaults to null)
 
   # mTLS Security Configuration (optional)
