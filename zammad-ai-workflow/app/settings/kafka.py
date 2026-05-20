@@ -23,6 +23,11 @@ class KafkaSettings(BaseModel):
         default="ticket-events",
     )
 
+    client_id: str = Field(
+        description="Kafka client ID used for the consumer name.",
+        default="zammad-ai",
+    )
+
     group_id: str | None = Field(
         description="Kafka consumer group ID",
         default=None,
