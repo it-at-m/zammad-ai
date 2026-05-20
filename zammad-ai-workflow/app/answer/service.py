@@ -165,7 +165,7 @@ class AnswerService:
                 session_id=session_id,
                 config=config,
             )
-            if self.settings.answer.ai_answer_disclaimer.strip() != "":
+            if structured_response.response is not None and self.settings.answer.ai_answer_disclaimer.strip() != "":
                 structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
             outcome = "success"
             return structured_response
@@ -190,7 +190,7 @@ class AnswerService:
     ) -> StructuredAgentResponse:
         """Run judgment and optionally repair a response that failed checks."""
         structured_response.auto_publish = True
-        if self.judge_handler is None:
+        if self.judge_handler is None or structured_response.response is None:
             return structured_response
         repair_prompt: str = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,

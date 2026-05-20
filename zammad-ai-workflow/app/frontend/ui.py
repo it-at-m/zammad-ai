@@ -5,7 +5,7 @@ from typing import Any
 import gradio as gr
 import httpx
 
-from app.settings.frontend import FrontendSettings
+from app.settings import ZammadAISettings
 from app.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.frontend")
@@ -73,7 +73,9 @@ def _format_documents(documents: list[dict[str, Any]]) -> str:
     return "\n".join(str(document) for document in documents)
 
 
-async def _request_json(client: httpx.AsyncClient, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _request_json(
+    client: httpx.AsyncClient, url: str, payload: dict[str, Any], headers: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Send a JSON POST to the given URL and return the parsed JSON object.
 
     Sends `payload` as the request JSON using `client.post`, ensures the HTTP response status is successful, parses the response body as JSON, and verifies the parsed value is a dict.
@@ -90,7 +92,7 @@ async def _request_json(client: httpx.AsyncClient, url: str, payload: dict[str, 
         httpx.HTTPStatusError: If the response status is not successful (`raise_for_status()`).
         ValueError: If the response JSON is not an object (dict).
     """
-    response = await client.post(url=url, json=payload)
+    response = await client.post(url=url, json=payload, headers=headers)
     response.raise_for_status()
     data = response.json()
     if not isinstance(data, dict):
@@ -99,7 +101,9 @@ async def _request_json(client: httpx.AsyncClient, url: str, payload: dict[str, 
     return data
 
 
-async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float) -> FrontendResult:
+async def process_ticket(
+    text: str, *, api_base_url: str, timeout_seconds: float, api_key: dict[str, str]
+) -> FrontendResult:
     """Process ticket text through triage and, if the triage action indicates, request an AI-generated answer.
 
     Sends the ticket text to the triage endpoint and extracts category, action, reasoning, and confidence. If the triage action is "AI_Answer" or "ai_response", requests an answer and any supporting documents from the answer endpoint and formats them for the frontend.
@@ -107,6 +111,7 @@ async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float
     Parameters:
         api_base_url (str): Base URL of the backend API (e.g., "http://localhost:8080").
         timeout_seconds (float): HTTP request timeout in seconds.
+        api_key (dict[str, str]): Dictionary containing the API key header name and value to include in request headers for authentication (e.g., {"X-API-Key": "mysecretkey123"}).
 
     Returns:
         FrontendResult: A 6-tuple (category, action, reasoning, confidence, answer, answer_documents)
@@ -128,7 +133,7 @@ async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         try:
-            triage_data = await _request_json(client=client, url=triage_url, payload={"text": text})
+            triage_data = await _request_json(client=client, url=triage_url, payload={"text": text}, headers=api_key)
         except httpx.ConnectError:
             raise gr.Error(f"Verbindungsfehler: Backend läuft nicht auf {api_base_url}")
         except httpx.TimeoutException:
@@ -150,64 +155,68 @@ async def process_ticket(text: str, *, api_base_url: str, timeout_seconds: float
         except (TypeError, ValueError):
             confidence = 0.0
 
-        answer = ""
-        answer_documents = ""
+        answer = "No answer generated."
+        answer_documents = "No supporting documents."
 
-        if action == "AI_Answer":
-            try:
-                answer_data = await _request_json(
-                    client=client,
-                    url=answer_url,
-                    payload={
-                        "text": text,
-                        "category": category,
-                        "session_id": session_id,
-                        "action": action,
-                    },
-                )
-                answer = str(answer_data.get("response", ""))
-                documents = answer_data.get("documents", [])
-                if isinstance(documents, list):
-                    answer_documents = _format_documents(documents=documents)
-            except httpx.ConnectError:
-                gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
-                answer = "Fehler bei Answer-Generierung"
-            except httpx.TimeoutException:
-                gr.Warning("Timeout: Answer-Generierung dauert zu lange")
-                answer = "Fehler bei Answer-Generierung"
-            except httpx.HTTPStatusError as e:
-                gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
-                answer = "Fehler bei Answer-Generierung"
-            except Exception as e:
-                logger.error(
-                    "Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__}
-                )
-                gr.Warning("Fehler bei Answer-Generierung")
-                answer = "Fehler bei Answer-Generierung"
+        try:
+            answer_data = await _request_json(
+                client=client,
+                url=answer_url,
+                payload={
+                    "text": text,
+                    "category": category,
+                    "session_id": session_id,
+                    "action": action,
+                },
+                headers=api_key,
+            )
+            answer = str(answer_data.get("response", ""))
+            documents = answer_data.get("documents", [])
+            if isinstance(documents, list):
+                answer_documents = _format_documents(documents=documents)
+        except httpx.ConnectError:
+            gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
+            answer = "Fehler bei Answer-Generierung"
+        except httpx.TimeoutException:
+            gr.Warning("Timeout: Answer-Generierung dauert zu lange")
+            answer = "Fehler bei Answer-Generierung"
+        except httpx.HTTPStatusError as e:
+            gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
+            answer = "Fehler bei Answer-Generierung"
+        except Exception as e:
+            logger.error("Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__})
+            gr.Warning("Fehler bei Answer-Generierung")
+            answer = "Fehler bei Answer-Generierung"
 
     confidence_str = f"{confidence * 100:.1f}%"
     return category, action, reasoning, confidence_str, answer, answer_documents
 
 
-def build_frontend(frontend_settings: FrontendSettings) -> gr.Blocks:
+def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
     """Build the Gradio frontend Blocks UI."""
 
-    async def _process_ticket(text: str) -> FrontendResult:
+    async def _process_ticket(text: str, api_key_value: str = "") -> FrontendResult:
         """Process the given ticket text using the module's configured API base URL and the frontend's request timeout.
 
         Parameters:
             text (str): Raw ticket text to be analyzed and (optionally) answered.
+            api_key_value (str): API key value to include in the request headers for authentication.
 
         Returns:
             tuple[str, str, str, str, str, str]: A 6-tuple containing
                 (category, action, reasoning, confidence, answer, answer_documents).
                 `confidence` is formatted as a percentage string with one decimal place (e.g., "87.5%").
         """
+        if api_key_value:
+            api_key_dict = {"Authorization": f"Bearer {api_key_value}"}
+        else:
+            api_key_dict = {}
         try:
             return await process_ticket(
                 text=text,
                 api_base_url=API_BASE_URL,
-                timeout_seconds=frontend_settings.request_timeout_seconds,
+                timeout_seconds=settings.frontend.request_timeout_seconds,
+                api_key=api_key_dict,
             )
         except gr.Error as e:
             message = str(e) if str(e) else "Fehler bei der Verarbeitung"
@@ -224,6 +233,14 @@ def build_frontend(frontend_settings: FrontendSettings) -> gr.Blocks:
 
         with gr.Row():
             with gr.Column():
+                api_key_input = gr.Textbox(
+                    label="API Key",
+                    placeholder="Geben Sie Ihren API Key ein...",
+                    value="",
+                    type="password",
+                    visible=settings.api.api_key is not None,
+                )
+
                 gr.Markdown("### Eingabe")
                 input_text = gr.Textbox(label="Ticket-Text", placeholder="Geben Sie hier Ihre Anfrage ein...", lines=10)
                 submit_btn = gr.Button("Absenden", variant="primary")
@@ -257,7 +274,7 @@ def build_frontend(frontend_settings: FrontendSettings) -> gr.Blocks:
             answer_documents_output,
         ]
 
-        submit_btn.click(fn=_process_ticket, inputs=[input_text], outputs=outputs)
-        input_text.submit(fn=_process_ticket, inputs=[input_text], outputs=outputs)
+        submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
+        input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
 
     return frontend

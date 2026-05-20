@@ -275,3 +275,7 @@ mode: "production" # Options: "production", "development", "unittest"
 prometheus:
   enabled: true # Set to true to enable Prometheus metrics endpoint
   port: 9090 # Port for Prometheus metrics server
+
+# API configuration
+api:
+  api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
