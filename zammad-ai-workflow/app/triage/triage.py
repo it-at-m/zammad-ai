@@ -16,6 +16,7 @@ from app.errors import (
 from app.errors import (
     TriageError as AppTriageError,
 )
+from app.guardrails import GuardrailService, get_guardrail_service
 from app.models.triage import (
     CategorizationResult,
     DaysSinceRequestResponse,
@@ -77,6 +78,7 @@ class TriageService:
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
         self.settings: ZammadAISettings = settings
+        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -270,7 +272,7 @@ class TriageService:
             CategorizationResult: Object containing `category`, `reasoning`, `confidence`, and optional `extracted_values`. If the message is empty or the model returns an invalid category, the `category` will be the service's `no_category`, `reasoning` will explain the fallback, and `confidence` will be 1.0.
 
         Raises:
-            TriageError: If categorization fails due to GenAI errors or other unexpected exceptions.
+            TriageError: If categorization fails due to GenAI errors or guardrail violations (if blocking enabled), or other unexpected exceptions.
         """
         if len(message.strip()) == 0:
             logger.warning("Empty message provided for categorization")
@@ -281,12 +283,24 @@ class TriageService:
                 extracted_values=None,
             )
 
+        # Evaluate guardrails before categorization
+        guardrail_result = await self.guardrail_service.evaluate(message)
+        logger.info(
+            f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+        )
+
+        if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
+            logger.warning("Categorization blocked by guardrails")
+            raise TriageError(
+                f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
+                retryable=False,
+            )
+
         if len(message) > self.max_user_text_length:
             logger.warning(
-                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
-                )
-            message: str = message[: self.max_user_text_length]
-            
+                f"Customer message exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+            )
+            message = message[: self.max_user_text_length]
 
         try:
             cat_result: CategorizationResult = await self.genai_handler.categorize_ticket(

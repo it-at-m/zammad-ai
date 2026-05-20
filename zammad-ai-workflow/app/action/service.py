@@ -4,7 +4,9 @@ from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
+from app.guardrails import GuardrailService, get_guardrail_service
 from app.models.answer import StructuredAgentResponse
+from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
 from app.settings.triage import ActionTypes
@@ -21,9 +23,10 @@ class ActionService:
     logger: Logger = getLogger("zammad-ai.action.service")
 
     def __init__(self, settings: ZammadAISettings, answer_service: AnswerService):
-        """Initialize action execution with settings, answer service, and Zammad client."""
+        """Initialize action execution with settings, answer service, guardrail service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
+        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
         self.max_user_text_length: int = settings.max_user_text_length
         # Zammad client setup
         if isinstance(self.settings.zammad, ZammadAPISettings):
@@ -96,7 +99,28 @@ class ActionService:
         user_text: str,
         session_id: str | None,
     ) -> StructuredAgentResponse:
-        """Resolve an answer payload for the given action and category."""
+        """Resolve an answer payload for the given action and category.
+
+        Performs guardrail checks on user text before answer generation.
+
+        Raises:
+            ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
+        """
+        # Evaluate guardrails before answer generation
+        guardrail_result: GuardrailResult = await self.guardrail_service.evaluate(user_text)
+        self.logger.info(
+            f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+        )
+
+        if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
+            self.logger.warning(
+                f"Answer generation blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
+            )
+            raise ActionExecutionError(
+                f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
+                retryable=False,
+            )
+
         if len(user_text) > self.settings.max_user_text_length:
             self.logger.warning(
                 f"User text for ticket {ticket_id if ticket_id is not None else 'unknown'} exceeds max_user_text_length={self.settings.max_user_text_length} and will be truncated for answer generation"
@@ -132,6 +156,25 @@ class ActionService:
             response.response = action.answer
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
+
+        # Evaluate guardrails on the generated response as well
+        if response.response and response.response.strip() != "":
+            response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
+                text=user_text, response=response.response
+            )
+        self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
+        if (
+            not response_guardrail_result.response_safety == "safe"
+            and self.guardrail_service.settings.block_on_high_risk
+        ):
+            self.logger.warning(
+                f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
+            )
+            raise ActionExecutionError(
+                f"Generated response failed safety checks: {response_guardrail_result.response_toxicity}, {response_guardrail_result.response_refusal}",
+                retryable=False,
+            )
+
         return response
 
     async def cleanup(self) -> None:

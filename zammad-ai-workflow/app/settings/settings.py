@@ -16,6 +16,7 @@ from .answer import AnswerSettings
 from .api import APISettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings
+from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .logging import LoggingSettings
 from .prometheus import PrometheusSettings
@@ -139,6 +140,11 @@ class ZammadAISettings(BaseSettings):
     prometheus: PrometheusSettings = Field(
         description="Settings for Prometheus metrics exposure, including endpoint and port configuration.",
         default_factory=lambda: PrometheusSettings(),
+    )
+
+    guardrails: GuardrailSettings = Field(
+        description="Settings for guardrail content safety evaluation.",
+        default_factory=lambda: GuardrailSettings(),
     )
 
     @model_validator(mode="after")
