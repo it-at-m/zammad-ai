@@ -158,9 +158,10 @@ class ActionService:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 
         # Evaluate guardrails on the generated response as well
-        response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
-            text=user_text, response=response.response
-        )
+        if response.response and response.response.strip() != "":
+            response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
+                text=user_text, response=response.response
+            )
         self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
         if (
             not response_guardrail_result.response_safety == "safe"
