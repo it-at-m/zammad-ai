@@ -66,6 +66,9 @@ ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
 
 # Set HuggingFace cache dir
 ENV HF_HOME="/app/huggingface_cache"
+ENV HUGGINGFACE_HUB_CACHE="/app/huggingface_cache"
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 # Disable python warnings
 ENV PYTHONWARNINGS="ignore"

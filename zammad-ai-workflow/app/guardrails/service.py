@@ -51,10 +51,14 @@ class GuardrailService:
 
     def _load_model(self) -> None:
         """Load or retrieve cached GLiNER model from HuggingFace."""
-        model = GLiNER2.from_pretrained("fastino/gliguard-LLMGuardrails-300M")
-        model.to("cpu")
-        self._model = model
-        logger.info("Guardrail model loaded successfully.")
+        try:
+            model = GLiNER2.from_pretrained("fastino/gliguard-LLMGuardrails-300M")
+            model.to("cpu")
+            self._model = model
+            logger.info("Guardrail model loaded successfully.")
+        except Exception:
+            self._model = None
+            logger.warning("Guardrail model could not be loaded; continuing without guardrails.", exc_info=True)
 
     async def evaluate(self, text: str) -> GuardrailResult:
         """Evaluate text for harmful content.
