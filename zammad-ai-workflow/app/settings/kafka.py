@@ -23,6 +23,11 @@ class KafkaSettings(BaseModel):
         default="ticket-events",
     )
 
+    client_id: str = Field(
+        description="Kafka client ID used for the consumer name.",
+        default="zammad-ai",
+    )
+
     group_id: str | None = Field(
         description="Kafka consumer group ID",
         default=None,
@@ -54,8 +59,8 @@ class MTLSKafkaEnvSecurity(BaseModel):
         description="Base64-encoded PKCS#12 payload.",
     )
 
-    pkcs12_pw_base64: str = Field(
-        description="Base64-encoded PKCS#12 password.",
+    pkcs12_pw: str = Field(
+        description="PKCS#12 password in cleartext.",
     )
 
 

@@ -238,7 +238,7 @@ async def health_check() -> HealthCheckResponse:
 
 
 if settings.frontend.enabled:
-    backend = mount_frontend(app=backend, frontend_settings=settings.frontend)
+    backend = mount_frontend(app=backend, settings=settings)
 
 if not settings.frontend.enabled and settings.mode == "development":
     logger.info("Frontend is disabled, rerouting root path to API docs")

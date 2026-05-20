@@ -13,6 +13,7 @@ from pydantic_settings import (
 )
 
 from .answer import AnswerSettings
+from .api import APISettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings
 from .guardrails import GuardrailSettings
@@ -119,6 +120,11 @@ class ZammadAISettings(BaseSettings):
     max_user_text_length: PositiveInt = Field(
         description="Maximum combined length of article text and attachment content for triage/answer processing. Messages exceeding this length will be truncated to this limit.",
         default=2000,
+    )
+
+    api: APISettings = Field(
+        description="Settings for the REST API, including authentication and rate limiting configuration.",
+        default_factory=lambda: APISettings(),
     )
 
     langfuse_enabled: bool = Field(

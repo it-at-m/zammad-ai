@@ -149,3 +149,16 @@ class HealthFilter(logging.Filter):
     def filter(self, record):
         """Return True for non-health check records and False for /api/v1/health requests."""
         return record.getMessage().find("/api/v1/health") == -1
+
+
+class GradioFilter(logging.Filter):
+    """Filter out Gradio endpoint access logs."""
+
+    def filter(self, record):
+        """Return True for non-Gradio records and False for /gradio requests."""
+        return (
+            (record.getMessage().find("/gradio") == -1)
+            and (record.getMessage().find("/manifest.json") == -1)
+            and (record.getMessage().find("/theme.css") == -1)
+            and (record.getMessage().find("/login") == -1)
+        )

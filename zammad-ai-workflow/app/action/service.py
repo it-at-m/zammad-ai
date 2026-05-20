@@ -53,7 +53,7 @@ class ActionService:
                 )
             )
 
-            if agent_response.response.strip() == "":
+            if agent_response.response is None or agent_response.response.strip() == "":
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if not self.settings.triage.no_action_internal_note:
                     return
