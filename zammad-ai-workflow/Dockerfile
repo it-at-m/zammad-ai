@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Pre-download the guardrail model into the image cache so startup does not
 # need to fetch it on first boot.
 ARG GUARDRAIL_MODEL_NAME="fastino/gliguard-LLMGuardrails-300M"
-RUN /app/.venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id=\"$GUARDRAIL_MODEL_NAME\", cache_dir=\"/app/huggingface_cache\")"
+RUN /app/.venv/bin/python -c "from gliner2 import GLiNER2; model = GLiNER2.from_pretrained(\"$GUARDRAIL_MODEL_NAME\", local_files_only=True); model.to(\"cpu\")"
 
 # Copy the application files
 COPY . /app
@@ -67,6 +67,7 @@ ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
 # Set HuggingFace cache dir
 ENV HF_HOME="/app/huggingface_cache"
 ENV HUGGINGFACE_HUB_CACHE="/app/huggingface_cache"
+ENV TRANSFORMERS_CACHE="/app/huggingface_cache"
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 

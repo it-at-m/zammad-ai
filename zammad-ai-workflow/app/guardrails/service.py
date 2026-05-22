@@ -52,7 +52,7 @@ class GuardrailService:
     def _load_model(self) -> None:
         """Load or retrieve cached GLiNER model from HuggingFace."""
         try:
-            model = GLiNER2.from_pretrained("fastino/gliguard-LLMGuardrails-300M")
+            model = GLiNER2.from_pretrained("fastino/gliguard-LLMGuardrails-300M", local_files_only=True)
             model.to("cpu")
             self._model = model
             logger.info("Guardrail model loaded successfully.")
