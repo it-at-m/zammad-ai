@@ -19,10 +19,15 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --locked --no-install-project
 
+# Set HuggingFace cache dir
+ENV HF_HOME="/app/huggingface_cache"
+ENV HUGGINGFACE_HUB_CACHE="/app/huggingface_cache"
+ENV TRANSFORMERS_CACHE="/app/huggingface_cache"
+
 # Pre-download the guardrail model into the image cache so startup does not
 # need to fetch it on first boot.
 ARG GUARDRAIL_MODEL_NAME="fastino/gliguard-LLMGuardrails-300M"
-RUN /app/.venv/bin/python -c "from gliner2 import GLiNER2; model = GLiNER2.from_pretrained(\"$GUARDRAIL_MODEL_NAME\", local_files_only=True); model.to(\"cpu\")"
+RUN /app/.venv/bin/python -c "from gliner2 import GLiNER2; model = GLiNER2.from_pretrained(\"$GUARDRAIL_MODEL_NAME\"); model.to(\"cpu\")"
 
 # Copy the application files
 COPY . /app
@@ -64,10 +69,6 @@ ENV HF_HUB_DISABLE_PROGRESS_BARS=1
 # Set tiktoken cache dir
 ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
 
-# Set HuggingFace cache dir
-ENV HF_HOME="/app/huggingface_cache"
-ENV HUGGINGFACE_HUB_CACHE="/app/huggingface_cache"
-ENV TRANSFORMERS_CACHE="/app/huggingface_cache"
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 
