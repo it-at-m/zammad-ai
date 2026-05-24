@@ -2,6 +2,7 @@
 
 import pytest
 from app.guardrails import GuardrailService
+from app.guardrails import service as guardrails_service_module
 from app.guardrails.service import get_guardrail_service
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.settings.guardrails import GuardrailSettings
@@ -101,6 +102,19 @@ def test_guardrail_service_caching() -> None:
 
     # Same settings should return same instance
     assert service1 is service2
+
+
+def test_guardrail_service_falls_back_when_model_load_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guardrail service should initialize even if the model cannot be loaded."""
+    monkeypatch.setattr(
+        guardrails_service_module.GLiNER2,
+        "from_pretrained",
+        classmethod(lambda cls, *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("load failed"))),
+    )
+
+    service = GuardrailService(GuardrailSettings(enabled=True))
+
+    assert service._model is None
 
 
 def test_guardrail_settings_defaults() -> None:
