@@ -1,7 +1,7 @@
 # Smallest ubi10 image
-FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:01a3f76f9f6734c637e328111b0f48100e8d8ad41ead12fc3ff0b57a952dd7ea
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:0d397f714c5cf51acc8f9b327c543065c876ec1775a6c221afd7503e82f9c555
 
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:1025398289b62de8269e70c45b91ffa37c373f38118d7da036fb8bb8efc85d97 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d /uv /uvx /bin/
 
 # Install the project into `/app`
 WORKDIR /app
