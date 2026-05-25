@@ -15,7 +15,7 @@ maintainers = [
 ]
 
 dependencies = [
-    "cryptography==47.0.0",
+    "cryptography==48.0.0",
     "fastapi==0.136.1",
     "faststream[cli,kafka,prometheus]==0.6.7",
     "feedparser==6.0.12",
