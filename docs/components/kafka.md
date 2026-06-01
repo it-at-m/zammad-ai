@@ -53,6 +53,7 @@ kafka:
     pkcs12_base64: "QkFTRTY0X1BLQ1MxMl9CTE9C" # base64-encoded PKCS#12 blob
     pkcs12_pw: "cleartext-password" # PKCS#12 password in cleartext
 
+
   # Or, for file-based mTLS:
   # security:
   #   type: file
@@ -75,7 +76,6 @@ Use double underscores for nesting. Important keys include:
 ### Security Schemas
 
 Kafka connections can be secured either via classic PEM files or via PKCS#12 blobs delivered through environment variables. Choose one of the following schemas:
-
 
 #### Security schema: environment variables (`type: env`)
 
