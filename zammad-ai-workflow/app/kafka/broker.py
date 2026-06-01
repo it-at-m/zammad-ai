@@ -102,12 +102,18 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                 raise AckMessage() from e
 
             # Skip events with unsupported request types
-            if parsed_event.request_type not in settings.kafka.event_processing.valid_request_types:
+            if (
+                settings.kafka.event_processing.valid_request_types
+                and parsed_event.request_type not in settings.kafka.event_processing.valid_request_types
+            ):
                 logger.info(f"Skipping event with request type: {parsed_event.request_type}")
                 raise AckMessage()
 
             # Skip events with wrong action types
-            if parsed_event.action not in settings.kafka.event_processing.valid_action_types:
+            if (
+                settings.kafka.event_processing.valid_action_types
+                and parsed_event.action not in settings.kafka.event_processing.valid_action_types
+            ):
                 logger.info(f"Skipping event with action type: {parsed_event.action}")
                 raise AckMessage()
 

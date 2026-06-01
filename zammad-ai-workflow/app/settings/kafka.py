@@ -48,13 +48,13 @@ class EventProcessingSettings(BaseModel):
     """Settings related to processing of incoming events."""
 
     valid_request_types: list[str] = Field(
-        description="List of valid request types to process. Events with request types not in this list will be acknowledged and skipped.",
         default_factory=list,
+        description="List of valid request types to process. Events with request types not in this list will be acknowledged and skipped. If empty, all request types are accepted.",
     )
 
     valid_action_types: list[str] = Field(
-        description="List of valid action types to process. Events with action types not in this list will be acknowledged and skipped.",
         default_factory=list,
+        description="List of valid action types to process. Events with action types not in this list will be acknowledged and skipped. If empty, all action types are accepted.",
     )
 
 
