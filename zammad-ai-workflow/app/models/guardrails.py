@@ -19,7 +19,7 @@ class _GuardrailLabelListMixin(BaseModel):
         if value is None:
             return []
         if isinstance(value, str):
-            return [value]
+            return [value] if value.strip() else []
         if isinstance(value, Sequence):
             return [str(item) for item in value]
         return [str(value)]
