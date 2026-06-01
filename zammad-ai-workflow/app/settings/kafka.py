@@ -38,6 +38,24 @@ class KafkaSettings(BaseModel):
         default_factory=lambda: DisableKafkaSecurity(),
         discriminator="type",
     )
+    event_processing: "EventProcessingSettings" = Field(
+        description="Settings related to processing of incoming events.",
+        default_factory=lambda: EventProcessingSettings(),
+    )
+
+
+class EventProcessingSettings(BaseModel):
+    """Settings related to processing of incoming events."""
+
+    valid_request_types: list[str] = Field(
+        description="List of valid request types to process. Events with request types not in this list will be acknowledged and skipped.",
+        default_factory=list,
+    )
+
+    valid_action_types: list[str] = Field(
+        description="List of valid action types to process. Events with action types not in this list will be acknowledged and skipped.",
+        default_factory=list,
+    )
 
 
 class DisableKafkaSecurity(BaseModel):

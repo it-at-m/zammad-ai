@@ -112,11 +112,6 @@ class ZammadAISettings(BaseSettings):
         default_factory=lambda: LoggingSettings(),
     )
 
-    valid_request_types: list[str] = Field(
-        min_length=1,
-        description="List of valid request types to be processed",
-    )
-
     max_user_text_length: PositiveInt = Field(
         description="Maximum combined length of article text and attachment content for triage/answer processing. Messages exceeding this length will be truncated to this limit.",
         default=2000,
