@@ -40,7 +40,7 @@ kafka:
   # event_processing holds filtering and processing-related options
   event_processing:
     valid_request_types:
-      - "technischer Bürgersupport"
+      - "Support"
     valid_action_types:
       - "created"
       - "updated"
