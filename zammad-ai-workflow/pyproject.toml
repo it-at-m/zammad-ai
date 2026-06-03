@@ -1,7 +1,7 @@
 [project]
 name = "zammad-ai"
 license = "MIT"
-version = "0.1.6"
+version = "0.1.8"
 
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
