@@ -1,0 +1,47 @@
+{
+  "skills": {
+    "find-skills": {
+      "computedHash": "645b891da1edbae76ab79c7b088d4e73397464f8396edaf773c0e01971ce75d6",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "source": "vercel-labs/skills",
+      "sourceType": "github"
+    },
+    "langchain-fundamentals": {
+      "computedHash": "766050497c9a8bde7a8df17cb8c00291e0fd4a62662d735c628b2bb6725a1002",
+      "skillPath": "config/skills/langchain-fundamentals/SKILL.md",
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github"
+    },
+    "langchain-middleware": {
+      "computedHash": "20c6965cd2d81879be648b799dffa9d50e642a0568998aa22264e5de72dfa46c",
+      "skillPath": "config/skills/langchain-middleware/SKILL.md",
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github"
+    },
+    "langchain-rag": {
+      "computedHash": "ebdbd5a7c2c190d3e5a44a2522949867cc211641af1925e086a0250aaf392da3",
+      "skillPath": "config/skills/langchain-rag/SKILL.md",
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github"
+    },
+    "langfuse": {
+      "computedHash": "ebc328dfdc8363ee138637816918dafb296ae68d51492a53bc79fae0c2a09888",
+      "skillPath": "skills/langfuse/SKILL.md",
+      "source": "langfuse/skills",
+      "sourceType": "github"
+    },
+    "ty": {
+      "computedHash": "b27b5678010c0ac438d9812bb2ce011864a93aa13ffc0b7b4ac0e9d73d2e8d14",
+      "skillPath": "plugins/astral/skills/ty/SKILL.md",
+      "source": "astral-sh/claude-code-plugins",
+      "sourceType": "github"
+    },
+    "uv": {
+      "computedHash": "19be80af320534d243a183ae7608521b47bd89b48a138d0cdafef9548e832733",
+      "skillPath": "plugins/astral/skills/uv/SKILL.md",
+      "source": "astral-sh/claude-code-plugins",
+      "sourceType": "github"
+    }
+  },
+  "version": 1
+}
