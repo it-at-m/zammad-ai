@@ -149,11 +149,9 @@ class TestContextBuilders:
         assert "dlf_enabled" in context
         assert "disclaimer" in context
 
-    def test_build_judge_context_empty(self):
+    def test_build_judge_context_empty(self, settings_factory):
         """Test building judge context with default settings."""
-        from app.settings import ZammadAISettings
-
-        settings = ZammadAISettings()
+        settings = settings_factory()
         context = build_judge_context(settings)
 
         assert "thresholds" in context

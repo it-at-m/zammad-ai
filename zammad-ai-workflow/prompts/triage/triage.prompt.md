@@ -12,11 +12,11 @@ Follow these steps IN THIS ORDER:
    - **Identify WHO is writing**: Is this a CITIZEN REQUEST or a STAFF REPLY?
    - **Staff reply indicators**: Professional tone, formal signatures ("Mit freundlichen Grüßen", department names like "Landeshauptstadt München", "Kreisverwaltungsreferat", staff names), provision of information/instructions, closing formulas with agency names
    - **Citizen request indicators**: Personal concerns, questions about own case, emotional language, informal style
-   {% if knowledge_base_enabled or dlf_enabled %}
+     {% if knowledge_base_enabled or dlf_enabled %}
    - **Available analysis tools**:
      {% if knowledge_base_enabled %}Knowledge Base Search, {% endif %}
      {% if dlf_enabled %}DLF Search{% endif %}
-   {% endif %}
+     {% endif %}
    - **RULE: If this is a STAFF REPLY, auto-notification, or system message → ALWAYS categorize as "{{ no_category_name }}"**
    - **RULE: Only categorize as a specific category if this is clearly a CITIZEN'S OWN REQUEST**
 
@@ -50,13 +50,14 @@ Follow these steps IN THIS ORDER:
 8. CATEGORY-SPECIFIC EXTRACTION
    - Apply any extraction rules defined for specific categories (e.g., process numbers, status indicators).
    - Return extracted values in the format specified by the category definition.
-</task>
+     </task>
 
 <categories>
 # Definitions of available categories:
 {categories_prompt}
 
 # Available categories:
+
 {% for category in categories %}- **{{ category.name }}** (auto_publish: {{ category.auto_publish|lower }})
 {% endfor %}
 </categories>
