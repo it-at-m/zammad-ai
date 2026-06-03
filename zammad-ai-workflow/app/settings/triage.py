@@ -22,7 +22,7 @@ class TriageSettings(BaseModel):
     )
     action_rules: list["ActionRule"]
     prompts: StringTriagePrompts | FileTriagePrompts | LangfuseTriagePrompts = Field(
-        description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references.",
+        description="Prompts for the triage process. Can be provided as raw strings, file paths, or Langfuse prompt references. All prompts support Jinja2 templating automatically.",
         discriminator="type",
     )
     category_wrong_retry_confidence_threshold: float = Field(
