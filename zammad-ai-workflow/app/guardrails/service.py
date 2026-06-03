@@ -75,7 +75,7 @@ class GuardrailService:
             logger.info("Guardrail model loaded successfully.")
         except Exception:
             self._model = None
-            logger.warning("Guardrail model could not be loaded; continuing without guardrails.", exc_info=True)
+            logger.error("Guardrail model could not be loaded", exc_info=True)
 
     async def evaluate(self, text: str) -> GuardrailResult:
         """Evaluate text for harmful content.
