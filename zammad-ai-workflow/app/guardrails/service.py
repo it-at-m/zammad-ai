@@ -54,7 +54,7 @@ class GuardrailService:
         """Load or retrieve cached GLiNER model and tokenizer from HuggingFace."""
         try:
             os.environ["HF_HOME"] = self.settings.huggingface_cache_dir
-            os.environ["TRANSFORMERS_CACHE"] = self.settings.huggingface_cache_dir
+            os.environ["HF_HUB_CACHE"] = self.settings.huggingface_cache_dir
             os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
             model_name = "fastino/gliguard-LLMGuardrails-300M"
             if not self.settings.offline_mode:
@@ -65,8 +65,6 @@ class GuardrailService:
                     os.path.join(self.settings.huggingface_cache_dir, model_name)
                 )  # Ensure model is cached
             else:
-                os.environ["HF_HUB_OFFLINE"] = "1"
-                os.environ["TRANSFORMERS_OFFLINE"] = "1"
                 model = GLiNER2.from_pretrained(
                     os.path.join(self.settings.huggingface_cache_dir, model_name),
                     local_files_only=True,
