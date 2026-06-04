@@ -5,7 +5,7 @@ version = "0.1.6"
 
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
-requires-python = "==3.14.4"
+requires-python = "==3.14.5"
 authors = [
     { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
     { name = "Paul Ilitz", email = "paul.ilitz@muenchen.de" },
