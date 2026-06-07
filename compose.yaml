@@ -167,7 +167,7 @@ services:
     security_opt: *security_settings
 
   grafana:
-    image: grafana/grafana:latest@sha256:2d1f9ae67c1778d33e291d4c3c759cd8b650e67491f02533499eb950e075eeb5
+    image: grafana/grafana:latest@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     ports:
       - "3000:3000"
     depends_on:
