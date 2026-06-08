@@ -162,18 +162,18 @@ class ActionService:
             response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
                 text=user_text, response=response.response
             )
-        self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
-        if (
-            not response_guardrail_result.response_safety == "safe"
-            and self.guardrail_service.settings.block_on_high_risk
-        ):
-            self.logger.warning(
-                f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
-            )
-            raise ActionExecutionError(
-                f"Generated response failed safety checks: {response_guardrail_result.response_toxicity}, {response_guardrail_result.response_refusal}",
-                retryable=False,
-            )
+            self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
+            if (
+                not response_guardrail_result.response_safety == "safe"
+                and self.guardrail_service.settings.block_on_high_risk
+            ):
+                self.logger.warning(
+                    f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
+                )
+                raise ActionExecutionError(
+                    f"Generated response failed safety checks: {response_guardrail_result.response_toxicity}, {response_guardrail_result.response_refusal}",
+                    retryable=False,
+                )
 
         return response
 
