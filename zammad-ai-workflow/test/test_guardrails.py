@@ -16,14 +16,6 @@ def guardrail_settings() -> GuardrailSettings:
     )
 
 
-@pytest.fixture(autouse=True)
-def mock_guardrail_model(monkeypatch):
-    """Mock GLiNER2.from_pretrained, damit kein echtes Modell geladen wird."""
-    monkeypatch.setattr(
-        "app.guardrails.service.GLiNER2.from_pretrained", classmethod(lambda cls, *_args, **_kwargs: None)
-    )
-
-
 @pytest.fixture
 def guardrail_service(guardrail_settings: GuardrailSettings) -> GuardrailService:
     """Create a guardrail service instance."""
