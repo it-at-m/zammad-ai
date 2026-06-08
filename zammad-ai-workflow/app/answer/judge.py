@@ -33,7 +33,7 @@ class JudgeHandler:
         match genai_settings.sdk:
             case "openai":
                 self.chat_model = ChatOpenAI(
-                    name=genai_settings.judge_model or genai_settings.chat_model,
+                    model=genai_settings.judge_model or genai_settings.chat_model,
                     temperature=genai_settings.judge_temperature,
                     max_retries=genai_settings.max_retries,
                     reasoning=genai_settings.judge_reasoning_config,
