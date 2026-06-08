@@ -108,9 +108,10 @@ class ActionService:
         """
         # Evaluate guardrails before answer generation
         guardrail_result: GuardrailResult = await self.guardrail_service.evaluate(user_text)
-        self.logger.info(
-            f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
-        )
+        if self.settings.guardrails.enabled:
+            self.logger.info(
+                f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+            )
 
         if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
             self.logger.warning(
