@@ -26,11 +26,18 @@ class DLFAPIPayload(BaseModel):
     rerank: bool = False
 
 
+class DLFMetadata(BaseModel):
+    """Metadata for a DLF document."""
+
+    url: str = Field(validation_alias="source")
+
+
 class DLFDocument(BaseModel):
     """A single retrieval document from DLF."""
 
     title: str = Field(validation_alias="name")
     content: str = Field(validation_alias="page_content")
+    metadata: DLFMetadata = Field(validation_alias="metadata")
 
 
 class DLFAPIResponse(BaseModel):
