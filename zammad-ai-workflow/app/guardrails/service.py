@@ -73,9 +73,10 @@ class GuardrailService:
             model.to("cpu")
             self._model = model
             logger.info("Guardrail model loaded successfully.")
-        except Exception:
+        except Exception as e:
             self._model = None
             logger.error("Guardrail model could not be loaded", exc_info=True)
+            raise RuntimeError("Guardrail model failed to load; refusing to start with guardrails enabled.") from e
 
     async def evaluate(self, text: str) -> GuardrailResult:
         """Evaluate text for harmful content.
