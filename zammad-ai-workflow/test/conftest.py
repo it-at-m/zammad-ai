@@ -13,6 +13,7 @@ import pytest
 from app.settings import (
     AnswerSettings,
     GenAISettings,
+    GuardrailSettings,
     KafkaSettings,
     TriageSettings,
     ZammadAISettings,
@@ -135,6 +136,7 @@ def base_settings() -> ZammadAISettings:
                 },
             ),
         ),
+        guardrails=GuardrailSettings(enabled=False),  # Disable guardrails by default for tests; individual tests can enable with settings_factory overrides
         answer=AnswerSettings(
             ai_answer_disclaimer="",
         ),
