@@ -8,7 +8,7 @@ The integration is built around an abstract base class `BaseZammadClient`, which
 
 ### `BaseZammadClient`
 
-The abstract interface located in `zammad-ai/app/zammad/base.py`. It defines methods for:
+The abstract interface located in `zammad-ai-workflow/app/zammad/base.py`. It defines methods for:
 
 - `get_ticket(id)`: Retrieving a ticket with its articles.
 - `post_answer(ticket_id, text, internal)`: Posting a reply or internal note.
@@ -18,7 +18,7 @@ The abstract interface located in `zammad-ai/app/zammad/base.py`. It defines met
 
 ### `ZammadAPIClient` (REST API)
 
-Located in `zammad-ai/app/zammad/api.py`. This is the primary implementation using Zammad's official REST API.
+Located in `zammad-ai-workflow/app/zammad/api.py`. This is the primary implementation using Zammad's official REST API.
 
 - **Authentication**: Uses Bearer Token authentication.
 - **Retries**: Uses `stamina` for robust HTTP request handling with exponential backoff.
@@ -26,8 +26,8 @@ Located in `zammad-ai/app/zammad/api.py`. This is the primary implementation usi
 
 ### `ZammadEAIClient` (Internal EAI)
 
-Located in `zammad-ai/app/zammad/eai.py`. This is a skeleton implementation intended for integration with internal Enterprise Application Integration (EAI) systems. Currently, it raises `NotImplementedError` for most methods.
+Located in `zammad-ai-workflow/app/zammad/eai.py`. This is a skeleton implementation intended for integration with internal Enterprise Application Integration (EAI) systems. Currently, it raises `NotImplementedError` for most methods.
 
 ## Models
 
-Incoming Zammad data and outgoing requests are validated using Pydantic models defined in `zammad-ai/app/models/zammad.py`. These models ensure type safety and consistent data structures throughout the application.
+Incoming Zammad data and outgoing requests are validated using Pydantic models defined in `zammad-ai-workflow/app/models/zammad.py`. These models ensure type safety and consistent data structures throughout the application.

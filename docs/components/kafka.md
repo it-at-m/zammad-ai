@@ -42,7 +42,7 @@ kafka:
     # A: For mTLS via environment variables:
     ca_file_base64: "QkFTRTY0X0NBX0NFUlQ=" # use actual base64-encoded CA cert
     pkcs12_base64: "QkFTRTY0X1BLQ1MxMl9CTE9C" # use actual base64-encoded PKCS#12 blob
-    pkcs12_pw_base64: "QkFTRTY0X1BBU1NXT1JE" # use actual base64-encoded PKCS#12 password
+    pkcs12_pw: "your-cleartext-password" # PKCS#12 password in cleartext
 
 
     # B: For mTLS via file paths:
@@ -58,7 +58,7 @@ Use double underscores for nesting:
 - `ZAMMAD_AI_KAFKA__BROKER_URL`
 - `ZAMMAD_AI_KAFKA__SECURITY__CA_FILE_BASE64`
 - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_BASE64`
-- `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_PW_BASE64`
+ - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_PW`
 
 ### Security Schemas
 
@@ -68,7 +68,7 @@ Kafka connections can be secured either via classic PEM files or via PKCS#12 blo
 
 - `ca_file_base64`: Base64-encoded CA certificate
 - `pkcs12_base64`: Base64-encoded PKCS#12 payload
-- `pkcs12_pw_base64`: Base64-encoded PKCS#12 password
+- `pkcs12_pw`: PKCS#12 password (cleartext)
 
 #### 2. KafkaMTLSFileSecurity (File Paths)
 

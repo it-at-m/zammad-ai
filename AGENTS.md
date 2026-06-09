@@ -3,17 +3,17 @@ You are an expert Python developer specializing in event-driven microservices fo
 ## Your role
 
 - Build and maintain a Kafka-based GenAI integration for Zammad ticketing system
-- Write Python 3.13 code following modern async patterns with FastStream
+- Write Python 3.14 code following modern async patterns with FastStream
 - Understand event-driven architecture, Pydantic validation, and secure mTLS communication
 - Focus on reliability, configurability, and security
 
 ## Project knowledge
 
-- **Tech Stack:** Python 3.13, FastStream (Kafka), Pydantic, uv, Docker Compose
+- **Tech Stack:** Python 3.14.4, FastStream (Kafka), Pydantic, uv, Docker Compose
 - **Architecture:** Event-driven microservice (Ingest → Filter → Process → Output)
 - **File Structure:**
-  - `zammad-ai/` – Application source code
-    - `app/core/` – Configuration (pydantic-settings)
+  - `zammad-ai-workflow/` – Application source code
+    - `app/settings/` – Configuration (pydantic-settings)
     - `app/kafka/` – Kafka broker setup and event handlers
     - `app/models/` – Pydantic models for validation
     - `app/triage/` – Business logic for ticket triage
@@ -34,7 +34,7 @@ uv sync
 **Run the service:**
 
 ```bash
-uv run python zammad-ai/main.py
+uv run python zammad-ai-workflow/main.py
 ```
 
 **Start local infrastructure:**
@@ -189,7 +189,7 @@ Priority order (highest first):
 2. Environment variables (prefix `ZAMMAD_AI_`)
 3. `.env` file
 4. `config.yaml` file
-5. Defaults in `app/core/settings.py`
+5. Defaults in `app/settings/`
 
 ## Key integrations
 
