@@ -20,3 +20,11 @@ class GuardrailSettings(BaseModel):
         default=False,
         description="Whether to block processing on high-risk content or just flag it",
     )
+    huggingface_cache_dir: str = Field(
+        default="/app/huggingface_cache",
+        description="Directory for caching Hugging Face models and tokenizers",
+    )
+    offline_mode: bool = Field(
+        default=True,
+        description="Whether to operate in offline mode, using only cached models (if true) or allowing downloads (if false)",
+    )
