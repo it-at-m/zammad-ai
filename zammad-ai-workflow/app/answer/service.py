@@ -21,6 +21,7 @@ from app.settings.answer import (
     LangfusePromptConfig,
     StringPromptConfig,
 )
+from app.utils.context_builders import build_answer_context
 from app.utils.logging import getLogger
 from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
@@ -93,8 +94,16 @@ class AnswerService:
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
         # Setup the user message template as an object variable
+        # Render with Jinja2 if the template contains Jinja2 syntax
+        from app.utils.jinja2 import get_template_renderer
+
+        user_msg_template_str = load_prompt(file_path=get_prompts_dir() / "answer" / "user_message_template.prompt.md")
+        renderer = get_template_renderer()
+        if renderer._has_jinja2_syntax(user_msg_template_str):
+            context = build_answer_context(settings.answer)
+            user_msg_template_str = renderer.render_template(user_msg_template_str, context)
         self.user_message_template: PromptTemplate = PromptTemplate.from_template(
-            template=load_prompt(file_path=get_prompts_dir() / "answer" / "user_message_template.prompt.md"),
+            template=user_msg_template_str,
         )
 
         self.agent: CompiledStateGraph[
@@ -265,8 +274,23 @@ class AnswerService:
                     retryable=True,
                 ) from e
         if isinstance(prompt_config, FilePromptConfig):
-            return load_prompt(file_path=prompt_config.prompt)
+            # Load from file and render with Jinja2 if it contains Jinja2 syntax
+            from app.utils.jinja2 import get_template_renderer
+
+            template_content = load_prompt(file_path=prompt_config.prompt)
+            renderer = get_template_renderer()
+            if renderer._has_jinja2_syntax(template_content):
+                context = build_answer_context(self.settings.answer)
+                return renderer.render_template(template_content, context)
+            return template_content
         if isinstance(prompt_config, StringPromptConfig):
+            # Check if string contains Jinja2 syntax and render if so
+            from app.utils.jinja2 import get_template_renderer
+
+            renderer = get_template_renderer()
+            if renderer._has_jinja2_syntax(prompt_config.prompt):
+                context = build_answer_context(self.settings.answer)
+                return renderer.render_template(prompt_config.prompt, context)
             return prompt_config.prompt
         raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
 

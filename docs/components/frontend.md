@@ -10,7 +10,7 @@ The project includes an optional Gradio-based frontend module for local develope
 
 ## Runtime Integration
 
-Frontend code lives under `zammad-ai/app/frontend` and is mounted through backend startup wiring in `zammad-ai/app/api/backend.py`.
+Frontend code lives under `zammad-ai-workflow/app/frontend` and is mounted through backend startup wiring in `zammad-ai-workflow/app/api/backend.py`.
 
 When `frontend.enabled` is true:
 
@@ -24,7 +24,7 @@ When `frontend.enabled` is false and mode is `development`:
 
 ## Configuration
 
-Frontend settings are configured under `frontend` in `zammad-ai/config.yaml`.
+Frontend settings are configured under `frontend` in `zammad-ai-workflow/config.yaml`.
 
 ```yaml
 frontend:

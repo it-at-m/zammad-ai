@@ -123,12 +123,27 @@ class TriageService:
         # Prepare prompts for GenAI handler with system prompts
         genai_prompts: dict[str, str] = self.prompts.copy()  # type: ignore
 
-        # Load system prompts from markdown files
+        # Load system prompts from markdown files and render with Jinja2 if they contain Jinja2 syntax
         prompts_dir = get_prompts_dir()
+        from app.utils.context_builders import build_judge_context, build_triage_context
+        from app.utils.jinja2 import get_template_renderer
 
-        genai_prompts["triage"] = load_prompt(prompts_dir / "triage" / "triage.prompt.md")
-        genai_prompts["days_since_request"] = load_prompt(prompts_dir / "triage" / "days_since_request.prompt.md")
-        genai_prompts["processing_id"] = load_prompt(prompts_dir / "triage" / "processing_id.prompt.md")
+        renderer = get_template_renderer([prompts_dir])
+
+        # Build context for Jinja2 rendering - combines triage and judge contexts
+        triage_context = build_triage_context(settings, self.categories)
+        judge_context = build_judge_context(settings)
+        system_prompt_context = {**triage_context, **judge_context}
+
+        # Load and render each system prompt with Jinja2
+        triage_template = load_prompt(prompts_dir / "triage" / "triage.prompt.md")
+        genai_prompts["triage"] = renderer.render_template(triage_template, system_prompt_context)
+
+        days_sr_template = load_prompt(prompts_dir / "triage" / "days_since_request.prompt.md")
+        genai_prompts["days_since_request"] = renderer.render_template(days_sr_template, system_prompt_context)
+
+        processing_id_template = load_prompt(prompts_dir / "triage" / "processing_id.prompt.md")
+        genai_prompts["processing_id"] = renderer.render_template(processing_id_template, system_prompt_context)
 
         # Initialize GenAI handler with pre-built chains
         self.genai_handler = GenAIHandler(

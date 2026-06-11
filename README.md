@@ -4,7 +4,7 @@
 
 Zammad-AI is a GenAI-powered extension for Zammad. The repository contains two separate Python services:
 
-- `zammad-ai`: the backend service for ticket triage, answer generation, Kafka processing, and the optional embedded frontend.
+- `zammad-ai-workflow`: the backend service for ticket triage, answer generation, Kafka processing, and the optional embedded frontend.
 - `zammad-ai-index`: the indexing job that synchronizes Zammad knowledge base content into Qdrant Database.
 
 The services are intentionally separated from the core Zammad application so prompts, retrieval, automation rules, and integrations can evolve independently.
@@ -44,7 +44,7 @@ We keep this component separate from Zammad core to:
 
 ## Repository layout
 
-- [zammad-ai/](zammad-ai/) - backend service and API entry point.
+- [zammad-ai-workflow/](zammad-ai-workflow/) - backend service and API entry point.
 - [zammad-ai-index/](zammad-ai-index/) - knowledge base indexing job.
 - [docs/](docs/) - architecture, configuration, and API documentation.
 - [compose.yaml](compose.yaml) - local Kafka, Qdrant, Mailpit, Prometheus, Grafana, and UI stack.
@@ -88,7 +88,7 @@ Available local services:
 2. Install dependencies for the backend service:
 
 ```bash
-cd zammad-ai
+cd zammad-ai-workflow
 uv sync
 ```
 
@@ -104,7 +104,7 @@ cp config.example.yaml config.yaml
 uv run python main.py
 ```
 
-5. Optional: enable the embedded Gradio frontend by setting `frontend.enabled: true` in `zammad-ai/config.yaml`. In development mode, the backend exposes:
+5. Optional: enable the embedded Gradio frontend by setting `frontend.enabled: true` in `zammad-ai-workflow/config.yaml`. In development mode, the backend exposes:
 
 - Frontend: http://localhost:8080/
 - OpenAPI docs: http://localhost:8080/api/docs
@@ -131,14 +131,14 @@ The backend exposes the following public routes:
 Run the test suite:
 
 ```bash
-cd zammad-ai # or cd zammad-ai-index
+cd zammad-ai-workflow # or cd zammad-ai-index
 uv run pytest
 ```
 
 Lint and format the code:
 
 ```bash
-cd zammad-ai # or cd zammad-ai-index
+cd zammad-ai-workflow # or cd zammad-ai-index
 uv run ruff check .
 uv run ruff format .
 ```
@@ -146,7 +146,7 @@ uv run ruff format .
 Type check the codebase:
 
 ```bash
-cd zammad-ai # or cd zammad-ai-index
+cd zammad-ai-workflow # or cd zammad-ai-index
 uv run ty check
 ```
 
@@ -155,11 +155,13 @@ uv run ty check
 - Configuration is loaded from CLI arguments, environment variables, `.env`, and `config.yaml` in that order.
 - Environment variables use the `ZAMMAD_AI_` prefix.
 - Secrets should stay in `.env`, not in `config.yaml`.
-- The backend and indexing job each have their own `config.example.yaml` file.
+- The backend and indexing job each have their own `config.example.yaml` file. Defaults are defined in the source code under `zammad-ai-workflow/app/settings/`.
 
 ## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+See the full guidelines in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 If you have a suggestion that would make this better, please open an issue with the tag "enhancement", fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!

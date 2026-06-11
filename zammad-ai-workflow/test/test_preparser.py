@@ -5,6 +5,7 @@ behavior (pass-through when disabled and configuration validation).
 """
 
 import pytest
+
 from app.preparser.service import PreparserService
 from app.preparser.table import TablePreparser
 from app.settings.preparser import PreparserSettings
@@ -27,6 +28,7 @@ def test_table_preparser_extracts_matching_rows() -> None:
     assert "This is a summary." in out
     assert "## Steps to reproduce" in out
     assert "Step 1; Step 2" in out
+
 
 def test_table_preparser_passthrough_when_no_table() -> None:
     """When no table is present, the parser should return the original text unchanged."""

@@ -15,15 +15,15 @@ The triage process follows these main steps:
 
 ### `Triage`
 
-Located in `zammad-ai/app/triage/triage.py`. This class orchestrates the entire triage workflow. It is initialized with `ZammadAISettings`, which defines categories, actions, and rules.
+Located in `zammad-ai-workflow/app/triage/triage.py`. This class orchestrates the entire triage workflow. It is initialized with `ZammadAISettings`, which defines categories, actions, and rules.
 
 ### `GenAIHandler`
 
-Located in `zammad-ai/app/triage/genai_handler.py`. This class handles all interactions with the language model using LangChain. It dynamically builds and caches chains based on prompt templates and optionally attaches Pydantic models for structured output.
+Located in `zammad-ai-workflow/app/triage/genai_handler.py`. This class handles all interactions with the language model using LangChain. It dynamically builds and caches chains based on prompt templates and optionally attaches Pydantic models for structured output.
 
 ## Configuration
 
-The triage behavior is highly configurable via `app.core.settings.triage.TriageSettings`.
+The triage behavior is highly configurable via `app.settings.triage.TriageSettings`.
 
 ### Categories and Actions
 

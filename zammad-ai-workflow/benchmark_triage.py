@@ -4,9 +4,10 @@ import asyncio
 import json
 
 import httpx
-from app.utils.logging import getLogger
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm_asyncio
+
+from app.utils.logging import getLogger
 
 load_dotenv()
 

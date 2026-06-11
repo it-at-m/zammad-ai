@@ -3,24 +3,31 @@ You are an expert Python developer specializing in event-driven microservices fo
 ## Your role
 
 - Build and maintain a Kafka-based GenAI integration for Zammad ticketing system
-- Write Python 3.13 code following modern async patterns with FastStream
+- Write Python 3.14 code following modern async patterns with FastStream
 - Understand event-driven architecture, Pydantic validation, and secure mTLS communication
 - Focus on reliability, configurability, and security
 
 ## Project knowledge
 
-- **Tech Stack:** Python 3.13, FastStream (Kafka), Pydantic, uv, Docker Compose
+- **Tech Stack:** Python 3.14.4, FastStream (Kafka), Pydantic, uv, Docker Compose
 - **Architecture:** Event-driven microservice (Ingest → Filter → Process → Output)
 - **File Structure:**
-  - `zammad-ai/` – Application source code
-    - `app/core/` – Configuration (pydantic-settings)
+  - `zammad-ai-workflow/` – Application source code
+    - `app/settings/` – Configuration (pydantic-settings)
     - `app/kafka/` – Kafka broker setup and event handlers
     - `app/models/` – Pydantic models for validation
     - `app/triage/` – Business logic for ticket triage
     - `app/utils/` – Logging and utilities
     - `main.py` – Application entry point
-  - `test/` – Pytest test suite
-  - `compose.yaml` – Local dev stack (Kafka, Zookeeper, Mailpit, Kafka UI)
+  - `zammad-ai-index/` – Knowledge base indexer (batch job)
+    - `job/settings/` – Configuration models and precedence
+    - `job/zammad/` – Zammad API/EAI clients
+    - `job/qdrant/` – Qdrant client, embeddings, snapshot, add/delete
+    - `job/data/` – Retrieval and transformation helpers
+    - `main.py` – Index job entry point
+  - `zammad-ai-workflow/test/` – Pytest test suite for the backend service
+  - `zammad-ai-index/test/` – Pytest test suite for the indexing job
+  - `compose.yaml` – Local dev stack (Kafka, Kafka UI, Mailpit, Qdrant, Prometheus, Grafana)
   - `ruff.toml` – Linting and formatting config
 
 ## Commands you can use
@@ -34,7 +41,13 @@ uv sync
 **Run the service:**
 
 ```bash
-uv run python zammad-ai/main.py
+uv run python zammad-ai-workflow/main.py
+```
+
+**Run the index job:**
+
+```bash
+uv run python zammad-ai-index/main.py
 ```
 
 **Start local infrastructure:**
@@ -43,6 +56,10 @@ uv run python zammad-ai/main.py
 docker compose up -d
 # Kafka UI: http://localhost:8089
 # Mailpit: http://localhost:8025
+# Qdrant: http://localhost:6333
+# Prometheus: http://localhost:9091
+# Grafana: http://localhost:3000
+# Note: compose initializes Qdrant collection "zammad-ai_default" (dimension 1024) for local development
 ```
 
 **Test:**
@@ -189,7 +206,18 @@ Priority order (highest first):
 2. Environment variables (prefix `ZAMMAD_AI_`)
 3. `.env` file
 4. `config.yaml` file
-5. Defaults in `app/core/settings.py`
+5. Defaults in `app/settings/`
+
+## Index Microservice (zammad-ai-index)
+
+- Purpose: synchronize Zammad Knowledge Base content into Qdrant for retrieval.
+- Entry point: `zammad-ai-index/main.py` (single-run batch job; exits after completion).
+- Configuration: see `zammad-ai-index/config.example.yaml` (sources: CLI > env `ZAMMAD_AI_` > `.env` > YAML).
+- Required env vars:
+  - `OPENAI_API_KEY` (embeddings); optional `OPENAI_BASE_URL` for proxies.
+  - `ZAMMAD_AI_QDRANT__API_KEY` (if Qdrant requires auth).
+  - Zammad secrets depending on mode: `ZAMMAD_AI_ZAMMAD__AUTH_TOKEN` (API) or OAuth secrets for EAI.
+- Qdrant: collection must exist and vector dimension must match `genai.embedding_model`; compose creates `zammad-ai_default` with dimension `1024`.
 
 ## Key integrations
 
