@@ -19,6 +19,7 @@ from .genai import GenAISettings
 from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .logging import LoggingSettings
+from .preparser import PreparserSettings
 from .prometheus import PrometheusSettings
 from .triage import TriageSettings
 from .usecase import UseCaseSettings
@@ -140,6 +141,12 @@ class ZammadAISettings(BaseSettings):
     guardrails: GuardrailSettings = Field(
         description="Settings for guardrail content safety evaluation.",
         default_factory=lambda: GuardrailSettings(),
+    )
+    preparser: "PreparserSettings" = Field(
+        description="Settings for optional message preparsing before LLM processing.",
+        default_factory=lambda: __import__(
+            "app.settings.preparser", fromlist=["PreparserSettings"]
+        ).PreparserSettings(),
     )
 
     @model_validator(mode="after")
