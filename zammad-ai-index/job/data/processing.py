@@ -158,7 +158,7 @@ def filter_for_changed_data(
     for point in all_points:
         try:
             point_id = UUID(str(point.id))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             logger.warning(
                 "Skipping Qdrant point with non-UUID id %s during change detection.",
                 point.id,

@@ -163,7 +163,7 @@ class BaseZammadClient(ABC):
         except ZammadRetryableError:
             logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
             raise
-        except (TicketNotFoundError, ZammadAuthError, ZammadPayloadParseError, ZammadPermanentError):
+        except TicketNotFoundError, ZammadAuthError, ZammadPayloadParseError, ZammadPermanentError:
             logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
             raise
 

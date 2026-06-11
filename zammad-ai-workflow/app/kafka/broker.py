@@ -114,7 +114,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             # Extract ticket ID
             try:
                 ticket_id: int = int(parsed_event.ticket)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 _handle_processing_exception(
                     KafkaPayloadError("Invalid ticket id in Kafka payload"),
                     ticket=parsed_event.ticket,

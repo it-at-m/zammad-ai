@@ -1,4 +1,4 @@
-# zammad-ai
+# zammad-ai-workflow
 
 zammad-ai is the backend microservice for ticket triage, answer generation, and event-driven processing in the Zammad-AI ecosystem.
 
@@ -30,7 +30,7 @@ It provides:
 1. Switch into the service directory:
 
 ```bash
-cd zammad-ai
+cd zammad-ai-workflow
 ```
 
 2. Install dependencies:
@@ -52,7 +52,7 @@ cp config.example.yaml config.yaml
 Run the backend:
 
 ```bash
-uv run main.py
+uv run python main.py
 ```
 
 Default behavior:
@@ -117,7 +117,7 @@ Common local services:
 
 ## Testing and Quality
 
-Run from this service directory (`zammad-ai/`):
+Run from this service directory (`zammad-ai-workflow/`):
 
 ```bash
 uv run pytest

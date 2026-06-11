@@ -4,7 +4,7 @@ The project uses Qdrant as a vector database for knowledge retrieval and semanti
 
 ## Integration
 
-The Qdrant integration is configured via `app.core.settings.qdrant.QdrantSettings`. It uses the `langchain-qdrant` package to provide a vector store compatible with LangChain chains.
+The Qdrant integration is configured via `app.settings.answer.QdrantSettings` (nested under the `answer` settings). It uses the `langchain-qdrant` package to provide a vector store compatible with LangChain chains.
 
 ## Configuration Keys
 
@@ -15,7 +15,7 @@ The Qdrant integration is configured via `app.core.settings.qdrant.QdrantSetting
 
 ## Data Models
 
-The `QdrantVectorMetadata` model in `zammad-ai/app/models/qdrant.py` defines the structure of the metadata stored alongside vectors:
+The `QdrantVectorMetadata` model in `zammad-ai-workflow/app/models/qdrant.py` defines the structure of the metadata stored alongside vectors:
 
 - `id`: Unique identifier (e.g., Zammad article ID).
 - `title`: Title of the source content.

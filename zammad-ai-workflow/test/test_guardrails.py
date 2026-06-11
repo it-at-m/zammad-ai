@@ -1,6 +1,7 @@
 """Tests for the guardrail service."""
 
 import pytest
+
 from app.guardrails import GuardrailService
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.settings.guardrails import GuardrailSettings
