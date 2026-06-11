@@ -2927,7 +2927,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zammad-ai"
+name = "zammad-ai-workflow"
 version = "0.1.8"
 source = { virtual = "." }
 dependencies = [

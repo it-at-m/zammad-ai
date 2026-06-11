@@ -1,5 +1,5 @@
 [project]
-name = "zammad-ai"
+name = "zammad-ai-workflow"
 license = "MIT"
 version = "0.1.8"
 
