@@ -24,6 +24,7 @@ from app.models.triage import (
     TriageResult,
 )
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.preparser.service import PreparserService, get_preparser_service
 from app.settings import ZammadAISettings
 from app.settings.triage import (
     Action,
@@ -79,6 +80,7 @@ class TriageService:
         """
         self.settings: ZammadAISettings = settings
         self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        self.preparser_service: PreparserService = get_preparser_service(settings=settings.preparser)
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -196,6 +198,12 @@ class TriageService:
                     f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
                 )
                 customer_message: str = customer_message[: self.max_user_text_length]
+
+            # Run preparser (may be a no-op when disabled)
+            try:
+                customer_message = self.preparser_service.preparse(customer_message)
+            except Exception:
+                logger.error("Preparser failed during triage; continuing with original message", exc_info=True)
 
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
             if self.settings.zammad.document_parsing.mode == "off":
