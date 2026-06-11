@@ -17,6 +17,7 @@ from app.action.service import get_action_service
 from app.answer import get_answer_service
 from app.frontend import mount_frontend
 from app.models.api_v1 import HealthCheckResponse
+from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
 from app.triage import get_triage_service
 from app.utils.logging import getLogger
@@ -108,6 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.triage_service = get_triage_service(settings=settings)
         app.state.answer_service = get_answer_service(settings=settings)
         app.state.action_service = get_action_service(settings=settings, answer_service=app.state.answer_service)
+        app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
         if kafka_router is None:
             set_status("ready")

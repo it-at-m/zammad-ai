@@ -45,6 +45,7 @@ triage_router = APIRouter(
 async def triage(
     input: TriageInput,
     service: TriageService = Depends(triage_dependency),
+    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> TriageOutput:
     """Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
@@ -63,6 +64,14 @@ async def triage(
         if not input.session_id:
             input.session_id = str(uuid4())
         text: str = input.text
+
+        # Preparse input text if a preparser is available on the app state
+        try:
+            preparser = request.app.state.preparser_service if request is not None else None
+            if preparser is not None:
+                text = preparser.preparse(text)
+        except Exception:
+            logger.error("Preparser failed in API triage endpoint; continuing with original text", exc_info=True)
 
         # Get categorization result
         categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)

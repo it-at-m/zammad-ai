@@ -41,6 +41,7 @@ answer_router = APIRouter(
 async def answer(
     input: AnswerInput,
     service: ActionService = Depends(action_dependency),
+    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> AnswerOutput:
     """Process an answer request and produce the agent's response based on the provided input.
@@ -56,11 +57,20 @@ async def answer(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
+        # Preparse input text if a preparser is available on the app state
+        user_text = input.text
+        try:
+            preparser = request.app.state.preparser_service if request is not None else None
+            if preparser is not None:
+                user_text = preparser.preparse(user_text)
+        except Exception:
+            logger.error("Preparser failed in API answer endpoint; continuing with original text", exc_info=True)
+
         response: StructuredAgentResponse = await service.get_answer(
             ticket_id=input.ticket_id,
             category_name=input.category,
             action_name=input.action,
-            user_text=input.text,
+            user_text=user_text,
             session_id=input.session_id,
         )
         if response.response is None or response.response.strip() == "":
