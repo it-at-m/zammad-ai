@@ -5,7 +5,7 @@ services:
   # ============= Kafka =============
   #
   kafka:
-    image: confluentinc/cp-kafka:8.2.0@sha256:acbbf674f2ed40e5d0a8ca51beb0f00692c866fc22b5ce06f8cadbdc54cd4436
+    image: confluentinc/cp-kafka:8.2.1@sha256:68cf7eb0d994f9c94206a0cca751abbb491ab1f308d4580debbfcdc5b45ee4fc
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -62,7 +62,7 @@ services:
     security_opt: *security_settings
 
   init-kafka:
-    image: confluentinc/cp-kafka:8.2.0@sha256:acbbf674f2ed40e5d0a8ca51beb0f00692c866fc22b5ce06f8cadbdc54cd4436
+    image: confluentinc/cp-kafka:8.2.1@sha256:68cf7eb0d994f9c94206a0cca751abbb491ab1f308d4580debbfcdc5b45ee4fc
     depends_on:
       kafka:
         condition: service_healthy
@@ -95,7 +95,7 @@ services:
   # ============= Qdrant Vector DB =============
   #
   qdrant:
-    image: qdrant/qdrant:v1.17.1@sha256:94728574965d17c6485dd361aa3c0818b325b9016dac5ea6afec7b4b2700865f
+    image: qdrant/qdrant:v1.18.2@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
     restart: always
     ports:
       - 6333:6333
@@ -152,7 +152,7 @@ services:
   #
 
   prometheus:
-    image: prom/prometheus:latest@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
+    image: prom/prometheus:latest@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -167,7 +167,7 @@ services:
     security_opt: *security_settings
 
   grafana:
-    image: grafana/grafana:latest@sha256:2d1f9ae67c1778d33e291d4c3c759cd8b650e67491f02533499eb950e075eeb5
+    image: grafana/grafana:latest@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     ports:
       - "3000:3000"
     depends_on:

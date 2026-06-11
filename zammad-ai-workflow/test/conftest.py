@@ -10,19 +10,21 @@ from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
+from faststream.kafka import TestKafkaBroker
+from pydantic import HttpUrl, SecretStr
+
 from app.settings import (
     AnswerSettings,
     GenAISettings,
+    GuardrailSettings,
     KafkaSettings,
     TriageSettings,
     ZammadAISettings,
     ZammadAPISettings,
 )
+from app.settings.kafka import EventProcessingSettings
 from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
-from fastapi.testclient import TestClient
-from faststream.kafka import TestKafkaBroker
-from pydantic import HttpUrl, SecretStr
-
 from test.fakes import FakeGenAIHandler, FakeLangfuseClient, FakeZammadClient
 
 _TEST_ENV_DEFAULTS: dict[str, str] = {
@@ -33,7 +35,6 @@ _TEST_ENV_DEFAULTS: dict[str, str] = {
     "ZAMMAD_AI_ZAMMAD__BASE_URL": "https://example.com",
     "ZAMMAD_AI_ZAMMAD__AUTH_TOKEN": "test-token",
     "ZAMMAD_AI_TRIAGE": '{"categories":[{"name":"Unknown"}],"no_category_name":"Unknown","actions":[{"name":"No Action","description":"No action","type":"NoAction"}],"no_action_name":"No Action","action_rules":[],"prompts":{"type":"string","prompt_map":{"categories":"List of categories: {{categories}}","examples":"Examples: {{examples}}","role":"You are a helpful assistant that categorizes support requests into the above categories based on the content of the request."}}}',
-    "ZAMMAD_AI_VALID_REQUEST_TYPES": '["support"]',
     "ZAMMAD_AI_QDRANT__API_KEY": "test-key",
 }
 
@@ -112,10 +113,14 @@ def base_settings() -> ZammadAISettings:
             base_url=HttpUrl(url="https://example.com"),
             auth_token=SecretStr(secret_value="test-token"),
         ),
-        kafka=KafkaSettings(
+        kafka=KafkaSettings.model_construct(
             broker_url="localhost:9092",
             group_id="test-group",
             topic="test-topic",
+            event_processing=EventProcessingSettings.model_construct(
+                valid_request_types=["support", "technischer Bürgersupport"],
+                valid_action_types=["created", "updated"],
+            ),
         ),
         triage=TriageSettings.model_construct(
             categories=[Category(name="Unknown"), Category(name="General")],
@@ -135,6 +140,9 @@ def base_settings() -> ZammadAISettings:
                 },
             ),
         ),
+        guardrails=GuardrailSettings(
+            enabled=False
+        ),  # Disable guardrails by default for tests; individual tests can enable with settings_factory overrides
         answer=AnswerSettings(
             ai_answer_disclaimer="",
         ),
@@ -162,6 +170,7 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
         *,
         action_rules: list[ActionRule] | None = None,
         valid_request_types: list[str] | None = None,
+        valid_action_types: list[str] | None = None,
         **overrides: Any,
     ) -> ZammadAISettings:
         """Create a modified copy of the base ZammadAISettings with optional overrides.
@@ -178,7 +187,9 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
         if action_rules is not None:
             settings.triage.action_rules = action_rules
         if valid_request_types is not None:
-            settings.valid_request_types = valid_request_types
+            settings.kafka.event_processing.valid_request_types = valid_request_types
+        if valid_action_types is not None:
+            settings.kafka.event_processing.valid_action_types = valid_action_types
         if overrides:
             settings = settings.model_copy(update=overrides, deep=True)
         return settings

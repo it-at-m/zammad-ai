@@ -4,13 +4,16 @@ from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from faststream.exceptions import AckMessage, NackMessage
+from faststream.kafka import TestKafkaBroker
+
 from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
-from app.settings.kafka import KafkaSettings
+from app.settings.kafka import EventProcessingSettings, KafkaSettings
 from app.settings.triage import (
     Action,
     ActionTypes,
@@ -19,8 +22,6 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings
-from faststream.exceptions import AckMessage, NackMessage
-from faststream.kafka import TestKafkaBroker
 
 
 def create_mock_settings() -> ZammadAISettings:
@@ -54,6 +55,10 @@ def create_mock_settings() -> ZammadAISettings:
                 broker_url="localhost:9092",
                 group_id="test-group",
                 topic="test-topic",
+                event_processing=EventProcessingSettings(
+                    valid_request_types=["technischer Bürgersupport"],
+                    valid_action_types=["created", "updated"],
+                ),
             ),
             triage=TriageSettings(
                 categories=[Category(name="Test")],
@@ -63,7 +68,7 @@ def create_mock_settings() -> ZammadAISettings:
                 action_rules=[],
                 prompts=StringTriagePrompts(),
             ),
-            valid_request_types=["technischer Bürgersupport"],
+            # keep compatibility: valid request types are set on kafka.event_processing
         )
     finally:
         sys.argv = original_argv
@@ -355,3 +360,20 @@ async def test_event_handler_category_wrong_drops_above_threshold(
     event = Event.model_validate(kafka_message_factory())
     with pytest.raises(AckMessage):
         await event_handler(event=event)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_executes_action_when_triage_returns_action(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    mock_get_action_service: MagicMock,
+) -> None:
+    """Verify that when triage returns a result, the action service is invoked."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, _ = build_router(settings=settings)
+    async with TestKafkaBroker(router.broker) as test_broker:
+        message = kafka_message_factory()
+        await test_broker.publish(topic=settings.kafka.topic, message=message)
+        mock_get_action_service.execute_action.assert_called_once()

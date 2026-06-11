@@ -102,14 +102,19 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                 raise AckMessage() from e
 
             # Skip events with unsupported request types
-            if parsed_event.request_type not in settings.valid_request_types:
+            if parsed_event.request_type not in settings.kafka.event_processing.valid_request_types:
                 logger.info(f"Skipping event with request type: {parsed_event.request_type}")
+                raise AckMessage()
+
+            # Skip events with wrong action types
+            if parsed_event.action not in settings.kafka.event_processing.valid_action_types:
+                logger.info(f"Skipping event with action type: {parsed_event.action}")
                 raise AckMessage()
 
             # Extract ticket ID
             try:
                 ticket_id: int = int(parsed_event.ticket)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 _handle_processing_exception(
                     KafkaPayloadError("Invalid ticket id in Kafka payload"),
                     ticket=parsed_event.ticket,

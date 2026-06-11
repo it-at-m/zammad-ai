@@ -1,7 +1,7 @@
 # Smallest ubi10 image
-FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:44b6115890f31c9dc178a9f0f115d781892bc5e9478860e7f82d445217bc987c
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:a0369f05a1738c23b8b200ffaa75a42373ed342d0a76ccadc261ff7242299a9d
 
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:78bc42400d77b0678ba95765305c826652ed5431f399257271dda681d0318f03 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:b46b03ddfcfbf8f547af7e9eaefdf8a39c8cebcba7c98858d3162bd28cf536f6 /uv /uvx /bin/
 
 # Install the project into `/app`
 WORKDIR /app
@@ -18,16 +18,6 @@ COPY pyproject.toml uv.lock ./
 # Install the transitive dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --locked --no-install-project
-
-# Set HuggingFace cache dir
-ENV HF_HOME="/app/huggingface_cache"
-ENV HUGGINGFACE_HUB_CACHE="/app/huggingface_cache"
-ENV TRANSFORMERS_CACHE="/app/huggingface_cache"
-
-# Pre-download the guardrail model into the image cache so startup does not
-# need to fetch it on first boot.
-ARG GUARDRAIL_MODEL_NAME="fastino/gliguard-LLMGuardrails-300M"
-RUN /app/.venv/bin/python -c "from gliner2 import GLiNER2; model = GLiNER2.from_pretrained(\"$GUARDRAIL_MODEL_NAME\"); model.to(\"cpu\")"
 
 # Copy the application files
 COPY . /app
@@ -64,13 +54,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Disable tqdm for cleaner logs
 ENV TQDM_DISABLE=1
-ENV HF_HUB_DISABLE_PROGRESS_BARS=1
 
 # Set tiktoken cache dir
 ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
-
-ENV HF_HUB_OFFLINE=1
-ENV TRANSFORMERS_OFFLINE=1
 
 # Disable python warnings
 ENV PYTHONWARNINGS="ignore"

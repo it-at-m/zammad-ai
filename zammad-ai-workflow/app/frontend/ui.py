@@ -152,7 +152,7 @@ async def process_ticket(
         reasoning = triage_result.get("reasoning", "")
         try:
             confidence = float(triage_result.get("confidence", 0.0))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             confidence = 0.0
 
         answer = "No answer generated."

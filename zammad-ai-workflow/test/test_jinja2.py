@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from app.settings.templates import (
     AnswerTemplateContext,
     JudgeTemplateContext,

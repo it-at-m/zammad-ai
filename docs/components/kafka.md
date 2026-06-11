@@ -21,9 +21,9 @@ The structure is defined in the dbs/ticketing-eventing service and can be found 
 
 ## Event Filtering
 
-The service does not automatically process every event received from Kafka. It uses the `valid_request_types` configuration to filter events based on the `request_type` (or `anliegenart`) field.
+The service does not automatically process every event received from Kafka. It uses the `kafka.event_processing.valid_request_types` configuration to filter events based on the `request_type` (or `anliegenart`) field.
 
-- **Config Key**: `valid_request_types` (list of strings)
+- **Config Key**: `kafka.event_processing.valid_request_types` (list of strings)
 - **Logic**: If the `request_type` of an incoming event is not in this list, the event is acknowledged and ignored. This prevents the service from responding to tickets it is not configured to handle.
 
 ## Kafka Configuration & Security
@@ -37,40 +37,53 @@ kafka:
   broker_url: "localhost:9092"
   topic: "ticket-events"
   group_id: "zammad-ai"
+  # event_processing holds filtering and processing-related options
+  event_processing:
+    valid_request_types:
+      - "Support"
+    valid_action_types:
+      - "created"
+      - "updated"
+
+  # Security: choose one schema and set the discriminator `type` to `env` or `file`.
   security:
-    # Choose one of the following security schemas:
-    # A: For mTLS via environment variables:
-    ca_file_base64: "QkFTRTY0X0NBX0NFUlQ=" # use actual base64-encoded CA cert
-    pkcs12_base64: "QkFTRTY0X1BLQ1MxMl9CTE9C" # use actual base64-encoded PKCS#12 blob
-    pkcs12_pw: "your-cleartext-password" # PKCS#12 password in cleartext
+    type: env
+    # For mTLS via environment variables (in-memory PKCS#12):
+    ca_file_base64: "QkFTRTY0X0NBX0NFUlQ=" # base64-encoded CA cert
+    pkcs12_base64: "QkFTRTY0X1BLQ1MxMl9CTE9C" # base64-encoded PKCS#12 blob
+    pkcs12_pw: "cleartext-password" # PKCS#12 password in cleartext
 
 
-    # B: For mTLS via file paths:
-    # ca_file_path: "/path/to/ca.pem"
-    # client_cert_path: "/path/to/client.crt"
-    # client_key_path: "/path/to/client.key"
+  # Or, for file-based mTLS:
+  # security:
+  #   type: file
+  #   ca_file_path: "/path/to/ca.pem"
+  #   client_cert_path: "/path/to/client.crt"
+  #   client_key_path: "/path/to/client.key"
 ```
 
 ### Environment Variable Overrides
 
-Use double underscores for nesting:
+Use double underscores for nesting. Important keys include:
 
 - `ZAMMAD_AI_KAFKA__BROKER_URL`
+- `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_REQUEST_TYPES`
+- `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_ACTION_TYPES`
 - `ZAMMAD_AI_KAFKA__SECURITY__CA_FILE_BASE64`
 - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_BASE64`
- - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_PW`
+- `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_PW`
 
 ### Security Schemas
 
 Kafka connections can be secured either via classic PEM files or via PKCS#12 blobs delivered through environment variables. Choose one of the following schemas:
 
-#### 1. KafkaMTLSEnvSecurity (Environment Variables)
+#### Security schema: environment variables (`type: env`)
 
 - `ca_file_base64`: Base64-encoded CA certificate
 - `pkcs12_base64`: Base64-encoded PKCS#12 payload
-- `pkcs12_pw`: PKCS#12 password (cleartext)
+- `pkcs12_pw`: PKCS#12 password in cleartext
 
-#### 2. KafkaMTLSFileSecurity (File Paths)
+#### Security schema: file paths (`type: file`)
 
 - `ca_file_path`: Path to CA certificate file (PEM)
 - `client_cert_path`: Path to client certificate file (PEM)

@@ -9,6 +9,7 @@ from truststore import inject_into_ssl
 load_dotenv()
 inject_into_ssl()
 
+import os
 from time import perf_counter
 
 from gliner2 import GLiNER2
@@ -50,15 +51,32 @@ class GuardrailService:
             self._load_model()
 
     def _load_model(self) -> None:
-        """Load or retrieve cached GLiNER model from HuggingFace."""
+        """Load or retrieve cached GLiNER model and tokenizer from HuggingFace."""
         try:
-            model = GLiNER2.from_pretrained("fastino/gliguard-LLMGuardrails-300M", local_files_only=True)
+            os.environ["HF_HOME"] = self.settings.huggingface_cache_dir
+            os.environ["HF_HUB_CACHE"] = self.settings.huggingface_cache_dir
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+            model_name = "fastino/gliguard-LLMGuardrails-300M"
+            if not self.settings.offline_mode:
+                model = GLiNER2.from_pretrained(
+                    model_name,
+                )
+                model.save_pretrained(
+                    os.path.join(self.settings.huggingface_cache_dir, model_name)
+                )  # Ensure model is cached
+            else:
+                model = GLiNER2.from_pretrained(
+                    os.path.join(self.settings.huggingface_cache_dir, model_name),
+                    local_files_only=True,
+                )
+
             model.to("cpu")
             self._model = model
             logger.info("Guardrail model loaded successfully.")
-        except Exception:
+        except Exception as e:
             self._model = None
-            logger.warning("Guardrail model could not be loaded; continuing without guardrails.", exc_info=True)
+            logger.error("Guardrail model could not be loaded", exc_info=True)
+            raise RuntimeError("Guardrail model failed to load; refusing to start with guardrails enabled.") from e
 
     async def evaluate(self, text: str) -> GuardrailResult:
         """Evaluate text for harmful content.

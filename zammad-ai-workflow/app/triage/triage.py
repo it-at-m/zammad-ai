@@ -300,9 +300,10 @@ class TriageService:
 
         # Evaluate guardrails before categorization
         guardrail_result = await self.guardrail_service.evaluate(message)
-        logger.info(
-            f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
-        )
+        if self.settings.guardrails.enabled:
+            logger.info(
+                f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+            )
 
         if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
             logger.warning("Categorization blocked by guardrails")

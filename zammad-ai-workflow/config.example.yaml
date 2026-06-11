@@ -133,6 +133,9 @@ kafka:
   topic: "ticket-events" # Kafka topic to consume from
   client_id: "zammad-ai" # Kafka client ID shown as the consumer name
   group_id: null # Consumer group ID (defaults to null)
+  event_processing:
+    valid_request_types: [] # List of request types to process (example: ["support"])
+    valid_action_types: [] # List of action types to process (example: ["created", "updated"])
 
   # mTLS Security Configuration (optional)
   # Option 1: File-based mTLS (type: "file")
@@ -152,12 +155,7 @@ kafka:
 
   security: null
 
-# ============================================================================
-# Valid Request Types
-# ============================================================================
-# List of request types that should be processed by the application
-valid_request_types:
-  - "example_request_type"
+# Note: `valid_request_types` moved under `kafka.event_processing.valid_request_types`
 
 # Maximum combined article and attachment text length accepted for triage/answer processing.
 max_user_text_length: 2000
@@ -306,6 +304,8 @@ guardrails:
   enabled: true # Set to false to disable guardrail checks
   confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
   block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
+  huggingface_cache_dir: "/app/huggingface_cache" # Directory to cache Hugging Face models
+  offline_mode: true # If true, use local models only and do not call external APIs
 
 # ============================================================================
 # API Configuration

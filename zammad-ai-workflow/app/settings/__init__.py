@@ -3,6 +3,7 @@
 from .answer import AnswerSettings, JudgeSettings, JudgeThresholds, QdrantSettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings
+from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .settings import ZammadAISettings, get_settings
 from .triage import TriageSettings
@@ -24,4 +25,5 @@ __all__: list[str] = [
     "ZammadAISettings",
     "ZammadAPISettings",
     "ZammadEAISettings",
+    "GuardrailSettings",
 ]
