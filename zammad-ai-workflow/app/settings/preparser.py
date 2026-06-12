@@ -16,10 +16,22 @@ class BasePreparserConfig(BaseModel):
 class TablePreparserConfig(BasePreparserConfig):
     """Config for TablePreparser."""
 
-    type: Literal["table"] = Field("table", description="Table preparser type")
-    row_titles: list[str]
-    case_sensitive: bool = Field(False, description="If true, match row titles case-sensitively")
-    value_column: int = Field(1, description="Index of column to extract as the value (0-based)")
+    type: Literal["table"] = Field(
+        default="table",
+        description="Table preparser type",
+    )
+    keep_rows: list[str] = Field(
+        default_factory=list,
+        description="List of rows titles to keep",
+    )
+    case_sensitive: bool = Field(
+        default=False,
+        description="If true, match row titles case-sensitively",
+    )
+    value_column: int = Field(
+        default=1,
+        description="Index of column to extract as the value (0-based)",
+    )
 
 
 PreparserConfigTypes = Annotated[TablePreparserConfig, Field(discriminator="type")]
@@ -28,7 +40,10 @@ PreparserConfigTypes = Annotated[TablePreparserConfig, Field(discriminator="type
 class PreparserSettings(BaseModel):
     """Settings for optional Preparser submodule."""
 
-    enabled: bool = Field(False, description="Enable preparsing before LLM processing")
+    enabled: bool = Field(
+        False,
+        description="Enable preparsing before LLM processing",
+    )
     config: PreparserConfigTypes | None = None
 
     @model_validator(mode="after")

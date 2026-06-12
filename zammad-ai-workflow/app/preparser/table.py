@@ -2,7 +2,7 @@
 
 The parser is intentionally lightweight: it finds Markdown-style tables using
 the separator row (---) and extracts rows whose first cell matches one of the
-configured `row_titles`.
+configured `keep_rows`.
 
 Limitations: this is not a full Markdown parser. Pipes inside code spans or
 other complex table constructs may be parsed incorrectly. For robustness the
@@ -25,11 +25,11 @@ class TablePreparser(AbstractPreparser):
 
     _separator_re = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
 
-    def __init__(self, row_titles: list[str], case_sensitive: bool = False, value_column: int = 1) -> None:
+    def __init__(self, keep_rows: list[str], case_sensitive: bool = False, value_column: int = 1) -> None:
         """Create a TablePreparser object.
 
         Args:
-            row_titles: List of row title strings to match against the first cell.
+            keep_rows: List of row title strings to match against the first cell.
             case_sensitive: Whether matching is case-sensitive (default: False).
             value_column: Index of column to treat as the value (default: 1 -> second column).
         """
@@ -37,9 +37,9 @@ class TablePreparser(AbstractPreparser):
         self.value_column = int(value_column)
         # Normalize configured titles for matching
         if case_sensitive:
-            self._norm_map = {t.strip(): t for t in row_titles}
+            self._norm_map = {t.strip(): t for t in keep_rows}
         else:
-            self._norm_map = {t.strip().lower(): t for t in row_titles}
+            self._norm_map = {t.strip().lower(): t for t in keep_rows}
 
     def _normalize(self, s: str) -> str:
         s = s.strip()

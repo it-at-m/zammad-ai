@@ -21,7 +21,7 @@ def test_table_preparser_extracts_matching_rows() -> None:
         "| Steps to reproduce | Step 1; Step 2 |\n"
     )
 
-    p = TablePreparser(row_titles=["Summary", "Steps to reproduce"])
+    p = TablePreparser(keep_rows=["Summary", "Steps to reproduce"])
     out = p.parse(table)
 
     assert "## Summary" in out
@@ -33,14 +33,14 @@ def test_table_preparser_extracts_matching_rows() -> None:
 def test_table_preparser_passthrough_when_no_table() -> None:
     """When no table is present, the parser should return the original text unchanged."""
     text = "Just a normal paragraph without a table"
-    p = TablePreparser(row_titles=["Summary"])
+    p = TablePreparser(keep_rows=["Summary"])
     assert p.parse(text) == text
 
 
 def test_table_preparser_partial_matches() -> None:
     """Only configured rows present in the table should be extracted."""
     table = "| A | B |\n| --- | --- |\n| Foo | 1 |\n| Summary | The summary |\n"
-    p = TablePreparser(row_titles=["Summary"])
+    p = TablePreparser(keep_rows=["Summary"])
     out = p.parse(table)
     assert "## Summary" in out
     assert "The summary" in out

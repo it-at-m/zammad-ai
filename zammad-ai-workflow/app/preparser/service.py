@@ -44,7 +44,7 @@ class PreparserService:
             case "table":
                 assert isinstance(cfg, TablePreparserConfig)
                 self._preparser = TablePreparser(
-                    row_titles=cfg.row_titles,
+                    keep_rows=cfg.keep_rows,
                     case_sensitive=getattr(cfg, "case_sensitive", False),
                     value_column=getattr(cfg, "value_column", 1),
                 )

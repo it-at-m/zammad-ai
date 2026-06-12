@@ -317,7 +317,7 @@ preparser:
   enabled: false
   config:
     type: "table"
-    row_titles:
+    keep_rows:
       - "Summary"
       - "Steps to reproduce"
     case_sensitive: false
