@@ -85,4 +85,4 @@ class ServiceSettings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> ServiceSettings:
     """Return cached service settings instance."""
-    return ServiceSettings()  # type: ignore
+    return ServiceSettings()
