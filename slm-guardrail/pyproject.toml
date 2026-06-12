@@ -1,0 +1,39 @@
+[project]
+name = "slm-guardrail"
+license = "MIT"
+version = "0.1.0"
+
+description = "Content safety guardrail service for Zammad AI (FastAPI)"
+readme = "README.md"
+requires-python = "==3.14.5"
+authors = [
+    { name = "Zammad-AI Team" },
+]
+
+dependencies = [
+    "fastapi==0.136.3",
+    "httpx==0.28.1",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.1",
+    "python-dotenv==1.2.2",
+    "truststore==0.10.4",
+    "uvicorn==0.49.0",
+    "prometheus_client==0.21.1",
+    "gliner2==1.3.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.16",
+    "ty==0.0.44",
+]
+
+[tool.uv]
+add-bounds = "exact"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["test"]
+asyncio_mode = "auto"
