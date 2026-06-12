@@ -14,7 +14,7 @@ from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 
 from .errors import app_error_to_http, unexpected_error_to_http
-from .utils import check_api_key
+from .utils import check_api_key, get_preparsed_text
 
 logger = getLogger("zammad-ai.api.v1.triage")
 
@@ -65,13 +65,8 @@ async def triage(
             input.session_id = str(uuid4())
         text: str = input.text
 
-        # Preparse input text if a preparser is available on the app state
-        try:
-            preparser = request.app.state.preparser_service if request is not None else None
-            if preparser is not None:
-                text = preparser.preparse(text)
-        except Exception:
-            logger.error("Preparser failed in API triage endpoint; continuing with original text", exc_info=True)
+        # Preparse input text via shared helper
+        text = get_preparsed_text(request, text)
 
         # Get categorization result
         categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)

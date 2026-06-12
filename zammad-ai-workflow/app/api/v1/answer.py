@@ -11,7 +11,7 @@ from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import getLogger
 
 from .errors import app_error_to_http, unexpected_error_to_http
-from .utils import check_api_key
+from .utils import check_api_key, get_preparsed_text
 
 logger = getLogger("zammad-ai.api.v1.answer")
 settings: ZammadAISettings = get_settings()
@@ -57,14 +57,8 @@ async def answer(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
-        # Preparse input text if a preparser is available on the app state
-        user_text = input.text
-        try:
-            preparser = request.app.state.preparser_service if request is not None else None
-            if preparser is not None:
-                user_text = preparser.preparse(user_text)
-        except Exception:
-            logger.error("Preparser failed in API answer endpoint; continuing with original text", exc_info=True)
+        # Preparse input text via shared helper
+        user_text = get_preparsed_text(request, input.text)
 
         response: StructuredAgentResponse = await service.get_answer(
             ticket_id=input.ticket_id,
