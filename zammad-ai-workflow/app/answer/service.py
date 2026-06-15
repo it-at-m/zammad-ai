@@ -275,21 +275,30 @@ class AnswerService:
                 ) from e
         if isinstance(prompt_config, FilePromptConfig):
             # Load from file and render with Jinja2 if it contains Jinja2 syntax
+            from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
             from app.utils.jinja2 import get_template_renderer
 
             template_content = load_prompt(file_path=prompt_config.prompt)
             renderer = get_template_renderer()
             if renderer._has_jinja2_syntax(template_content):
-                context = build_answer_context(self.settings.answer)
+                # Provide both answer and judge contexts so templates like the
+                # judge prompt can access 'thresholds', 'repair_enabled', etc.
+                answer_ctx = build_answer_context(self.settings.answer)
+                judge_ctx = build_judge_context(self.settings)
+                context = merge_contexts(answer_ctx, judge_ctx)
                 return renderer.render_template(template_content, context)
             return template_content
         if isinstance(prompt_config, StringPromptConfig):
             # Check if string contains Jinja2 syntax and render if so
+            from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
             from app.utils.jinja2 import get_template_renderer
 
             renderer = get_template_renderer()
             if renderer._has_jinja2_syntax(prompt_config.prompt):
-                context = build_answer_context(self.settings.answer)
+                # Provide both contexts for string-based prompts as well
+                answer_ctx = build_answer_context(self.settings.answer)
+                judge_ctx = build_judge_context(self.settings)
+                context = merge_contexts(answer_ctx, judge_ctx)
                 return renderer.render_template(prompt_config.prompt, context)
             return prompt_config.prompt
         raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
