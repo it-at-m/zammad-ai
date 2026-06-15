@@ -208,17 +208,21 @@ class TriageService:
 
             # Step 3: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
-            if len(customer_message) > self.max_user_text_length:
-                logger.warning(
-                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
-                )
-                customer_message: str = customer_message[: self.max_user_text_length]
 
-            # Run preparser (may be a no-op when disabled)
+            # Run preparser first (may be a no-op when disabled)
+            # Important: Preparse BEFORE any truncation to keep behavior consistent
+            # with API helpers and ensure TablePreparser sees the full message.
             try:
                 customer_message = self.preparser_service.preparse(customer_message)
             except Exception:
                 logger.error("Preparser failed during triage; continuing with original message", exc_info=True)
+
+            # Enforce max length on the preparsed string
+            if len(customer_message) > self.max_user_text_length:
+                logger.warning(
+                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+                )
+                customer_message = customer_message[: self.max_user_text_length]
 
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
             if self.settings.zammad.document_parsing.mode == "off":
