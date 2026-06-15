@@ -24,7 +24,6 @@ class APISettings(BaseModel):
 class GuardrailSettings(BaseModel):
     """Guardrail model behavior and storage settings."""
 
-    enabled: bool = Field(default=True, description="Enable guardrail checks and model loading")
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     block_on_high_risk: bool = Field(default=False)
     huggingface_cache_dir: str = Field(default="/app/huggingface_cache")

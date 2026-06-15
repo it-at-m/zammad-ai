@@ -127,6 +127,7 @@ class TestPromptTemplateRenderer:
         # This will use the existing prompts directory
         # We need to create a simple test template
         test_prompt = Path("prompts/test_jinja2_template.md")
+        test_prompt.parent.mkdir(parents=True, exist_ok=True)
         test_prompt.write_text("Test: {{ value }}")
         try:
             result = renderer.render_template_file("test_jinja2_template.md", {"value": "success"})

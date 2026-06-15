@@ -43,8 +43,7 @@ class GuardrailService:
         # Avoid importing heavy ML libs at import time; load lazily in _load_model
         # Use Any to avoid runtime import solely for typing
         self._model: Any | None = None
-        if self.settings.enabled:
-            self._load_model()
+        self._load_model()
 
     def _load_model(self) -> None:
         try:
@@ -76,8 +75,8 @@ class GuardrailService:
 
         Returns a safe result if the model is unavailable or an error occurs.
         """
-        if not self.settings.enabled or self._model is None:
-            return GuardrailResult(prompt_safety="safe", prompt_toxicity=[], jailbreak_detection=[])
+        if self._model is None:
+            raise RuntimeError("Guardrail model is not loaded.")
 
         if not text or not text.strip():
             logger.debug("Guardrail check skipped for empty text")
@@ -110,8 +109,8 @@ class GuardrailService:
 
     async def evaluate_response(self, text: str, response: str) -> GuardrailResponseResult:
         """Classify a generated response (with prompt context) for safety and refusal."""
-        if not self.settings.enabled or self._model is None:
-            return GuardrailResponseResult(response_safety="safe", response_toxicity=[], response_refusal=[])
+        if self._model is None:
+            raise RuntimeError("Guardrail model is not loaded.")
 
         if not response or not response.strip():
             logger.debug("Guardrail check skipped for empty response text")

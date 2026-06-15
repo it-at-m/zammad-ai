@@ -34,7 +34,7 @@ class DummyModel:
 def _patch_settings(monkeypatch, *, enabled: bool = True, auth_token: str | None = None) -> ServiceSettings:
     settings = ServiceSettings(
         api=APISettings(host="127.0.0.1", port=8081, auth_token=auth_token),
-        guardrails=GuardrailSettings(enabled=enabled, offline_mode=True),
+        guardrails=GuardrailSettings(offline_mode=True),
     )
     return settings
 
