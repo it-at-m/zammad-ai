@@ -21,7 +21,8 @@ from app.settings.answer import (
     LangfusePromptConfig,
     StringPromptConfig,
 )
-from app.utils.context_builders import build_answer_context
+from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
+from app.utils.jinja2 import PromptTemplateRenderer, get_template_renderer
 from app.utils.logging import getLogger
 from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
@@ -95,13 +96,12 @@ class AnswerService:
 
         # Setup the user message template as an object variable
         # Render with Jinja2 if the template contains Jinja2 syntax
-        from app.utils.jinja2 import get_template_renderer
-
+        renderer: PromptTemplateRenderer = get_template_renderer()
         user_msg_template_str = load_prompt(file_path=get_prompts_dir() / "answer" / "user_message_template.prompt.md")
-        renderer = get_template_renderer()
         if renderer._has_jinja2_syntax(user_msg_template_str):
             context = build_answer_context(settings.answer)
             user_msg_template_str = renderer.render_template(user_msg_template_str, context)
+
         self.user_message_template: PromptTemplate = PromptTemplate.from_template(
             template=user_msg_template_str,
         )
@@ -259,49 +259,40 @@ class AnswerService:
         prompt_source_name: str,
     ) -> str:
         """Resolve a prompt from settings, a file, or Langfuse."""
-        if isinstance(prompt_config, LangfusePromptConfig):
-            if self.langfuse_client is None:
-                raise ValueError(f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source.")
-            try:
-                return self.langfuse_client.get_prompt(
-                    prompt_name=prompt_config.prompt.name,
-                    prompt_label=prompt_config.prompt.label,
-                )
-            except LangfuseError as e:
-                logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
-                raise AnswerServiceError(
-                    f"Failed to fetch {prompt_source_name} from Langfuse",
-                    retryable=True,
-                ) from e
-        if isinstance(prompt_config, FilePromptConfig):
-            # Load from file and render with Jinja2 if it contains Jinja2 syntax
-            from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
-            from app.utils.jinja2 import get_template_renderer
+        match prompt_config:
+            case LangfusePromptConfig():
+                if self.langfuse_client is None:
+                    raise ValueError(
+                        f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source."
+                    )
+                try:
+                    template_content: str = self.langfuse_client.get_prompt(
+                        prompt_name=prompt_config.prompt.name,
+                        prompt_label=prompt_config.prompt.label,
+                    )
+                except LangfuseError as e:
+                    logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
+                    raise AnswerServiceError(
+                        f"Failed to fetch {prompt_source_name} from Langfuse",
+                        retryable=True,
+                    ) from e
+            case FilePromptConfig():
+                template_content: str = load_prompt(file_path=prompt_config.prompt)
+            case StringPromptConfig():
+                template_content: str = prompt_config.prompt
+            case _:
+                raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
 
-            template_content = load_prompt(file_path=prompt_config.prompt)
-            renderer = get_template_renderer()
-            if renderer._has_jinja2_syntax(template_content):
-                # Provide both answer and judge contexts so templates like the
-                # judge prompt can access 'thresholds', 'repair_enabled', etc.
-                answer_ctx = build_answer_context(self.settings.answer)
-                judge_ctx = build_judge_context(self.settings)
-                context = merge_contexts(answer_ctx, judge_ctx)
-                return renderer.render_template(template_content, context)
+        renderer: PromptTemplateRenderer = get_template_renderer()
+        if renderer._has_jinja2_syntax(template_content):
+            # Provide both answer and judge contexts so templates like the
+            # judge prompt can access 'thresholds', 'repair_enabled', etc.
+            answer_ctx = build_answer_context(self.settings.answer)
+            judge_ctx = build_judge_context(self.settings)
+            context = merge_contexts(answer_ctx, judge_ctx)
+            return renderer.render_template(template_content, context)
+        else:
             return template_content
-        if isinstance(prompt_config, StringPromptConfig):
-            # Check if string contains Jinja2 syntax and render if so
-            from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
-            from app.utils.jinja2 import get_template_renderer
-
-            renderer = get_template_renderer()
-            if renderer._has_jinja2_syntax(prompt_config.prompt):
-                # Provide both contexts for string-based prompts as well
-                answer_ctx = build_answer_context(self.settings.answer)
-                judge_ctx = build_judge_context(self.settings)
-                context = merge_contexts(answer_ctx, judge_ctx)
-                return renderer.render_template(prompt_config.prompt, context)
-            return prompt_config.prompt
-        raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
