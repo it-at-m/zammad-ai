@@ -148,19 +148,11 @@ def _build_tool_definitions(settings: AnswerSettings) -> list[ToolDefinition]:
     """
     tools = []
 
-    # Website search tool is always available
-    tools.append(
-        ToolDefinition(
-            name="search_website",
-            description="Search public-facing website documentation and FAQs",
-        )
-    )
-
     # Knowledge base search tool (Qdrant)
     if settings.qdrant.collection_name:
         tools.append(
             ToolDefinition(
-                name="search_internal_knowledge_base",
+                name="search_internal_knowledgebase",
                 description=(
                     f"Query the internal knowledgebase for policies, procedures, "
                     f"and detailed information (collection: {settings.qdrant.collection_name})"
@@ -172,7 +164,7 @@ def _build_tool_definitions(settings: AnswerSettings) -> list[ToolDefinition]:
     if settings.dlf:
         tools.append(
             ToolDefinition(
-                name="search_dlf",
+                name="search_website",
                 description=f"Search the Dienstleistungsfinder API at {settings.dlf.url}",
             )
         )
