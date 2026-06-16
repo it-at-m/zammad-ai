@@ -44,8 +44,8 @@ triage_router = APIRouter(
 @triage_router.post(path="")
 async def triage(
     input: TriageInput,
+    request: Request,
     service: TriageService = Depends(triage_dependency),
-    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> TriageOutput:
     """Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
