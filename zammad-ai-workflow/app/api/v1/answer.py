@@ -11,7 +11,7 @@ from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import getLogger
 
 from .errors import app_error_to_http, unexpected_error_to_http
-from .utils import check_api_key
+from .utils import check_api_key, get_preparsed_text
 
 logger = getLogger("zammad-ai.api.v1.answer")
 settings: ZammadAISettings = get_settings()
@@ -41,6 +41,7 @@ answer_router = APIRouter(
 async def answer(
     input: AnswerInput,
     service: ActionService = Depends(action_dependency),
+    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> AnswerOutput:
     """Process an answer request and produce the agent's response based on the provided input.
@@ -56,11 +57,14 @@ async def answer(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
+        # Preparse input text via shared helper
+        user_text = get_preparsed_text(request, input.text)
+
         response: StructuredAgentResponse = await service.get_answer(
             ticket_id=input.ticket_id,
             category_name=input.category,
             action_name=input.action,
-            user_text=input.text,
+            user_text=user_text,
             session_id=input.session_id,
         )
         if response.response is None or response.response.strip() == "":

@@ -14,7 +14,7 @@ from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 
 from .errors import app_error_to_http, unexpected_error_to_http
-from .utils import check_api_key
+from .utils import check_api_key, get_preparsed_text
 
 logger = getLogger("zammad-ai.api.v1.triage")
 
@@ -45,6 +45,7 @@ triage_router = APIRouter(
 async def triage(
     input: TriageInput,
     service: TriageService = Depends(triage_dependency),
+    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> TriageOutput:
     """Handle a triage request by classifying the input text, selecting an action, and returning a structured triage result.
@@ -63,6 +64,9 @@ async def triage(
         if not input.session_id:
             input.session_id = str(uuid4())
         text: str = input.text
+
+        # Preparse input text via shared helper
+        text = get_preparsed_text(request, text)
 
         # Get categorization result
         categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)

@@ -1,7 +1,8 @@
-"""Utility helpers for API request validation."""
+"""Utility helpers for API request validation and request processing."""
 
 from secrets import compare_digest
 
+from fastapi import Request
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.settings.settings import ZammadAISettings, get_settings
@@ -34,3 +35,20 @@ def check_api_key(provided_key: str | HTTPAuthorizationCredentials | None) -> bo
         provided_value = provided_key
 
     return compare_digest(provided_value, expected_key)
+
+
+def get_preparsed_text(request: Request | None, text: str) -> str:
+    """Return preparsed text using the request-scoped preparser service if available.
+
+    Fetches ``request.app.state.preparser_service`` and calls ``preparse`` on the
+    provided text. If anything fails, logs the error and returns the original text.
+
+    This centralizes the preparser logic to keep behavior consistent across endpoints.
+    """
+    try:
+        preparser = request.app.state.preparser_service if request is not None else None
+        if preparser is not None:
+            return preparser.preparse(text)
+    except Exception as e:  # pragma: no cover - defensive  # noqa: F841
+        logger.error("Preparser failed; continuing with original text", exc_info=True)
+    return text

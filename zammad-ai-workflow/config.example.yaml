@@ -308,6 +308,22 @@ guardrails:
   offline_mode: true # If true, use local models only and do not call external APIs
 
 # ============================================================================
+# Preparser Configuration
+# ============================================================================
+# Optional preparser that can extract and reformat structured data (e.g., from
+# Markdown tables) before it is sent to the LLM. When `enabled: false` the
+# input text is passed through unchanged.
+preparser:
+  enabled: false
+  config:
+    type: "table"
+    keep_rows:
+      - "Summary"
+      - "Steps to reproduce"
+    case_sensitive: false
+    value_column: 1
+
+# ============================================================================
 # API Configuration
 # ============================================================================
 # API Configuration for REST endpoints
