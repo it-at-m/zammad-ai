@@ -40,8 +40,8 @@ answer_router = APIRouter(
 @answer_router.post(path="")
 async def answer(
     input: AnswerInput,
+    request: Request,
     service: ActionService = Depends(action_dependency),
-    request: Request | None = None,
     credentials: HTTPAuthorizationCredentials | None = Depends(header_scheme),
 ) -> AnswerOutput:
     """Process an answer request and produce the agent's response based on the provided input.
