@@ -70,12 +70,18 @@ class ZammadAPIClient(BaseZammadClient):
         if not self.kb_id:
             logger.warning("Knowledge base ID is not set. Cannot fetch answer IDs.")
             return []
+        visited_categories: set[int] = set()
         answer_ids: set[int] = set()
-        for category_id in category_ids:
+        stack: list[int] = list(category_ids)
+        while stack:
+            category_id: int = stack.pop()
+            if category_id in visited_categories:
+                continue
+            visited_categories.add(category_id)
             data = self._request("GET", f"/api/v1/knowledge_bases/{self.kb_id}/categories/{category_id}")
             if not data:
                 continue
-            answer_ids.update(self.get_answer_ids_of_categories(data["child_ids"]))
+            stack.extend(data.get("child_ids", []))
             answer_ids.update(data["answer_ids"])
         return list(answer_ids)
 
