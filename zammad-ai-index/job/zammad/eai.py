@@ -101,7 +101,20 @@ class ZammadEAIClient(BaseZammadClient):
 
     @override
     def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
-        raise NotImplementedError("get_answer_ids_of_categories is not implemented for EAI client.")
+        if not category_ids:
+            return []
+
+        if not self.kb_id:
+            logger.warning("Knowledge base ID is not set. Cannot fetch answer IDs for categories.")
+            return []
+        answer_ids: set[int] = set()
+        for category_id in category_ids:
+            data = self._request("GET", f"/knowledgeBases/{self.kb_id}/categories/{category_id}")
+            if not data:
+                continue
+            answer_ids.update(self.get_answer_ids_of_categories(data["childIds"]))
+            answer_ids.update(data["answerIds"])
+        return list(answer_ids)
 
     @override
     def parse_rss_feed(self) -> FeedParserDict | None:
