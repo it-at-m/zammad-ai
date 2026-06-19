@@ -109,6 +109,7 @@ zammad:
 #   type: eai
 #   base_url: https://my-zammad.example.com
 #   knowledge_base_id: 1
+#   category_ids: []
 #   timeout: 30
 #   max_retries: 3
 #   http_proxy_url: null
