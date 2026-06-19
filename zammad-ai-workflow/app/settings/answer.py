@@ -49,6 +49,9 @@ class LangfusePromptConfig(BaseModel):
 
 
 PromptSourceConfig = StringPromptConfig | FilePromptConfig | LangfusePromptConfig
+# Note: All prompt sources support Jinja2 templating automatically.
+# If a prompt contains Jinja2 syntax ({{ variables }}, {% conditionals %}, etc.),
+# it will be automatically rendered with the appropriate context.
 
 
 class JudgeThresholds(BaseModel):

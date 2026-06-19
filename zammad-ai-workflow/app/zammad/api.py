@@ -99,7 +99,7 @@ class ZammadAPIClient(BaseZammadClient):
                 if isinstance(data, str):
                     try:
                         document_data = b64decode(data, validate=True)
-                    except (BinasciiError, ValueError):
+                    except BinasciiError, ValueError:
                         document_data = data.encode("utf-8")
                 else:
                     document_data = data

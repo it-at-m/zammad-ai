@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
 import pytest
+
 from app.answer import service as answer_module
 from app.answer.judge import JudgeResult
 from app.answer.service import AnswerService

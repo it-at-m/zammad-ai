@@ -116,7 +116,7 @@ def _get_recent_answer_ids_from_rss(interval_days: int, client: ZammadAPIClient 
             if answer_id:
                 ids.append(answer_id)
 
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning("Could not parse entry %s", entry.get("id", "unknown"), exc_info=True)
             continue
 

@@ -1,3 +1,4 @@
 config.yaml
 certs/
 data/
+huggingface_cache/

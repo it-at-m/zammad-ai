@@ -16,6 +16,7 @@ from app.errors import (
 from app.errors import (
     TriageError as AppTriageError,
 )
+from app.guardrails import GuardrailService, get_guardrail_service
 from app.models.triage import (
     CategorizationResult,
     DaysSinceRequestResponse,
@@ -23,6 +24,7 @@ from app.models.triage import (
     TriageResult,
 )
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.preparser.service import PreparserService, get_preparser_service
 from app.settings import ZammadAISettings
 from app.settings.triage import (
     Action,
@@ -77,6 +79,8 @@ class TriageService:
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
         self.settings: ZammadAISettings = settings
+        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        self.preparser_service: PreparserService = get_preparser_service(settings=settings.preparser)
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -119,12 +123,27 @@ class TriageService:
         # Prepare prompts for GenAI handler with system prompts
         genai_prompts: dict[str, str] = self.prompts.copy()  # type: ignore
 
-        # Load system prompts from markdown files
+        # Load system prompts from markdown files and render with Jinja2 if they contain Jinja2 syntax
         prompts_dir = get_prompts_dir()
+        from app.utils.context_builders import build_judge_context, build_triage_context
+        from app.utils.jinja2 import get_template_renderer
 
-        genai_prompts["triage"] = load_prompt(prompts_dir / "triage" / "triage.prompt.md")
-        genai_prompts["days_since_request"] = load_prompt(prompts_dir / "triage" / "days_since_request.prompt.md")
-        genai_prompts["processing_id"] = load_prompt(prompts_dir / "triage" / "processing_id.prompt.md")
+        renderer = get_template_renderer([prompts_dir])
+
+        # Build context for Jinja2 rendering - combines triage and judge contexts
+        triage_context = build_triage_context(settings, self.categories)
+        judge_context = build_judge_context(settings)
+        system_prompt_context = {**triage_context, **judge_context}
+
+        # Load and render each system prompt with Jinja2
+        triage_template = load_prompt(prompts_dir / "triage" / "triage.prompt.md")
+        genai_prompts["triage"] = renderer.render_template(triage_template, system_prompt_context)
+
+        days_sr_template = load_prompt(prompts_dir / "triage" / "days_since_request.prompt.md")
+        genai_prompts["days_since_request"] = renderer.render_template(days_sr_template, system_prompt_context)
+
+        processing_id_template = load_prompt(prompts_dir / "triage" / "processing_id.prompt.md")
+        genai_prompts["processing_id"] = renderer.render_template(processing_id_template, system_prompt_context)
 
         # Initialize GenAI handler with pre-built chains
         self.genai_handler = GenAIHandler(
@@ -189,11 +208,21 @@ class TriageService:
 
             # Step 3: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
+
+            # Run preparser first (may be a no-op when disabled)
+            # Important: Preparse BEFORE any truncation to keep behavior consistent
+            # with API helpers and ensure TablePreparser sees the full message.
+            try:
+                customer_message = self.preparser_service.preparse(customer_message)
+            except Exception:
+                logger.error("Preparser failed during triage; continuing with original message", exc_info=True)
+
+            # Enforce max length on the preparsed string
             if len(customer_message) > self.max_user_text_length:
                 logger.warning(
                     f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
                 )
-                customer_message: str = customer_message[: self.max_user_text_length]
+                customer_message = customer_message[: self.max_user_text_length]
 
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
             if self.settings.zammad.document_parsing.mode == "off":
@@ -270,7 +299,7 @@ class TriageService:
             CategorizationResult: Object containing `category`, `reasoning`, `confidence`, and optional `extracted_values`. If the message is empty or the model returns an invalid category, the `category` will be the service's `no_category`, `reasoning` will explain the fallback, and `confidence` will be 1.0.
 
         Raises:
-            TriageError: If categorization fails due to GenAI errors or other unexpected exceptions.
+            TriageError: If categorization fails due to GenAI errors or guardrail violations (if blocking enabled), or other unexpected exceptions.
         """
         if len(message.strip()) == 0:
             logger.warning("Empty message provided for categorization")
@@ -281,12 +310,25 @@ class TriageService:
                 extracted_values=None,
             )
 
+        # Evaluate guardrails before categorization
+        guardrail_result = await self.guardrail_service.evaluate(message)
+        if self.settings.guardrails.enabled:
+            logger.info(
+                f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+            )
+
+        if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
+            logger.warning("Categorization blocked by guardrails")
+            raise TriageError(
+                f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
+                retryable=False,
+            )
+
         if len(message) > self.max_user_text_length:
             logger.warning(
-                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
-                )
-            message: str = message[: self.max_user_text_length]
-            
+                f"Customer message exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+            )
+            message = message[: self.max_user_text_length]
 
         try:
             cat_result: CategorizationResult = await self.genai_handler.categorize_ticket(

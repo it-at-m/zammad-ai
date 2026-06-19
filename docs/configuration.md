@@ -10,7 +10,7 @@ The application loads configuration in the following order of priority (highest 
 2. **Environment Variables** (prefixed with `ZAMMAD_AI_`, e.g., `ZAMMAD_AI_GENAI__CHAT_MODEL`)
 3. **.env File**
 4. **config.yaml**
-5. **Defaults** defined in the source code (`zammad-ai/app/core/settings/`)
+5. **Defaults** defined in the source code (`zammad-ai-workflow/app/settings/`)
 
 ## Core Configuration Sections
 
@@ -27,7 +27,7 @@ Configures the interface to the Large Language Model.
 
 - `sdk`: Currently supports `openai`.
 - `chat_model`: The model used for generating responses (e.g., `gpt-4o`).
-- `embeddings_model`: The model used for vector search.
+- `embedding_model`: The model used for vector search.
 - `temperature`: Creativity setting (0.0 recommended for consistent results).
 
 ### Zammad
@@ -39,13 +39,17 @@ Connectivity settings for the Zammad instance.
 - `timeout`: Request timeout in seconds.
 - `max_retries`: Number of retries for failed requests.
 
-### Qdrant
+### Answer → Qdrant
 
-Vector database settings for knowledge retrieval.
+Vector database settings for knowledge retrieval used by the answer generation pipeline.
 
-- `host`: URL of the Qdrant instance.
+- `url`: URL of the Qdrant instance.
+- `api_key`: API key for authentication (set via env var).
 - `collection_name`: The vector collection to query.
+- `vector_name`: Optional name of the vector field.
 - `vector_dimension`: Must match the embedding model output (e.g., 1024 or 1536).
+- `timeout`: Timeout in seconds for Qdrant client operations.
+- `retrieval_num_documents`: Number of documents to retrieve for context.
 
 ### Kafka
 

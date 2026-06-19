@@ -15,7 +15,7 @@ All calls to language models are traced using Langfuse's LangChain integration. 
 
 ### Prompt Management
 
-Prompt templates can be managed directly in the Langfuse UI. The `LangfuseClient` in `zammad-ai/app/observe/observer.py` retrieves these prompts by name and label (e.g., `production`). This allow updating prompts without redeploying the service.
+Prompt templates can be managed directly in the Langfuse UI. The `LangfuseClient` in `zammad-ai-workflow/app/observe/langfuse.py` retrieves these prompts by name and label (e.g., `production`). This allow updating prompts without redeploying the service.
 
 ## Integration Details
 

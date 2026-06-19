@@ -3,6 +3,13 @@
 The zammad-ai-index service synchronizes content from the Zammad Knowledge Base into a Qdrant collection.
 Its purpose is to provide consistent and efficient vector indexing for downstream AI-based search and response workflows.
 
+## Architecture Overview
+
+- `job/zammad/*` fetches knowledge base data from Zammad via REST API (`api.py`) or EAI (`eai.py`).
+- `job/data/*` retrieves IDs and transforms answers into Qdrant document items.
+- `job/qdrant/qdrant.py` manages Qdrant client setup, embeddings, snapshots, add/delete operations.
+- `job/settings/*` contains Pydantic settings and configuration precedence.
+
 ## Purpose
 
 zammad-ai-index performs a scheduled or manual synchronization between Zammad and Qdrant. During this process, it:
@@ -29,6 +36,7 @@ The indexing run follows a fixed, fault-tolerant workflow:
 - uv as dependency and execution tool
 - reachable Qdrant server
 - valid Zammad credentials
+ - OpenAI env vars for embeddings
 
 ## Setup
 
@@ -60,11 +68,42 @@ At minimum, configure:
 
 Recommended: keep secrets in `.env` and non-secret defaults in `config.yaml`.
 
+Typical environment variables (.env):
+
+```env
+# OpenAI embeddings
+OPENAI_API_KEY=...
+# Optional for custom endpoint/proxy
+# OPENAI_BASE_URL=...
+
+# Qdrant
+ZAMMAD_AI_QDRANT__API_KEY=...
+
+# Zammad (API mode)
+ZAMMAD_AI_ZAMMAD__AUTH_TOKEN=...
+
+# Zammad (EAI mode)
+# ZAMMAD_AI_ZAMMAD__OAUTH2_CLIENT_SECRET=...
+# ZAMMAD_AI_ZAMMAD__OAUTH2_CLIENT_ID=...
+# ZAMMAD_AI_ZAMMAD__OAUTH2_TOKEN_URL=...
+```
+
 ## Run
 
 ```bash
 uv run python main.py
 ```
+
+Notes:
+
+- The job exits without writing if no new or changed documents are detected.
+- A Qdrant collection snapshot is created before any write; snapshot failure aborts the run.
+
+## Qdrant Prerequisites
+
+- The target collection must exist and have a vector size matching your `genai.embedding_model`.
+- In this repository, `compose.yaml` provisions Qdrant and an init job that creates the default collection `zammad-ai_default` with dimension `1024` for local development.
+- If you do not use the provided compose stack, ensure the collection exists and vector size matches `qdrant.vector_dimension`.
 
 ## Configuration
 
@@ -75,11 +114,12 @@ Settings source priority (highest first):
 3. `.env`
 4. `config.yaml`
 
-Typical environment variables:
+Key sections (see `config.example.yaml` for a full example):
 
-- `ZAMMAD_AI_GENAI__API_KEY`
-- `ZAMMAD_AI_QDRANT__API_KEY`
-- `ZAMMAD_AI_ZAMMAD__AUTH_TOKEN` or `ZAMMAD_AI_ZAMMAD__OAUTH2_CLIENT_SECRET`
+- `index`: `full_indexing`, `interval`, `batch_size`
+- `genai`: `sdk`, `chat_model`, `embedding_model`, `max_retries`
+- `qdrant`: `url`, `api_key`, `collection_name`, `vector_name`, `vector_dimension`, `timeout`, `retrieval_num_documents`
+- `zammad`: `type` (`api` or `eai`), `base_url`, `knowledge_base_id`, auth fields, optional RSS feed token/locale, and `document_parsing` (`mode`, `url`, `http_proxy_url`, `document_types`)
 
 ## Modes
 
@@ -108,3 +148,7 @@ uv run ruff check .
 uv run ruff format .
 uv run ty check
 ```
+
+## Scheduling (Minimal)
+
+Run the job on a schedule using your platform’s scheduler (cron, systemd timer, Kubernetes CronJob). The process runs once and exits.

@@ -1,8 +1,9 @@
 """Tests for application settings loading behavior."""
 
 import pytest
-from app.settings.settings import ZammadAISettings, get_settings
 from pydantic import ValidationError
+
+from app.settings.settings import ZammadAISettings, get_settings
 
 
 def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch) -> None:

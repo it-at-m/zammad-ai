@@ -13,10 +13,13 @@ from pydantic_settings import (
 )
 
 from .answer import AnswerSettings
+from .api import APISettings
 from .frontend import FrontendSettings
 from .genai import GenAISettings
+from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .logging import LoggingSettings
+from .preparser import PreparserSettings
 from .prometheus import PrometheusSettings
 from .triage import TriageSettings
 from .usecase import UseCaseSettings
@@ -110,14 +113,14 @@ class ZammadAISettings(BaseSettings):
         default_factory=lambda: LoggingSettings(),
     )
 
-    valid_request_types: list[str] = Field(
-        min_length=1,
-        description="List of valid request types to be processed",
-    )
-
     max_user_text_length: PositiveInt = Field(
         description="Maximum combined length of article text and attachment content for triage/answer processing. Messages exceeding this length will be truncated to this limit.",
         default=2000,
+    )
+
+    api: APISettings = Field(
+        description="Settings for the REST API, including authentication and rate limiting configuration.",
+        default_factory=lambda: APISettings(),
     )
 
     langfuse_enabled: bool = Field(
@@ -133,6 +136,17 @@ class ZammadAISettings(BaseSettings):
     prometheus: PrometheusSettings = Field(
         description="Settings for Prometheus metrics exposure, including endpoint and port configuration.",
         default_factory=lambda: PrometheusSettings(),
+    )
+
+    guardrails: GuardrailSettings = Field(
+        description="Settings for guardrail content safety evaluation.",
+        default_factory=lambda: GuardrailSettings(),
+    )
+    preparser: "PreparserSettings" = Field(
+        description="Settings for optional message preparsing before LLM processing.",
+        default_factory=lambda: __import__(
+            "app.settings.preparser", fromlist=["PreparserSettings"]
+        ).PreparserSettings(),
     )
 
     @model_validator(mode="after")

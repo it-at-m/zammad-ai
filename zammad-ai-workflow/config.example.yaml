@@ -91,6 +91,8 @@ answer:
   agent_prompt:
     type: "file" # Options: "string", "file", "langfuse"
     prompt: "prompts/answer/agent.prompt.md"
+    # Prompts can use Jinja2 syntax! Variables like {{ available_tools }}, {{ knowledge_base_enabled }},
+    # {{ dlf_enabled }}, {{ disclaimer }} are automatically available.
   qdrant:
     url: "https://your-qdrant-instance.example.com"
     api_key: null # Set in .env: ZAMMAD_AI_ANSWER__QDRANT__API_KEY
@@ -113,6 +115,8 @@ answer:
     prompt:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/judge/judge.prompt.md"
+      # Prompts can use Jinja2 syntax! Variables like {{ thresholds.context_relevance }},
+      # {{ repair_enabled }}, {{ max_repairs }} are automatically available.
     repair_prompt:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/answer/repair.prompt.md"
@@ -127,7 +131,11 @@ answer:
 kafka:
   broker_url: "localhost:29092" # Kafka broker URL (compose stack)
   topic: "ticket-events" # Kafka topic to consume from
+  client_id: "zammad-ai" # Kafka client ID shown as the consumer name
   group_id: null # Consumer group ID (defaults to null)
+  event_processing:
+    valid_request_types: [] # List of request types to process (example: ["support"])
+    valid_action_types: [] # List of action types to process (example: ["created", "updated"])
 
   # mTLS Security Configuration (optional)
   # Option 1: File-based mTLS (type: "file")
@@ -143,16 +151,11 @@ kafka:
   #   type: "env"
   #   ca_file_base64: "<base64-encoded CA cert>"
   #   pkcs12_base64: "<base64-encoded PKCS#12 payload>"
-  #   pkcs12_pw_base64: "<base64-encoded PKCS#12 password>"
+  #   pkcs12_pw: "<PKCS#12 password (cleartext)>"
 
   security: null
 
-# ============================================================================
-# Valid Request Types
-# ============================================================================
-# List of request types that should be processed by the application
-valid_request_types:
-  - "example_request_type"
+# Note: `valid_request_types` moved under `kafka.event_processing.valid_request_types`
 
 # Maximum combined article and attachment text length accepted for triage/answer processing.
 max_user_text_length: 2000
@@ -211,18 +214,22 @@ triage:
           action_name: "no_action"
 
   # Prompt configuration
+  # Jinja2 templating is now supported in all prompt files!
+  # You can use Jinja2 syntax like {% if %}, {% for %}, {{ variable }} directly in your
+  # prompt files. The templates are automatically rendered with context from your
+  # configuration at startup. No configuration changes needed - just add Jinja2
+  # syntax to your existing prompt files.
+  #
+  # Available Jinja2 variables:
+  # - Triage prompts: knowledge_base_enabled, dlf_enabled, no_category_name, no_action_name, categories
+  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer
+  # - Judge prompts: thresholds (dict), repair_enabled, max_repairs
   prompts:
-    type: "langfuse" # Options: "langfuse", "string", or "file"
+    type: "file" # Options: "langfuse", "string", or "file"
     prompt_map:
-      categories:
-        label: "latest" # Prompt version label
-        name: "your-usecase/categories" # Prompt name in Langfuse
-      examples:
-        label: "latest"
-        name: "your-usecase/examples"
-      role:
-        label: "latest"
-        name: "your-usecase/role"
+      categories: "prompts/triage/categories.prompt.md"
+      examples: "prompts/triage/examples.prompt.md"
+      role: "prompts/triage/role.prompt.md"
 
     # For type: "string" (inline prompts), use:
     # type: "string"
@@ -237,6 +244,19 @@ triage:
     #   categories: "/path/to/categories.txt"
     #   examples: "/path/to/examples.txt"
     #   role: "/path/to/role.txt"
+
+    # For type: "langfuse" (prompts from Langfuse), use:
+    # type: "langfuse"
+    # prompt_map:
+    #   categories:
+    #     label: "latest"
+    #     name: "your-usecase/categories"
+    #   examples:
+    #     label: "latest"
+    #     name: "your-usecase/examples"
+    #   role:
+    #     label: "latest"
+    #     name: "your-usecase/role"
 
 # ============================================================================
 # Optional Settings
@@ -275,3 +295,37 @@ mode: "production" # Options: "production", "development", "unittest"
 prometheus:
   enabled: true # Set to true to enable Prometheus metrics endpoint
   port: 9090 # Port for Prometheus metrics server
+
+# ============================================================================
+# Guardrails Configuration
+# ============================================================================
+# Lightweight content safety filtering using GLiNER
+guardrails:
+  enabled: true # Set to false to disable guardrail checks
+  confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
+  block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
+  huggingface_cache_dir: "/app/huggingface_cache" # Directory to cache Hugging Face models
+  offline_mode: true # If true, use local models only and do not call external APIs
+
+# ============================================================================
+# Preparser Configuration
+# ============================================================================
+# Optional preparser that can extract and reformat structured data (e.g., from
+# Markdown tables) before it is sent to the LLM. When `enabled: false` the
+# input text is passed through unchanged.
+preparser:
+  enabled: false
+  config:
+    type: "table"
+    keep_rows:
+      - "Summary"
+      - "Steps to reproduce"
+    case_sensitive: false
+    value_column: 1
+
+# ============================================================================
+# API Configuration
+# ============================================================================
+# API Configuration for REST endpoints
+api:
+  api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY

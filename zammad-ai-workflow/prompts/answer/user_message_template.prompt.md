@@ -1,4 +1,4 @@
-Classified Category: {category}
+Classified Category: `{category}`
 User Question:
 
 ```

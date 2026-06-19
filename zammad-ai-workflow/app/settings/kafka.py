@@ -23,6 +23,11 @@ class KafkaSettings(BaseModel):
         default="ticket-events",
     )
 
+    client_id: str = Field(
+        description="Kafka client ID used for the consumer name.",
+        default="zammad-ai",
+    )
+
     group_id: str | None = Field(
         description="Kafka consumer group ID",
         default=None,
@@ -32,6 +37,24 @@ class KafkaSettings(BaseModel):
         description="Security configuration for Kafka connection.",
         default_factory=lambda: DisableKafkaSecurity(),
         discriminator="type",
+    )
+    event_processing: "EventProcessingSettings" = Field(
+        description="Settings related to processing of incoming events.",
+        default_factory=lambda: EventProcessingSettings(),
+    )
+
+
+class EventProcessingSettings(BaseModel):
+    """Settings related to processing of incoming events."""
+
+    valid_request_types: list[str] = Field(
+        default_factory=list,
+        description="List of valid request types to process. Events with request types not in this list will be acknowledged and skipped.",
+    )
+
+    valid_action_types: list[str] = Field(
+        default_factory=list,
+        description="List of valid action types to process. Events with action types not in this list will be acknowledged and skipped.",
     )
 
 
@@ -54,8 +77,8 @@ class MTLSKafkaEnvSecurity(BaseModel):
         description="Base64-encoded PKCS#12 payload.",
     )
 
-    pkcs12_pw_base64: str = Field(
-        description="Base64-encoded PKCS#12 password.",
+    pkcs12_pw: str = Field(
+        description="PKCS#12 password in cleartext.",
     )
 
 

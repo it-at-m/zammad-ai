@@ -7,3 +7,4 @@
 - [Qdrant Vector Database](qdrant.md)
 - [Observability (Langfuse)](observability.md)
 - [Prometheus Metrics](prometheus.md)
+- [Knowledge Base Indexer](indexer.md)

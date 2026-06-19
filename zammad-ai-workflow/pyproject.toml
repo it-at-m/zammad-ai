@@ -1,10 +1,11 @@
 [project]
-name = "zammad-ai"
+name = "zammad-ai-workflow"
 license = "MIT"
-version = "0.1.4"
+version = "0.1.12"
+
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
-requires-python = "==3.14.4"
+requires-python = "==3.14.6"
 authors = [
     { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
     { name = "Paul Ilitz", email = "paul.ilitz@muenchen.de" },
@@ -14,38 +15,40 @@ maintainers = [
 ]
 
 dependencies = [
-    "cryptography==47.0.0",
-    "fastapi==0.136.1",
-    "faststream[cli,kafka,prometheus]==0.6.7",
+    "cryptography==49.0.0",
+    "fastapi==0.137.1",
+    "faststream[cli,kafka,prometheus]==0.7.1",
     "feedparser==6.0.12",
-    "gradio==6.13.0",
+    "gradio==6.18.0",
     "httpx[socks]==0.28.1",
-    "langchain-core==1.3.2",
-    "langchain-openai==1.2.1",
+    "jinja2==3.1.6",
+    "langchain-core==1.4.7",
+    "langchain-openai==1.3.2",
     "langchain-qdrant==1.1.0",
-    "langchain==1.2.15",
-    "langfuse==4.5.1",
+    "langchain==1.3.9",
+    "langfuse==4.7.1",
     "markdownify==1.2.2",
-    "openai==2.32.0",
-    "pandas==3.0.2",
-    "pydantic-settings==2.14.0",
-    "pydantic==2.13.3",
+    "openai==2.41.1",
+    "pandas==3.0.3",
+    "pydantic-settings==2.14.1",
+    "pydantic==2.13.4",
     "python-dotenv==1.2.2",
     "stamina==26.1.0",
     "truststore==0.10.4",
-    "uvicorn==0.46.0",
+    "uvicorn==0.49.0",
+    "gliner2==1.3.1",
 ]
 
 [dependency-groups]
 dev = [
-    "ipykernel==7.2.0",
+    "ipykernel==7.3.0",
     "pre-commit==4.6.0",
-    "pytest-asyncio==1.3.0",
-    "pytest==9.0.3",
-    "ruff==0.15.12",
-    "ty==0.0.32",
+    "pytest-asyncio==1.4.0",
+    "pytest==9.1.0",
+    "ruff==0.15.17",
+    "ty==0.0.49",
 ]
-kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.9.5"]
+kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.9.9"]
 
 [tool.uv]
 add-bounds = "exact"

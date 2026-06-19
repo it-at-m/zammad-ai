@@ -1,0 +1,47 @@
+"""Models for guardrail evaluation results."""
+
+from collections.abc import Sequence
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class _GuardrailLabelListMixin(BaseModel):
+    @field_validator(
+        "prompt_toxicity",
+        "jailbreak_detection",
+        "response_toxicity",
+        "response_refusal",
+        mode="before",
+        check_fields=False,
+    )
+    @classmethod
+    def _coerce_label_list(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        if isinstance(value, Sequence):
+            return [str(item) for item in value]
+        return [str(value)]
+
+
+class GuardrailResult(_GuardrailLabelListMixin):
+    """Result of guardrail evaluation for input text."""
+
+    prompt_safety: str = Field(description="Overall safety classification for the input prompt ")
+    prompt_toxicity: list[str] = Field(description="Toxicity classification for the input prompt", default_factory=list)
+    jailbreak_detection: list[str] = Field(
+        description="Jailbreak attempt detection result for the input prompt", default_factory=list
+    )
+
+
+class GuardrailResponseResult(_GuardrailLabelListMixin):
+    """Result of guardrail evaluation for generated response text."""
+
+    response_safety: str = Field(description="Overall safety classification for the generated response")
+    response_toxicity: list[str] = Field(
+        description="Toxicity classification for the generated response", default_factory=list
+    )
+    response_refusal: list[str] = Field(
+        description="Refusal detection result for the generated response", default_factory=list
+    )
