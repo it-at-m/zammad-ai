@@ -48,25 +48,24 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
 
     try:
         # Step 0: Retrieve answer IDs of filtered categories if category filtering is enabled
-        aIDs_in_category: list[int] = zammad_client.get_answer_ids_of_categories(settings.zammad.category_ids)
+        answer_ids_in_category: list[int] = zammad_client.get_answer_ids_of_categories(settings.zammad.category_ids)
 
         # Step 1: Retrieve answer IDs for processing
-        answer_ids: list[int] = retrieve_answer_ids(zammad_client, aIDs_in_category)
+        answer_ids: list[int] = retrieve_answer_ids(zammad_client, answer_ids_in_category)
 
         if not answer_ids:
-            logger.warning("No answer IDs found for processing. Exiting.")
-            return
+            logger.info("No answer IDs found for processing.")
         else:
             logger.info("Retrieved %d answer IDs for processing.", len(answer_ids))
 
-        # Step 2: Fetch detailed answer data
-        answers: dict[int, KnowledgeBaseAnswer] = get_answers_data(answer_ids, zammad_client)
+            # Step 2: Fetch detailed answer data
+            answers: dict[int, KnowledgeBaseAnswer] = get_answers_data(answer_ids, zammad_client)
 
-        if not answers:
-            logger.warning("No answer data retrieved. Exiting.")
-            return
-        else:
-            logger.info("Fetched data for %d answers.", len(answers))
+            if not answers:
+                logger.warning("No answer data retrieved. Exiting.")
+                return
+            else:
+                logger.info("Fetched data for %d answers.", len(answers))
 
         # Step 3: Get all points from Qdrant
         all_points: list[Record] = qdrant_client.get_all_points()
@@ -75,7 +74,7 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
         qdrant_items: list[QdrantDocumentItem] = _prepare_and_filter_data(answers, all_points, zammad_client)
 
         # Step 5: Check for deleted documents
-        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, aIDs_in_category)
+        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, answer_ids_in_category)
 
         if not qdrant_items:
             logger.info("No new or changed documents to index.")
