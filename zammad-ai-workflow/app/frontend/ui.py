@@ -171,6 +171,7 @@ async def process_ticket(
                 headers=api_key,
             )
             answer = str(answer_data.get("response", ""))
+            answer = answer.replace("<br>", "\n").strip() if answer else "Keine Antwort generiert."
             documents = answer_data.get("documents", [])
             if isinstance(documents, list):
                 answer_documents = _format_documents(documents=documents)
