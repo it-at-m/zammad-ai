@@ -3,7 +3,7 @@
 from abc import ABC
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, model_validator
+from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, PositiveInt, SecretStr, model_validator
 
 ZammadEndpoint = Literal["api", "eai"]
 
@@ -154,6 +154,11 @@ class BaseZammadSettings(BaseModel, ABC):
     knowledge_base_id: int = Field(
         description="The ID of the knowledge base to use for retrieving documents.",
         examples=[1],
+    )
+    category_ids: list[PositiveInt] = Field(
+        description="List of category IDs to filter documents by. If empty, documents from all categories will be retrieved.",
+        default_factory=list,
+        examples=[[1, 2, 3]],
     )
     timeout: int = Field(
         description="HTTP timeout in seconds for requests to Zammad.",

@@ -64,6 +64,28 @@ class ZammadAPIClient(BaseZammadClient):
         )
 
     @override
+    def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
+        if not category_ids:
+            return []
+        if not self.kb_id:
+            logger.warning("Knowledge base ID is not set. Cannot fetch answer IDs.")
+            return []
+        visited_categories: set[int] = set()
+        answer_ids: set[int] = set()
+        stack: list[int] = list(category_ids)
+        while stack:
+            category_id: int = stack.pop()
+            if category_id in visited_categories:
+                continue
+            visited_categories.add(category_id)
+            data = self._request("GET", f"/api/v1/knowledge_bases/{self.kb_id}/categories/{category_id}")
+            if not data:
+                continue
+            stack.extend(data.get("child_ids", []))
+            answer_ids.update(data["answer_ids"])
+        return list(answer_ids)
+
+    @override
     def parse_rss_feed(self) -> FeedParserDict | None:
         if not self.kb_id or not self.rss_token:
             logger.warning("Knowledge base ID or RSS feed token is not set. Cannot parse RSS feed.")
