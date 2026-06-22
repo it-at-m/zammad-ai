@@ -211,7 +211,9 @@ def fetch_attachments_for_answer(
 
 
 def retrieve_deleted_answer_ids(
-    all_points: list[Record], client: ZammadAPIClient | ZammadEAIClient, answer_ids_in_category: list[int]
+    all_points: list[Record], 
+    client: ZammadAPIClient | ZammadEAIClient,
+    answer_ids_in_category: list[int],
 ) -> list[UUID]:
     """Retrieve IDs of knowledge base answers deleted since the last indexing run.
 
