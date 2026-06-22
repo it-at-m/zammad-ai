@@ -31,7 +31,7 @@ logger: Logger = getLogger("zammad-ai-index")
 def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient | ZammadEAIClient) -> None:
     """Execute the complete indexing workflow.
 
-    Performs a four-step process:
+    Performs a nine-step process:
     0. Retrieves answer IDs of filtered categories if category filtering is enabled
     1. Retrieves answer IDs for processing based on configured criteria
     2. Fetches detailed answer data for the retrieved answer IDs
