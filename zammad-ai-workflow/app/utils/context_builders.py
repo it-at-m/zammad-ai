@@ -52,6 +52,8 @@ def build_triage_context(
         >>> # Pass to Jinja2 renderer
         >>> renderer.render_template(triage_prompt, context)
     """
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
     return {
         "knowledge_base_enabled": bool(settings.answer.qdrant.collection_name),
         "dlf_enabled": settings.answer.dlf is not None,
@@ -64,8 +66,8 @@ def build_triage_context(
             }
             for c in categories
         ],
-        # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
@@ -96,14 +98,17 @@ def build_answer_context(
     """
     tools = _build_tool_definitions(settings)
 
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
+
     return {
         "available_tools": [{"name": tool.name, "description": tool.description} for tool in tools],
         "knowledge_base_enabled": bool(settings.qdrant.collection_name),
         "dlf_enabled": settings.dlf is not None,
         "disclaimer": settings.ai_answer_disclaimer,
         "retrieval_num_documents": settings.qdrant.retrieval_num_documents,
-        # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
@@ -131,6 +136,9 @@ def build_judge_context(
     """
     judge_settings = settings.answer.judge
 
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
+
     return {
         "thresholds": {
             "context_relevance": judge_settings.thresholds.context_relevance,
@@ -139,8 +147,8 @@ def build_judge_context(
         },
         "repair_enabled": judge_settings.enabled and judge_settings.max_repairs > 0,
         "max_repairs": judge_settings.max_repairs,
-        # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
