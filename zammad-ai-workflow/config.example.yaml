@@ -222,7 +222,7 @@ triage:
   #
   # Available Jinja2 variables:
   # - Triage prompts: knowledge_base_enabled, dlf_enabled, no_category_name, no_action_name, categories, today
-  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer, today
+  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer, retrieval_num_documents, today
   # - Judge prompts: thresholds (dict), repair_enabled, max_repairs, today
   prompts:
     type: "file" # Options: "langfuse", "string", or "file"
