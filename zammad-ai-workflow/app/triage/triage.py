@@ -1,6 +1,6 @@
 """Core triage service for ticket categorization and action selection."""
 
-from datetime import date
+from datetime import datetime, timezone
 from time import perf_counter
 
 from dotenv import load_dotenv
@@ -396,10 +396,12 @@ class TriageService:
                         for condition in conditions:
                             if condition.field == "days_since_request":
                                 if days_since_request is None:
-                                    days_result: DaysSinceRequestResponse = await self.genai_handler.extract_days_since_request(
-                                        message=message,
-                                        today=date.today().isoformat(),  # TODO: Mpck date for benchmarks with old tickets
-                                        session_id=session_id,
+                                    days_result: DaysSinceRequestResponse = (
+                                        await self.genai_handler.extract_days_since_request(
+                                            message=message,
+                                            today=datetime.now(timezone.utc).date().isoformat(),
+                                            session_id=session_id,
+                                        )
                                     )
                                     days_since_request = days_result.days_since_request
                                 if (get_operator_function(operator=condition.operator))(

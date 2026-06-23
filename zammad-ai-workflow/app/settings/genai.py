@@ -75,13 +75,6 @@ class GenAISettings(BaseModel):
     )
 
     @property
-    def triage_store(self) -> bool | None:
-        """Determines whether to store interactions based on the configured GenAI SDK."""
-        if self.triage_reasoning_effort is not None:
-            return False
-        return None
-
-    @property
     def triage_reasoning_config(self) -> dict[str, str] | None:
         """Constructs a reasoning configuration dictionary for LLM interactions based on the configured reasoning effort."""
         if self.triage_reasoning_effort is not None:
@@ -91,12 +84,6 @@ class GenAISettings(BaseModel):
             }
         return None
 
-    @property
-    def answer_store(self) -> bool | None:
-        """Determines whether to store interactions based on the configured GenAI SDK."""
-        if self.answer_reasoning_effort is not None:
-            return False
-        return None
 
     @property
     def answer_reasoning_config(self) -> dict[str, str] | None:
@@ -106,13 +93,6 @@ class GenAISettings(BaseModel):
                 "effort": self.answer_reasoning_effort,
                 "summary": "detailed",
             }
-        return None
-
-    @property
-    def judge_store(self) -> bool | None:
-        """Determines whether to store interactions based on the configured GenAI SDK."""
-        if self.judge_reasoning_effort is not None:
-            return False
         return None
 
     @property
