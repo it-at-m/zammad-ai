@@ -37,7 +37,6 @@ class JudgeHandler:
                     temperature=genai_settings.judge_temperature,
                     max_retries=genai_settings.max_retries,
                     reasoning=genai_settings.judge_reasoning_config,
-                    store=genai_settings.judge_store,
                 )
             case _:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
