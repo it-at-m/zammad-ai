@@ -78,7 +78,6 @@ class GenAIHandler:
                     temperature=genai_settings.triage_temperature,
                     max_retries=genai_settings.max_retries,
                     reasoning=genai_settings.triage_reasoning_config,
-                    store=genai_settings.triage_store,
                 )
             case _:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
