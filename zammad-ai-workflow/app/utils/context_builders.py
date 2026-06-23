@@ -10,7 +10,7 @@ thresholds, tool lists) while LangChain variables (like {text}, {categories})
 are used for PER-REQUEST data.
 """
 
-from datetime import date
+from datetime import datetime, timezone
 from typing import Any
 
 from app.models.triage import Category
@@ -65,7 +65,7 @@ def build_triage_context(
             for c in categories
         ],
         # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        "today": datetime.now(timezone.utc).date().isoformat(),
     }
 
 
@@ -103,7 +103,7 @@ def build_answer_context(
         "disclaimer": settings.ai_answer_disclaimer,
         "retrieval_num_documents": settings.qdrant.retrieval_num_documents,
         # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        "today": datetime.now(timezone.utc).date().isoformat(),
     }
 
 
@@ -140,7 +140,7 @@ def build_judge_context(
         "repair_enabled": judge_settings.enabled and judge_settings.max_repairs > 0,
         "max_repairs": judge_settings.max_repairs,
         # Provide today's date (ISO format) for prompts that need to reference the current day
-        "today": date.today().isoformat(),
+        "today": datetime.now(timezone.utc).date().isoformat(),
     }
 
 
