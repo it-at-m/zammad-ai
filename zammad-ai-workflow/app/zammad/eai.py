@@ -101,6 +101,8 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/tickets/byId/{id}")
+        if not isinstance(data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
         try:
             raw_group = data.get("group_id", None)
             group_id: int | None

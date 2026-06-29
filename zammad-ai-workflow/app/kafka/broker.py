@@ -141,6 +141,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             if (
                 settings.zammad.type == "eai"
                 and settings.zammad.ai_ticket_group_id is not None
+                and original_group_id is not None
                 and original_group_id != settings.zammad.ai_ticket_group_id
             ):
                 try:
@@ -171,16 +172,19 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
                 )
             # Move ticket back to original group if it was moved to AI group
-            if original_group_id is not None:
-                try:
-                    await zammad_client.update_ticket_group(ticket_id=ticket_id, group_id=original_group_id)
-                    logger.info(f"Moved ticket {ticket_id} back to original group {original_group_id}")
-                except (ZammadRetryableError, ZammadConnectionError) as e:
-                    logger.error("Error connecting to Zammad while moving ticket back to original group", exc_info=True)
-                    raise KafkaPayloadError(
-                        "Failed due to Zammad connection error while moving ticket back to original group",
-                        retryable=True,
-                    ) from e
+            finally:
+                if original_group_id is not None:
+                    try:
+                        await zammad_client.update_ticket_group(ticket_id=ticket_id, group_id=original_group_id)
+                        logger.info(f"Moved ticket {ticket_id} back to original group {original_group_id}")
+                    except (ZammadRetryableError, ZammadConnectionError) as e:
+                        logger.error(
+                            "Error connecting to Zammad while moving ticket back to original group", exc_info=True
+                        )
+                        raise KafkaPayloadError(
+                            "Failed due to Zammad connection error while moving ticket back to original group",
+                            retryable=True,
+                        ) from e
             raise AckMessage()
 
     return router, event_handler

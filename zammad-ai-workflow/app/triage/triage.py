@@ -172,7 +172,7 @@ class TriageService:
             TriageResult: Result containing the resolved category, selected action, human-readable reasoning, confidence score, and any extracted values (or `None`).
 
         Raises:
-            TriageError: If the ticket cannot be retrieved from Zammad (for example, due to a connection failure).
+            TriageError: If attachment retrieval or downstream triage processing fails.
         """
         start_time: float = perf_counter()
         outcome: str = "error"
