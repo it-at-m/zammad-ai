@@ -199,6 +199,12 @@ class ZammadEAISettings(BaseZammadSettings):
         examples=["https://my-zammad-eai.example.com/api/v1"],
     )
 
+    ai_ticket_group_id: int | None = Field(
+        description="The ID of the group to which AI-generated tickets should be assigned. If set to None, tickets will not be assigned to any specific group.",
+        examples=[1],
+        default=None,
+    )
+
     # OAuth 2.0 Client Credentials Flow settings
     oauth2_client_id: str = Field(
         description="OAuth 2.0 client identifier for authentication",

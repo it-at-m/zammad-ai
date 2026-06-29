@@ -10,6 +10,10 @@ class ZammadTicket(BaseModel):
     id: int = Field(
         description="Unique identifier for the ticket",
     )
+    group_id: int | None = Field(
+        description="ID of the group assigned to the ticket",
+        default=None,
+    )
     articles: list["ZammadArticle"] = Field(
         description="List of articles associated with the ticket",
         default_factory=list,
