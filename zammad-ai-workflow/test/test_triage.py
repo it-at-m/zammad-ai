@@ -1,5 +1,6 @@
 """Tests for the triage service and action selection logic."""
 
+import asyncio
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
@@ -9,9 +10,7 @@ from pydantic import ValidationError
 
 from app.errors import TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
-import asyncio
-
-from app.models.zammad import ZammadArticle, ZammadTicket, ArticleAttachment
+from app.models.zammad import ArticleAttachment, ZammadArticle, ZammadTicket
 from app.settings.triage import (
     ActionRule,
     Category,
@@ -286,11 +285,11 @@ async def test_get_action_id_returns_no_action_for_no_category(patched_triage: T
 @pytest.mark.asyncio
 async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
     """Full triage with a ticket that has an article returns a real category and action."""
-    ticket = ZammadTicket(  # type: ignore
+    ticket = ZammadTicket(
         id=42,
         articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
     )
-    patched_triage.zammad_client.ticket = ticket
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="General"),
         reasoning="hardware issue",
@@ -306,11 +305,11 @@ async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
 async def test_perform_triage_in_progress_gauge_returns_to_baseline_on_success(patched_triage: TriageService) -> None:
     """The in-progress gauge should return to baseline after a successful run."""
     baseline = _get_triage_runs_in_progress_value()
-    ticket = ZammadTicket(  # type: ignore
+    ticket = ZammadTicket(
         id=42,
         articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
     )
-    patched_triage.zammad_client.ticket = ticket
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="General"),
         reasoning="hardware issue",

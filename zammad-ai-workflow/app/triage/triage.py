@@ -39,7 +39,7 @@ from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from app.utils.logging import getLogger
 from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
-from app.zammad import BaseZammadClient, ZammadAPIClient, ZammadEAIClient, ZammadConnectionError
+from app.zammad import BaseZammadClient, ZammadAPIClient, ZammadConnectionError, ZammadEAIClient
 
 from .genai_handler import GenAIHandler
 from .helper import get_operator_function

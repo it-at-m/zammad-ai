@@ -10,8 +10,8 @@ from faststream.kafka import TestKafkaBroker
 from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
 from app.models.kafka import Event
-from app.models.zammad import ZammadTicket, ZammadArticle
 from app.models.triage import TriageResult
+from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
 from app.settings.kafka import EventProcessingSettings, KafkaSettings
