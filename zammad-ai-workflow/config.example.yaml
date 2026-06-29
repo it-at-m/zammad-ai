@@ -75,6 +75,7 @@ zammad:
   # For type: "eai" (alternative to "api"), use these instead:
   # eai_url: "https://your-zammad-eai.example.com/api/v1"
   # knowledge_base_id: "1"
+  # ai_ticket_group_id: 1 # Optional: set to null to disable AI ticket assignment
   # timeout: 30
   # max_retries: 3
   # http_proxy_url: null

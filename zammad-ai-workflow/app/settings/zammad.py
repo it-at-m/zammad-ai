@@ -3,7 +3,7 @@
 from abc import ABC
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, model_validator
+from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, PositiveInt, SecretStr, model_validator
 
 KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
     {
@@ -197,6 +197,12 @@ class ZammadEAISettings(BaseZammadSettings):
     eai_url: HttpUrl = Field(
         description="Zammad EAI API endpoint",
         examples=["https://my-zammad-eai.example.com/api/v1"],
+    )
+
+    ai_ticket_group_id: PositiveInt | None = Field(
+        description="The ID of the group to which AI-generated tickets should be assigned. If set to None, tickets will not be assigned to any specific group.",
+        examples=[1],
+        default=None,
     )
 
     # OAuth 2.0 Client Credentials Flow settings

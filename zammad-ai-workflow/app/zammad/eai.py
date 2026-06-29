@@ -101,11 +101,29 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/tickets/byId/{id}")
+        if not isinstance(data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
         try:
-            articles = TypeAdapter(list[ZammadArticle]).validate_python(data["articles"])
+            raw_group = data.get("group_id", None)
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
+
+            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(data.get("articles", []))
         except (KeyError, TypeError, ValidationError) as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
-        return ZammadTicket(id=id, articles=articles)
+        return ZammadTicket(id=id, articles=articles, group_id=group_id)
+
+    @override
+    async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:
+        payload = {"group_id": group_id, "id": ticket_id}
+        await self._request("PUT", f"/tickets/{ticket_id}", json=payload)
+        logger.info(f"Updated ticket {ticket_id} group to {group_id}")
 
     @override
     async def post_answer(self, ticket_id: int, text: str, subject: str | None = None, internal: bool = False) -> None:
