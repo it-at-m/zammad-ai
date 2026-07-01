@@ -1,6 +1,6 @@
 """Core triage service for ticket categorization and action selection."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from time import perf_counter
 
 from dotenv import load_dotenv
@@ -394,7 +394,7 @@ class TriageService:
                                     days_result: DaysSinceRequestResponse = (
                                         await self.genai_handler.extract_days_since_request(
                                             message=message,
-                                            today=datetime.now(timezone.utc).date().isoformat(),
+                                            today=datetime.now().date().isoformat(),
                                             session_id=session_id,
                                         )
                                     )
