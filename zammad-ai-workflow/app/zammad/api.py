@@ -70,7 +70,7 @@ class ZammadAPIClient(BaseZammadClient):
 
     @override
     async def set_ticket_pending_close(self, ticket_id: int, days: int) -> None:
-        pending_date = (datetime.now() + timedelta(days=days)).isoformat() + "Z"
+        pending_date = (datetime.now() + timedelta(days=days)).isoformat()
         payload = {"id": ticket_id, "state": "pending close", "pending_time": pending_date}
         await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
         logger.info(f"Updated ticket {ticket_id} to pending close after {days} days")
