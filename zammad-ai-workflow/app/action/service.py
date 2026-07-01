@@ -79,6 +79,17 @@ class ActionService:
                     internal=False,
                 )
                 self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
+                # Optionally schedule the ticket to be moved to a pending-close state after configured days
+                try:
+                    pending_days: int | None = self.settings.zammad.pending_close_after_days
+                    if pending_days is not None:
+                        await self.zammad_client.set_ticket_pending_close(ticket_id=ticket_id, days=pending_days)
+                        self.logger.info(
+                            f"Scheduled ticket {ticket_id} to be set to pending close after {pending_days} days"
+                        )
+                except Exception:
+                    # Don't fail the action execution if scheduling fails — just log
+                    self.logger.error("Failed to schedule pending-close update for ticket.", exc_info=True)
             else:
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,

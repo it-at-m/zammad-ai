@@ -56,6 +56,7 @@ genai:
 
 zammad:
   type: "api" # Options: "api" or "eai"
+  pending_close_after_days: null # Number of days after which a ticket is marked as pending close. Only for "auto-publish" categories
 
   # For type: "api"
   base_url: "https://your-zammad-instance.example.com"

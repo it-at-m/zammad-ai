@@ -2,6 +2,7 @@
 
 from base64 import b64decode
 from binascii import Error as BinasciiError
+from datetime import datetime, timedelta
 from logging import Logger
 from typing import Any, override
 
@@ -66,6 +67,13 @@ class ZammadAPIClient(BaseZammadClient):
         payload = {"group_id": group_id, "id": ticket_id}
         await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
         logger.info(f"Updated ticket {ticket_id} group to {group_id}")
+
+    @override
+    async def set_ticket_pending_close(self, ticket_id: int, days: int) -> None:
+        pending_date = (datetime.now() + timedelta(days=days)).isoformat() + "Z"
+        payload = {"id": ticket_id, "state": "pending close", "pending_time": pending_date}
+        await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
+        logger.info(f"Updated ticket {ticket_id} to pending close after {days} days")
 
     @override
     async def post_shared_draft(self, ticket_id: int, text: str) -> None:

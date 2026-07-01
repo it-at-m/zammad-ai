@@ -126,6 +126,13 @@ class ZammadEAIClient(BaseZammadClient):
         logger.info(f"Updated ticket {ticket_id} group to {group_id}")
 
     @override
+    async def set_ticket_pending_close(self, ticket_id: int, days: int) -> None:
+        pending_date = (datetime.now() + timedelta(days=days)).isoformat() + "Z"
+        payload = {"id": ticket_id, "state": "pending close", "pending_time": pending_date}
+        await self._request("PATCH", f"/tickets/{ticket_id}", json=payload)
+        logger.info(f"Updated ticket {ticket_id} to pending close after {days} days")
+
+    @override
     async def post_answer(self, ticket_id: int, text: str, subject: str | None = None, internal: bool = False) -> None:
         payload = ZammadAnswer(ticket_id=ticket_id, body=text, internal=internal, subject=subject)
         await self._request("POST", f"/tickets/{ticket_id}/articles", json=payload.model_dump())

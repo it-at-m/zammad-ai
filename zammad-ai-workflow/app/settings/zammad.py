@@ -165,6 +165,11 @@ class BaseZammadSettings(BaseModel, ABC):
         description="Optional proxy URL for routing HTTP requests to Zammad through a proxy server.",
         default=None,
     )
+    # If set, the integration will schedule a ticket state update after the configured number of days
+    pending_close_after_days: PositiveInt | None = Field(
+        description="If set, AI auto-published answers will schedule a ticket status update after this many days.",
+        default=None,
+    )
     document_parsing: DocumentParsingSettings = Field(
         description="Settings for parsing documents retrieved from Zammad.",
         default_factory=DocumentParsingSettings,
