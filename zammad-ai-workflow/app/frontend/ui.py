@@ -240,7 +240,9 @@ def _render_config_md(settings: ZammadAISettings) -> str:
     qdrant = settings.answer.qdrant
     qdrant_url = getattr(qdrant, "url", None)
     qdrant_link = (
-        f"[{qdrant_url}]({qdrant_url}dashboard#/collections/{qdrant.collection_name})" if qdrant_url else "disabled"
+        f"[{qdrant_url}]({qdrant_url.rstrip('/')}/dashboard#/collections/{qdrant.collection_name})"
+        if qdrant_url
+        else "disabled"
     )
 
     zammad = settings.zammad
