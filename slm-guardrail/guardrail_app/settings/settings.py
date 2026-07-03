@@ -1,6 +1,7 @@
 """Service settings for slm-guardrail (FastAPI)."""
 
 from functools import lru_cache
+from typing import Dict
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -25,9 +26,23 @@ class GuardrailSettings(BaseModel):
     """Guardrail model behavior and storage settings."""
 
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
-    block_on_high_risk: bool = Field(default=False)
     huggingface_cache_dir: str = Field(default="/app/huggingface_cache")
     offline_mode: bool = Field(default=True)
+    # Maximum concurrent inferences allowed against the guardrail model
+    max_concurrency: int = Field(default=4, ge=1, description="Max concurrent model inferences")
+    # Default model id to use when client does not specify one
+    default_model: str = Field(default="default", description="Default model id to use for evaluations")
+    # Per-model configurations; key is model id
+    models: Dict[str, "ModelConfig"] = Field(default_factory=dict)
+
+
+class ModelConfig(BaseModel):
+    """Configuration for a specific guardrail model instance."""
+
+    hf_model_name: str = Field(default="fastino/gliguard-LLMGuardrails-300M", description="HuggingFace model name or local path")
+    offline_mode: bool | None = Field(default=None, description="Override global offline_mode for this model")
+    huggingface_cache_dir: str | None = Field(default=None, description="Override global HF cache dir for this model")
+    max_concurrency: int | None = Field(default=None, ge=1, description="Max concurrent inferences for this model")
 
 
 def _should_enable_cli() -> bool:
@@ -84,4 +99,9 @@ class ServiceSettings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> ServiceSettings:
     """Return cached service settings instance."""
-    return ServiceSettings()
+    s = ServiceSettings()
+    # Ensure at least one default model is configured
+    if not s.guardrails.models:
+        s.guardrails.models = {"default": ModelConfig()}
+        s.guardrails.default_model = "default"
+    return s

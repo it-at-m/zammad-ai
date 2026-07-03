@@ -1,0 +1,83 @@
+name: Build and Release Core Workflow Docker Image
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - "slm-guardrails-*" # Triggers only on slm-guardrails tags
+  workflow_dispatch: # Allows manual triggering of the workflow
+    inputs:
+      tag:
+        description: "Core tag to release (e.g., slm-guardrails-1.0.0)"
+        required: true
+        default: "slm-guardrails-latest"
+
+jobs:
+  build-and-push-core-service:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      packages: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract version from slm-guardrails tag
+        id: vars
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            FULL_TAG="${{ github.event.inputs.tag }}"
+          else
+            FULL_TAG=${GITHUB_REF#refs/tags/}
+          fi
+
+          # Extract version from slm-guardrails-* tag (e.g., slm-guardrails-1.0.0 -> 1.0.0)
+          if [[ "$FULL_TAG" =~ ^slm-guardrails-(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Error: Tag must start with 'slm-guardrails-'"
+            exit 1
+          fi
+
+          echo "full_tag=${FULL_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "repo_lowercase=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - name: Set build timestamp
+        id: build_ts
+        run: echo "BUILD_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Build and push slm-guardrails Docker image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ./slm-guardrails
+          file: ./slm-guardrails/Dockerfile
+          push: true
+          sbom: true
+          provenance: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/slm-guardrails:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/slm-guardrails:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            IMAGE_CREATED=${{ github.event.repository.pushed_at || env.BUILD_TS }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_VERSION=${{ steps.vars.outputs.version }}
+      - name: Image digest
+        run: |
+          echo "slm-guardrails image built and pushed:"
+          echo "  ghcr.io/${{ github.repository }}/slm-guardrails:${{ steps.vars.outputs.version }}"
+          echo "  ghcr.io/${{ github.repository }}/slm-guardrails:latest"

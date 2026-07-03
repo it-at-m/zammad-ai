@@ -1,6 +1,7 @@
 """Models for guardrail evaluation results (shared shape with workflow)."""
 
 from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -33,6 +34,10 @@ class GuardrailResult(_GuardrailLabelListMixin):
     jailbreak_detection: list[str] = Field(
         description="Jailbreak attempt detection result for the input prompt", default_factory=list
     )
+    # optional per-label confidence scores if the model provides them
+    label_scores: dict[str, float] = Field(default_factory=dict, description="Per-label confidence scores")
+    # raw model output provided for clients who want the full details
+    raw_result: dict[str, Any] = Field(default_factory=dict, description="Raw model output")
 
 
 class GuardrailResponseResult(_GuardrailLabelListMixin):
@@ -45,3 +50,24 @@ class GuardrailResponseResult(_GuardrailLabelListMixin):
     response_refusal: list[str] = Field(
         description="Refusal detection result for the generated response", default_factory=list
     )
+    # optional per-label confidence scores if the model provides them
+    label_scores: dict[str, float] = Field(default_factory=dict, description="Per-label confidence scores")
+    # raw model output provided for clients who want the full details
+    raw_result: dict[str, Any] = Field(default_factory=dict, description="Raw model output")
+
+
+class PromptRequest(BaseModel):
+    """Request model for guardrail evaluation of input prompt."""
+
+    text: str
+    model: str | None = None
+    threshold: float | None = None
+
+
+class ResponseRequest(BaseModel):
+    """Request model for guardrail evaluation of generated response."""
+
+    text: str
+    response: str
+    model: str | None = None
+    threshold: float | None = None

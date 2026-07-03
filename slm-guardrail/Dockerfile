@@ -1,19 +1,71 @@
-# syntax=docker/dockerfile:1
+# Smallest ubi10 image
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest@sha256:a0369f05a1738c23b8b200ffaa75a42373ed342d0a76ccadc261ff7242299a9d
 
-FROM python:3.14.5-slim
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:b46b03ddfcfbf8f547af7e9eaefdf8a39c8cebcba7c98858d3162bd28cf536f6 /uv /uvx /bin/
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
+# Install the project into `/app`
 WORKDIR /app
 
-COPY pyproject.toml ./
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
 
-RUN pip install --upgrade pip uv && \
-    uv sync --frozen --no-dev
+# Copy from the cache instead of linking since it's a mounted volume
+ENV UV_LINK_MODE=copy
 
-COPY . .
+# Leverage layer cache
+COPY pyproject.toml uv.lock ./
 
-EXPOSE 8081
+# Install the transitive dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --locked --no-install-project
 
-CMD ["uv", "run", "python", "-m", "main"]
+# Copy the application files
+COPY . /app
+
+# Install the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --locked
+
+# Metadata for the image
+ARG IMAGE_CREATED="unknown"
+ARG IMAGE_REVISION="unknown"
+ARG IMAGE_VERSION="unknown"
+LABEL org.opencontainers.image.authors='Landeshauptstadt München <opensource@muenchen.de>' \
+    org.opencontainers.image.vendor='Landeshauptstadt München' \
+    org.opencontainers.image.created="$IMAGE_CREATED" \
+    org.opencontainers.image.revision="$IMAGE_REVISION" \
+    org.opencontainers.image.version="$IMAGE_VERSION" \
+    org.opencontainers.image.url='https://github.com/it-at-m/zammad-ai' \
+    org.opencontainers.image.documentation='https://github.com/it-at-m/zammad-ai/blob/main/README.md' \
+    org.opencontainers.image.source='https://github.com/it-at-m/zammad-ai' \
+    org.opencontainers.image.licenses='MIT' \
+    org.opencontainers.image.title='zammad-ai' \
+    org.opencontainers.image.description="Guardrail service for Zammad AI, providing content safety and moderation using GLiNER."
+
+# Give permissions to all so random UID can write
+# This should be compatible with OpenShift and plain K8s
+RUN chown -R root:0 /app && chmod -R g=u /app
+
+USER 1001:0
+
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"
+
+
+# Disable tqdm for cleaner logs
+ENV TQDM_DISABLE=1
+ENV HF_HUB_DISABLE_PROGRESS_BARS=1
+
+# Set tiktoken cache dir
+ENV TIKTOKEN_CACHE_DIR="/app/tiktoken_cache"
+ENV HF_HOME="/app/huggingface_cache"
+ENV HF_HUB_CACHE="/app/huggingface_cache"
+ENV TRANSFORMERS_CACHE="/app/huggingface_cache"
+
+# Disable python warnings
+ENV PYTHONWARNINGS="ignore"
+
+ENV APP_VERSION=${IMAGE_VERSION}
+
+# Reset the entrypoint, don't invoke `uv`
+ENTRYPOINT ["python", "main.py"]

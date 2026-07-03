@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hmac
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from guardrail_app.guardrails.service import GuardrailService
-from guardrail_app.models.guardrails import GuardrailResponseResult, GuardrailResult
+from guardrail_app.models.guardrails import GuardrailResponseResult, GuardrailResult, PromptRequest, ResponseRequest
 from guardrail_app.settings.settings import ServiceSettings, get_settings
 from guardrail_app.utils.logging import getLogger
 from prometheus_client import make_asgi_app
@@ -20,14 +21,12 @@ async def lifespan(app: FastAPI):
 
     Replaces deprecated on_event startup/shutdown hooks.
     """
-    global _service
+    # Initialize the guardrail model eagerly. If the model cannot be loaded
+    # we want startup to fail loudly so callers and orchestrators notice.
     settings = get_settings()
-    try:
-        _service = GuardrailService(settings.guardrails)
-        logger.info("slm-guardrail started")
-    except Exception:
-        _service = None
-        logger.error("Failed to initialize guardrail model on startup.", exc_info=True)
+    service = GuardrailService(settings.guardrails)
+    app.state.service = service
+    logger.info("slm-guardrail started")
     # Yield control to serve requests
     try:
         yield
@@ -39,11 +38,9 @@ app = FastAPI(title="slm-guardrail", version="0.1.0", lifespan=lifespan)
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
-_service: GuardrailService | None = None
 
-
-def _get_service(settings: ServiceSettings = Depends(get_settings)) -> GuardrailService | None:
-    return _service
+def _get_service(request: Request) -> GuardrailService:
+    return request.app.state.service
 
 
 @app.get("/healthz")
@@ -56,60 +53,54 @@ def _auth_check(request: Request, settings: ServiceSettings) -> None:
     token = settings.api.auth_token
     if token:
         header = request.headers.get("authorization", "")
-        if header != f"Bearer {token}":
+        if not header:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        parts = header.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        provided = parts[1].strip()
+        if not hmac.compare_digest(provided, token):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
 
 @app.post("/api/v1/guardrails/prompt", response_model=GuardrailResult)
 async def evaluate_prompt(
     request: Request,
-    payload: dict,
+    payload: PromptRequest,
     settings: ServiceSettings = Depends(get_settings),
-    service: GuardrailService | None = Depends(_get_service),
+    service: GuardrailService = Depends(_get_service),
 ) -> GuardrailResult:
     """Evaluate a user prompt text for safety via the model service."""
     _auth_check(request, settings)
-    text = str(payload.get("text", ""))
-    threshold = payload.get("threshold")
-    if threshold is not None:
-        try:
-            settings.guardrails.confidence_threshold = float(threshold)
-        except Exception:
-            pass  # ignore invalid override
-
-    if service is None and settings.guardrails.enabled:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Model not ready")
-    if service is None:
-        # Disabled -> safe
-        return GuardrailResult(prompt_safety="safe", prompt_toxicity=[], jailbreak_detection=[])
-
-    return await service.evaluate(text)
+    thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
+    mid = getattr(payload, "model", None) or settings.guardrails.default_model
+    if not service.has_model(mid):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {mid}")
+    return await service.evaluate(payload.text, threshold=thr, model_id=mid)
 
 
 @app.post("/api/v1/guardrails/response", response_model=GuardrailResponseResult)
 async def evaluate_response(
     request: Request,
-    payload: dict,
+    payload: ResponseRequest,
     settings: ServiceSettings = Depends(get_settings),
-    service: GuardrailService | None = Depends(_get_service),
+    service: GuardrailService = Depends(_get_service),
 ) -> GuardrailResponseResult:
     """Evaluate a generated response (with prompt context) for safety."""
     _auth_check(request, settings)
-    text = str(payload.get("text", ""))
-    response_text = str(payload.get("response", ""))
-    threshold = payload.get("threshold")
-    if threshold is not None:
-        try:
-            settings.guardrails.confidence_threshold = float(threshold)
-        except Exception:
-            pass
+    thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
+    mid = getattr(payload, "model", None) or settings.guardrails.default_model
+    if not service.has_model(mid):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {mid}")
+    return await service.evaluate_response(payload.text, payload.response, threshold=thr, model_id=mid)
 
-    if service is None and settings.guardrails.enabled:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Model not ready")
-    if service is None:
-        return GuardrailResponseResult(response_safety="safe", response_toxicity=[], response_refusal=[])
 
-    return await service.evaluate_response(text, response_text)
+@app.get("/ready")
+async def ready(request: Request) -> dict[str, dict[str, bool]]:
+    """Readiness endpoint that reports model availability."""
+    svc: GuardrailService = request.app.state.service
+    models_ready = {k: svc.has_model(k) for k in svc._models.keys()}
+    return {"models": models_ready}
 
 
 if __name__ == "__main__":

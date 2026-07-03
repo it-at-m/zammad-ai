@@ -23,25 +23,27 @@ FastAPI microservice providing content safety guardrails for Zammad-AI. It class
 POST `/api/v1/guardrails/prompt` request:
 
 ```json
-{ "text": "string", "threshold": 0.7 }
+{ "text": "string", "model": "opir", "threshold": 0.7 }
 ```
+
+Omit `model` to use the configured default model.
 
 Response:
 
 ```json
-{ "prompt_safety": "safe", "prompt_toxicity": [], "jailbreak_detection": [] }
+{ "prompt_safety": "safe", "prompt_toxicity": [], "jailbreak_detection": [], "label_scores": {}, "raw_result": {} }
 ```
 
 POST `/api/v1/guardrails/response` request:
 
 ```json
-{ "text": "string", "response": "string", "threshold": 0.7 }
+{ "text": "string", "response": "string", "model": "opir", "threshold": 0.7 }
 ```
 
 Response:
 
 ```json
-{ "response_safety": "safe", "response_toxicity": [], "response_refusal": [] }
+{ "response_safety": "safe", "response_toxicity": [], "response_refusal": [], "label_scores": {}, "raw_result": {} }
 ```
 
 ### Curl Examples
@@ -65,9 +67,8 @@ Configure via environment variables (prefix `SLM_GUARDRAIL_`) or `config.yaml`.
 - `API__HOST` bind host, default `0.0.0.0`
 - `API__PORT` bind port, default `8081`
 - `API__AUTH_TOKEN` optional Bearer token to require on requests
-- `GUARDRAILS__ENABLED` whether to load model and serve checks, default `true`
+- `GUARDRAILS__MAX_CONCURRENCY` maximum concurrent inferences (default 4)
 - `GUARDRAILS__CONFIDENCE_THRESHOLD` decision threshold, default `0.7`
-- `GUARDRAILS__BLOCK_ON_HIGH_RISK` included for parity; enforcement is in workflow
 - `GUARDRAILS__HUGGINGFACE_CACHE_DIR` cache directory, default `/app/huggingface_cache`
 - `GUARDRAILS__OFFLINE_MODE` use only cached model files if `true`
 
@@ -81,9 +82,8 @@ api:
   max_payload_bytes: 65536
 
 guardrails:
-  enabled: true
   confidence_threshold: 0.7
-  block_on_high_risk: false
+  max_concurrency: 4
   huggingface_cache_dir: /app/huggingface_cache
   offline_mode: true
 ```
@@ -95,8 +95,8 @@ guardrails:
 
 ## Behavior and Error Handling
 
-- When `guardrails.enabled` is `true` and the model is not ready, endpoints return `503 Service Unavailable`.
-- When `guardrails.enabled` is `false`, endpoints return "safe" classifications with HTTP 200.
+- The service loads the model on startup; if the model cannot be initialized the process will fail to start so orchestrators can detect the condition.
+- Endpoints return structured results including `label_scores` and `raw_result`. The client is expected to decide allow/review/block based on these values.
 - Validation errors return `400`. Unexpected errors return `500` and the service fails open for individual checks.
 
 ## Resource Requirements
