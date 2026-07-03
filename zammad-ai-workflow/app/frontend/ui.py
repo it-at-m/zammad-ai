@@ -103,6 +103,19 @@ async def _request_json(
     return data
 
 
+async def _fetch_prompt_versions(api_base_url: str) -> dict[str, int | None]:
+    """Fetch prompt versions from the backend status endpoint."""
+    url = f"{api_base_url}/api/v1/prompt_versions"
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            msg = f"Expected JSON object from {url}, got {type(data).__name__}"
+            raise ValueError(msg)
+        return data
+
+
 async def process_ticket(
     text: str, *, api_base_url: str, timeout_seconds: float, api_key: dict[str, str]
 ) -> FrontendResult:
@@ -195,8 +208,14 @@ async def process_ticket(
     return category, action, reasoning, confidence_str, answer, answer_documents
 
 
-def _render_config_md(settings: ZammadAISettings) -> str:
+def _render_config_md(
+    settings: ZammadAISettings,
+    prompt_versions: dict[str, int | None] | None = None,
+    *,
+    prompt_versions_loaded: bool = False,
+) -> str:
     genai: GenAISettings = settings.genai
+    prompt_versions = prompt_versions or {}
 
     triage_model: str = genai.triage_model or genai.chat_model
     answer_model: str = genai.answer_model or genai.chat_model
@@ -204,39 +223,48 @@ def _render_config_md(settings: ZammadAISettings) -> str:
 
     langfuse_base: str = os.getenv("LANGFUSE_HOST", "")
 
-    # Prompts
     def _prompt_links(prompt_cfg: object, key: str) -> str:
-        type = getattr(prompt_cfg, "type", None)
-        if type == "langfuse":
-            # If it's a map (triage.prompts) produce one entry per key
+        prompt_type = getattr(prompt_cfg, "type", None)
+        if prompt_type == "langfuse":
+            version = prompt_versions.get(key)
+            version_display = (
+                "loading..." if not prompt_versions_loaded else (version if version is not None else "unknown")
+            )
             if hasattr(prompt_cfg, "prompt_map"):
                 lines = []
-                for key, val in getattr(prompt_cfg, "prompt_map", {}).items():
+                for prompt_key, val in getattr(prompt_cfg, "prompt_map", {}).items():
                     name = getattr(val, "name", "")
                     label = getattr(val, "label", "")
-                    lines.append(f"- {key}: {name} (label={label})")
+                    mapped_version_value = prompt_versions.get(prompt_key)
+                    mapped_version = (
+                        "loading..."
+                        if not prompt_versions_loaded
+                        else (mapped_version_value if mapped_version_value is not None else "unknown")
+                    )
+                    lines.append(f"- {prompt_key}: {name} (label={label}, version={mapped_version})")
                 return "\n".join(lines)
             prompt = getattr(prompt_cfg, "prompt", None)
             if prompt is None:
                 return "- Langfuse: (unknown)"
             name = getattr(prompt, "name", str(prompt))
-            return f"- {key}: {name} (label={getattr(prompt, 'label', '')})"
-        if type == "file":
+            return f"- {key}: {name} (label={getattr(prompt, 'label', '')}, version={version_display})"
+        if prompt_type == "file":
             path = getattr(prompt_cfg, "prompt", "")
             return f"- {key}: File: {path}"
-        if type == "string":
+        if prompt_type == "string":
             s = getattr(prompt_cfg, "prompt", "")
             preview = s.replace("\n", " ")[:200]
             return f"- {key}: Inline prompt preview: `{preview}`"
         if hasattr(prompt_cfg, "prompt_map"):
-            return "\n".join(f"- {k}: {v}" for k, v in getattr(prompt_cfg, "prompt_map", {}).items())
+            return "\n".join(
+                f"- {prompt_key}: {value}" for prompt_key, value in getattr(prompt_cfg, "prompt_map", {}).items()
+            )
         return f"- {key}: {prompt_cfg}"
 
     triage_prompts_md = _prompt_links(settings.triage.prompts, "triage")
     answer_prompt_md = _prompt_links(settings.answer.agent_prompt, "answer")
     judge_prompt_md = _prompt_links(settings.answer.judge.prompt, "judge")
 
-    # Knowledge links
     qdrant = settings.answer.qdrant
     qdrant_url = getattr(qdrant, "url", None)
     qdrant_link = (
@@ -322,6 +350,14 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
             )
             return _ui_error_result(message="Unerwarteter Fehler bei der Verarbeitung")
 
+    async def _load_config_md() -> str:
+        try:
+            prompt_versions = await _fetch_prompt_versions(api_base_url=API_BASE_URL)
+        except Exception:
+            logger.warning("Failed to fetch prompt versions from backend.", exc_info=True)
+            prompt_versions = {}
+        return _render_config_md(settings, prompt_versions=prompt_versions, prompt_versions_loaded=True)
+
     with gr.Blocks(title="Zammad AI Triage Demo") as frontend:
         gr.Markdown("# Zammad AI Triage & Answer Demo")
         gr.Markdown("Geben Sie einen Ticket-Text ein, um die KI-gestützte Triage und Antwortgenerierung zu testen.")
@@ -356,7 +392,7 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
 
                 # Initial components inside an accordion
                 with gr.Accordion("System Info (Modelle, Prompts, Regeln, Index)", open=False):
-                    gr.Markdown(value=_render_config_md(settings))
+                    config_md = gr.Markdown(value=_render_config_md(settings, prompt_versions_loaded=False))
                     with gr.Row():
                         with gr.Column():
                             gr.Markdown("#### Triage Regeln")
@@ -382,5 +418,6 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
 
         submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
         input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
+        frontend.load(fn=_load_config_md, outputs=config_md)
 
     return frontend

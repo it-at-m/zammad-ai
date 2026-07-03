@@ -54,17 +54,23 @@ class GenAIHandler:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        empty_keys: list[str] = [
-            key for key, value in prompts.items() if not isinstance(value, str) or not value.strip()
-        ]
-        if empty_keys:
-            error_msg = f"Empty prompt values for keys: {', '.join(empty_keys)}. All prompts must be non-empty strings."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
         missing_keys = self.REQUIRED_PROMPT_KEYS - set(prompts)
         if missing_keys:
             error_msg = f"Missing required prompt keys: {', '.join(sorted(missing_keys))}."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        empty_required_keys: list[str] = [
+            key
+            for key in sorted(self.REQUIRED_PROMPT_KEYS)
+            if not isinstance(prompts.get(key), str) or not prompts[key].strip()
+        ]
+        if empty_required_keys:
+            error_msg = (
+                "Empty prompt values for required keys: "
+                f"{', '.join(empty_required_keys)}. "
+                "Required system prompts must be non-empty strings."
+            )
             logger.error(error_msg)
             raise ValueError(error_msg)
 
