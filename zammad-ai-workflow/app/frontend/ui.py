@@ -268,13 +268,13 @@ def _render_config_md(
     qdrant = settings.answer.qdrant
     qdrant_url = getattr(qdrant, "url", None)
     qdrant_link = (
-        f"[{qdrant_url}]({qdrant_url.rstrip('/')}/dashboard#/collections/{qdrant.collection_name})"
+        f"[{qdrant_url}]({str(qdrant_url).rstrip('/')}/dashboard#/collections/{qdrant.collection_name})"
         if qdrant_url
         else "disabled"
     )
 
     zammad = settings.zammad
-    zammad_link = f"[{zammad.base_url}]({zammad.base_url}#knowledge_base/{zammad.knowledge_base_id}/locale/de-de)"
+    zammad_link = f"[{zammad.base_url}]({str(zammad.base_url).rstrip('/')}/#knowledge_base/{zammad.knowledge_base_id}/locale/de-de)"
 
     md_lines = [
         "**LLMs**",
