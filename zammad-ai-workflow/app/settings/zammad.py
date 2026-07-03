@@ -174,6 +174,10 @@ class BaseZammadSettings(BaseModel, ABC):
         description="Settings for parsing documents retrieved from Zammad.",
         default_factory=DocumentParsingSettings,
     )
+    base_url: HttpUrl = Field(
+        description="Zammad base URL",
+        examples=["https://my-zammad.example.com"],
+    )
 
 
 class ZammadAPISettings(BaseZammadSettings):
@@ -181,10 +185,6 @@ class ZammadAPISettings(BaseZammadSettings):
 
     type: Literal["api"] = "api"
 
-    base_url: HttpUrl = Field(
-        description="Zammad base URL",
-        examples=["https://my-zammad.example.com"],
-    )
     auth_token: SecretStr = Field(
         description="Zammad API authentication token",
     )

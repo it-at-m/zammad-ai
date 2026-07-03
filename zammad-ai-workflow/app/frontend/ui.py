@@ -1,11 +1,13 @@
 """Build the Gradio UI used for manual triage experiments."""
 
+import os
 from typing import Any
 
 import gradio as gr
 import httpx
 
 from app.settings import ZammadAISettings
+from app.settings.genai import GenAISettings
 from app.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.frontend")
@@ -193,6 +195,98 @@ async def process_ticket(
     return category, action, reasoning, confidence_str, answer, answer_documents
 
 
+def _render_config_md(settings: ZammadAISettings) -> str:
+    genai: GenAISettings = settings.genai
+
+    triage_model: str = genai.triage_model or genai.chat_model
+    answer_model: str = genai.answer_model or genai.chat_model
+    judge_model: str = genai.judge_model or genai.chat_model
+
+    langfuse_base: str = os.getenv("LANGFUSE_HOST", "")
+
+    # Prompts
+    def _prompt_links(prompt_cfg: object, key: str) -> str:
+        type = getattr(prompt_cfg, "type", None)
+        if type == "langfuse":
+            # If it's a map (triage.prompts) produce one entry per key
+            if hasattr(prompt_cfg, "prompt_map"):
+                lines = []
+                for key, val in getattr(prompt_cfg, "prompt_map", {}).items():
+                    name = getattr(val, "name", "")
+                    label = getattr(val, "label", "")
+                    lines.append(f"- {key}: {name} (label={label})")
+                return "\n".join(lines)
+            prompt = getattr(prompt_cfg, "prompt", None)
+            if prompt is None:
+                return "- Langfuse: (unknown)"
+            name = getattr(prompt, "name", str(prompt))
+            return f"- {key}: {name} (label={getattr(prompt, 'label', '')})"
+        if type == "file":
+            path = getattr(prompt_cfg, "prompt", "")
+            return f"- {key}: File: {path}"
+        if type == "string":
+            s = getattr(prompt_cfg, "prompt", "")
+            preview = s.replace("\n", " ")[:200]
+            return f"- {key}: Inline prompt preview: `{preview}`"
+        if hasattr(prompt_cfg, "prompt_map"):
+            return "\n".join(f"- {k}: {v}" for k, v in getattr(prompt_cfg, "prompt_map", {}).items())
+        return f"- {key}: {prompt_cfg}"
+
+    triage_prompts_md = _prompt_links(settings.triage.prompts, "triage")
+    answer_prompt_md = _prompt_links(settings.answer.agent_prompt, "answer")
+    judge_prompt_md = _prompt_links(settings.answer.judge.prompt, "judge")
+
+    # Knowledge links
+    qdrant = settings.answer.qdrant
+    qdrant_url = getattr(qdrant, "url", None)
+    qdrant_link = (
+        f"[{qdrant_url}]({qdrant_url}dashboard#/collections/{qdrant.collection_name})" if qdrant_url else "disabled"
+    )
+
+    zammad = settings.zammad
+    zammad_link = f"[{zammad.base_url}]({zammad.base_url}#knowledge_base/{zammad.knowledge_base_id}/locale/de-de)"
+
+    md_lines = [
+        "**LLMs**",
+        f"- Triage: `{triage_model}`",
+        f"- Answer Agent: `{answer_model}`",
+        f"- Judge: `{judge_model}`",
+        "",
+        "**Prompts** " + f"[Langfuse UI]({langfuse_base})"
+        if any(
+            [
+                settings.triage.prompts.type == "langfuse",
+                settings.answer.agent_prompt.type == "langfuse",
+                settings.answer.judge.prompt.type == "langfuse",
+            ]
+        )
+        and langfuse_base
+        else "",
+        triage_prompts_md,
+        answer_prompt_md,
+        judge_prompt_md,
+        "",
+        "**Index / Knowledgebase**",
+        f"- Qdrant: {qdrant_link}",
+        f"- Zammad KB: {zammad_link}",
+    ]
+
+    return "\n\n".join(line for line in md_lines if line is not None)
+
+
+def _render_rules_preview(settings: ZammadAISettings, limit: int = 10) -> str:
+    rules = settings.triage.action_rules or []
+    if not rules:
+        return "(keine Regeln konfiguriert)"
+    lines = []
+    for rule in rules[:limit]:
+        cond_count = len(getattr(rule, "conditions", []) or [])
+        lines.append(f"- **{rule.category_name}** → {rule.action_name} (conditions: {cond_count})")
+    if len(rules) > limit:
+        lines.append(f"- ... und {len(rules) - limit} weitere Regeln")
+    return "\n".join(lines)
+
+
 def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
     """Build the Gradio frontend Blocks UI."""
 
@@ -256,6 +350,17 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 with gr.Row():
                     for label, payload in EXAMPLE_PAYLOADS[4:6]:
                         gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)
+
+                # System / configuration info (collapsible, interactive)
+                gr.Markdown("### System Info")
+
+                # Initial components inside an accordion
+                with gr.Accordion("System Info (Modelle, Prompts, Regeln, Index)", open=False):
+                    gr.Markdown(value=_render_config_md(settings))
+                    with gr.Row():
+                        with gr.Column():
+                            gr.Markdown("#### Triage Regeln")
+                            gr.Markdown(value=_render_rules_preview(settings))
 
             with gr.Column():
                 gr.Markdown("### Ergebnisse")
