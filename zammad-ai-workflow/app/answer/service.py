@@ -77,7 +77,7 @@ class AnswerService:
         if settings.langfuse_enabled:
             self.langfuse_client = LangfuseClient()
 
-        agent_prompt: str = self._resolve_prompt(
+        self.agent_prompt, self.agent_prompt_version = self._resolve_prompt(
             prompt_config=settings.answer.agent_prompt,
             prompt_source_name="agent system prompt",
         )
@@ -85,12 +85,12 @@ class AnswerService:
         self.judge_settings: JudgeSettings = settings.answer.judge
         self.judge_handler: JudgeHandler | None = None
         if self.judge_settings.enabled:
-            judge_prompt: str = self._resolve_prompt(
+            self.judge_prompt, self.judge_prompt_version = self._resolve_prompt(
                 prompt_config=self.judge_settings.prompt,
                 prompt_source_name="judge prompt",
             )
             self.judge_handler = JudgeHandler(
-                genai_settings=settings.genai, prompt=judge_prompt, langfuse_client=self.langfuse_client
+                genai_settings=settings.genai, prompt=self.judge_prompt, langfuse_client=self.langfuse_client
             )
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
@@ -110,7 +110,7 @@ class AnswerService:
             AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]  # type: ignore
         ] = build_agent(
             genai_settings=settings.genai,
-            system_prompt=agent_prompt,
+            system_prompt=self.agent_prompt,
             dlf_enabled=settings.answer.dlf is not None,
         )
         self.qdrant_kb_client = QdrantKBClient(
@@ -201,7 +201,7 @@ class AnswerService:
         structured_response.auto_publish = True
         if self.judge_handler is None or structured_response.response is None:
             return structured_response
-        repair_prompt: str = self._resolve_prompt(
+        repair_prompt, _ = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,
             prompt_source_name="judge repair prompt",
         )
@@ -257,8 +257,9 @@ class AnswerService:
         self,
         prompt_config: StringPromptConfig | FilePromptConfig | LangfusePromptConfig,
         prompt_source_name: str,
-    ) -> str:
+    ) -> tuple[str, int | None]:
         """Resolve a prompt from settings, a file, or Langfuse."""
+        version: int | None = None
         match prompt_config:
             case LangfusePromptConfig():
                 if self.langfuse_client is None:
@@ -266,7 +267,7 @@ class AnswerService:
                         f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source."
                     )
                 try:
-                    template_content: str = self.langfuse_client.get_prompt(
+                    template_content, version = self.langfuse_client.get_prompt(
                         prompt_name=prompt_config.prompt.name,
                         prompt_label=prompt_config.prompt.label,
                     )
@@ -290,9 +291,9 @@ class AnswerService:
             answer_ctx = build_answer_context(self.settings.answer)
             judge_ctx = build_judge_context(self.settings)
             context = merge_contexts(answer_ctx, judge_ctx)
-            return renderer.render_template(template_content, context)
+            return renderer.render_template(template_content, context), version
         else:
-            return template_content
+            return template_content, version
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
@@ -306,6 +307,23 @@ class AnswerService:
         finally:
             global _service
             _service = None
+
+    def get_prompt_versions(self) -> dict[str, int | None]:
+        """Return a dictionary mapping prompt names to their version numbers.
+
+        Returns:
+            dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
+        """
+        if self.settings.answer.agent_prompt.type == "langfuse":
+            prompts: dict[str, int | None] = {
+                "answer": self.agent_prompt_version,
+            }
+        else:
+            prompts: dict[str, int | None] = {}
+
+        if self.judge_handler is not None and self.settings.answer.judge.prompt.type == "langfuse":
+            prompts["judge"] = self.judge_prompt_version
+        return prompts
 
 
 _service: AnswerService | None = None

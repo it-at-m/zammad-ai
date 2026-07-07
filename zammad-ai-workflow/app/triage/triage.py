@@ -94,7 +94,7 @@ class TriageService:
         self.max_user_text_length: int = settings.max_user_text_length
 
         # Prompt setup based on the type of prompts provided in settings
-        self.prompts: dict[TriagePrompt, str]
+        self.prompts: dict[TriagePrompt, tuple[str, int | None]]
         if isinstance(settings.triage.prompts, LangfuseTriagePrompts):
             from app.observe import LangfuseClient, LangfuseError
 
@@ -113,9 +113,11 @@ class TriageService:
                     )
                     raise TriageError("Triage initialization failed due to Langfuse prompt retrieval error.") from e
         elif isinstance(settings.triage.prompts, FileTriagePrompts):
-            self.prompts = {name: load_prompt(path) for name, path in settings.triage.prompts.prompt_map.items()}
+            self.prompts = {
+                name: (load_prompt(path), None) for name, path in settings.triage.prompts.prompt_map.items()
+            }
         elif isinstance(settings.triage.prompts, StringTriagePrompts):
-            self.prompts = settings.triage.prompts.prompt_map.copy()
+            self.prompts = {name: (prompt, None) for name, prompt in settings.triage.prompts.prompt_map.items()}
         else:
             raise ValueError("Invalid type for triage prompts in configuration")
 
@@ -179,7 +181,6 @@ class TriageService:
         TRIAGE_RUNS_IN_PROGRESS.inc()
 
         try:
-
             # TODO: Only use the first article or concatenate all articles?
             # Normally the `0` is the customer message, the rest are internal notes
             # But what if there are multiple customer messages? -> edge case
@@ -328,10 +329,10 @@ class TriageService:
         try:
             cat_result: CategorizationResult = await self.genai_handler.categorize_ticket(
                 message=message,
-                role_description=self.prompts.get("role", ""),
+                role_description=self.prompts.get("role", [""])[0],
                 categories=self.categories,
-                categories_prompt=self.prompts.get("categories", ""),
-                examples=self.prompts.get("examples", ""),
+                categories_prompt=self.prompts.get("categories", [""])[0],
+                examples=self.prompts.get("examples", [""])[0],
                 session_id=session_id,
             )
 
@@ -457,6 +458,14 @@ class TriageService:
         global _service
         _service = None
         logger.info("Triage resources cleaned up.")
+
+    def get_prompt_versions(self) -> dict[str, int | None]:
+        """Return a dictionary mapping prompt names to their version numbers.
+
+        Returns:
+            dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
+        """
+        return {name: version for name, (_, version) in self.prompts.items()}
 
 
 _service: TriageService | None = None
