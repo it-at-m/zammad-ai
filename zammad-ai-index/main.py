@@ -15,6 +15,7 @@ from qdrant_client.models import Record
 
 from job.data.processing import filter_for_changed_data, prepare_qdrant_data
 from job.data.retrieval import get_answers_data, retrieve_answer_ids, retrieve_deleted_answer_ids
+from job.law.ingest import ingest_law
 from job.models.qdrant import QdrantDocumentItem
 from job.models.zammad import KnowledgeBaseAnswer
 from job.qdrant.qdrant import QdrantKBClient
@@ -251,6 +252,14 @@ def main() -> None:
             settings,
         )
         logger.info("Initialized Qdrant client")
+
+        # Optional: Ingest configured laws into the same collection before KB indexing
+        if settings.laws:
+            logger.info("Starting law ingestion for %d configured law(s)", len(settings.laws))
+            for law in settings.laws:
+                ingest_law(law, qdrant_client)
+            logger.info("Completed law ingestion stage")
+
         # Run the indexing process
         run_indexing(qdrant_client, zammad_client)
     except Exception:

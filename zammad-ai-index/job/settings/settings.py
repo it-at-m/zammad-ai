@@ -14,6 +14,7 @@ from pydantic_settings import (
 
 from .genai import GenAISettings
 from .index import IndexJobSettings
+from .law import LawConfig
 from .logging import LoggingSettings
 from .qdrant import QdrantSettings
 from .zammad import ZammadAPISettings, ZammadEAISettings
@@ -76,6 +77,12 @@ class ZammadAIIndexSettings(BaseSettings):
     qdrant: QdrantSettings = Field(
         description="Settings for Qdrant vector database integration, including host URL, API key, collection name, and vector configuration.",
         default_factory=lambda: QdrantSettings(),
+    )
+
+    # Optional: additional external sources to ingest (e.g., laws)
+    laws: list[LawConfig] = Field(
+        description="List of law ingestion sources to process when using the dedicated law entry point.",
+        default_factory=list,
     )
 
     langfuse_enabled: bool = Field(

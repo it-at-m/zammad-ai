@@ -141,6 +141,31 @@ class QdrantKBClient:
             ids_to_add.append(str(id_item))
         self.vectorstore.add_documents(documents=documents_to_add, ids=ids_to_add)
 
+    def add_raw_documents(self, documents: list[Document], ids: list[str]) -> None:
+        """Add arbitrary LangChain documents with provided IDs.
+
+        This is a generic insertion method intended for non-Zammad sources
+        that still reuse the shared Qdrant/Embeddings configuration.
+
+        Args:
+            documents: LangChain Document objects with arbitrary metadata dicts
+            ids: Deterministic string IDs, length must match documents
+
+        Returns:
+            None
+        """
+        if not documents:
+            self.logger.debug("No documents provided to add_raw_documents")
+            return
+        if len(documents) != len(ids):
+            self.logger.error(
+                "Documents/IDs length mismatch in add_raw_documents: %d != %d",
+                len(documents),
+                len(ids),
+            )
+            raise QdrantKBError("Documents/IDs length mismatch in add_raw_documents")
+        self.vectorstore.add_documents(documents=documents, ids=ids)
+
     def get_documents_by_ids(self, ids: list[UUID]) -> dict[UUID, Document]:
         """Retrieve a document from the Qdrant collection by its unique identifier.
 

@@ -71,6 +71,19 @@ qdrant:
   retrieval_num_documents: 5
 
 # ---------------------------------------------------------------------------
+# Law ingestion (optional)
+# ---------------------------------------------------------------------------
+# Configure one or more laws to ingest into the same Qdrant collection.
+# When configured, run: `uv run python main_law.py`
+#
+# laws:
+#   - id: fev
+#     name: Fahrerlaubnis-Verordnung
+#     url: https://www.gesetze-im-internet.de/fev_2010/BJNR198000010.html
+#     chunk_size: 1200
+#     chunk_overlap: 200
+
+# ---------------------------------------------------------------------------
 # Zammad connection — choose exactly one type (api or eai).
 # ---------------------------------------------------------------------------
 
