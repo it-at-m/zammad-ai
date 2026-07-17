@@ -8,7 +8,7 @@ import pytest
 from app.answer import service as answer_module
 from app.answer.judge import JudgeResult
 from app.answer.service import AnswerService
-from app.models.answer import DocumentDict, StructuredAgentResponse
+from app.models.answer import AnswerCandidate, DocumentDict
 from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConfig
 
@@ -100,7 +100,7 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {
-            "structured_response": StructuredAgentResponse(
+            "structured_response": AnswerCandidate(
                 response="ok",
                 documents=[],
                 auto_publish=True,
@@ -125,7 +125,7 @@ async def test_generate_answer_in_progress_gauge_increments_while_running(
     async def _ainvoke(*_args, **_kwargs) -> dict:
         assert _get_answer_runs_in_progress_value() == expected
         return {
-            "structured_response": StructuredAgentResponse(
+            "structured_response": AnswerCandidate(
                 response="ok",
                 documents=[],
                 auto_publish=True,
@@ -145,7 +145,7 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
 
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {
-            "structured_response": StructuredAgentResponse(
+            "structured_response": AnswerCandidate(
                 response="ok",
                 documents=[DocumentDict(title="Source", url="https://example.com")],
                 auto_publish=True,
@@ -177,14 +177,14 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
         calls.append([message.content for message in messages])
         if len(calls) == 1:
             return {
-                "structured_response": StructuredAgentResponse(
+                "structured_response": AnswerCandidate(
                     response="weak",
                     documents=[DocumentDict(title="Source", url="https://example.com")],
                     auto_publish=True,
                 )
             }
         return {
-            "structured_response": StructuredAgentResponse(
+            "structured_response": AnswerCandidate(
                 response="repaired",
                 documents=[DocumentDict(title="Source", url="https://example.com")],
                 auto_publish=True,

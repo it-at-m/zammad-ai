@@ -12,7 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
 from app.settings.answer import (
@@ -107,7 +107,7 @@ class AnswerService:
         )
 
         self.agent: CompiledStateGraph[
-            AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]  # type: ignore
+            AgentState[AnswerCandidate], AgentContext, AgentState, AgentState[AnswerCandidate]  # type: ignore
         ] = build_agent(
             genai_settings=settings.genai,
             system_prompt=self.agent_prompt,
@@ -131,7 +131,7 @@ class AnswerService:
         user_text: str,
         category: str,
         session_id: str | None = None,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | NoAnswerPossible:
         """Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
 
         Parameters:
@@ -161,12 +161,12 @@ class AnswerService:
                 else RunnableConfig()
             )
             with propagate_attributes(session_id=session_id):
-                agent_result: dict = await self.agent.ainvoke(
+                agent_result = await self.agent.ainvoke(
                     input={"messages": [user_message]},
                     config=config,
                     context=self.agent_context,
                 )
-            structured_response: StructuredAgentResponse = await self._judge_and_repair(
+            structured_response: AnswerCandidate | NoAnswerPossible = await self._judge_and_repair(
                 user_text=user_text,
                 category=category,
                 user_message=user_message,
@@ -174,9 +174,11 @@ class AnswerService:
                 session_id=session_id,
                 config=config,
             )
-            if structured_response.response is not None and self.settings.answer.ai_answer_disclaimer.strip() != "":
+            if isinstance(structured_response, NoAnswerPossible):
+                outcome = "no_answer"
+            else:
                 structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
-            outcome = "success"
+                outcome = "success"
             return structured_response
         except AppError:
             raise
@@ -193,10 +195,10 @@ class AnswerService:
         user_text: str,
         category: str,
         user_message: HumanMessage,
-        structured_response: StructuredAgentResponse,
+        structured_response: AnswerCandidate,
         session_id: str | None,
         config: RunnableConfig,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate:
         """Run judgment and optionally repair a response that failed checks."""
         structured_response.auto_publish = True
         if self.judge_handler is None or structured_response.response is None:

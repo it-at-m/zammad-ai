@@ -5,7 +5,7 @@ from logging import Logger
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
 from app.guardrails import GuardrailService, get_guardrail_service
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
@@ -43,17 +43,15 @@ class ActionService:
             action: str = triage.action.name
             reason: str = triage.reasoning
 
-            agent_response: StructuredAgentResponse = (
-                await self.get_answer(  # TODO what to do with documents here? Internal Note?
-                    ticket_id=ticket_id,
-                    category_name=category,
-                    action_name=action,
-                    user_text=triage.user_text,
-                    session_id=session_id,
-                )
+            response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
+                ticket_id=ticket_id,
+                category_name=category,
+                action_name=action,
+                user_text=triage.user_text,
+                session_id=session_id,
             )
 
-            if agent_response.response is None or agent_response.response.strip() == "":
+            if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if not self.settings.triage.no_action_internal_note:
                     return
@@ -61,21 +59,23 @@ class ActionService:
                     template=self.settings.triage.no_action_internal_note,
                     category=category,
                     action=action,
-                    reason=reason,
+                    reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
                 )
 
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
                     text=text,
-                    subject=agent_response.subject,
+                    subject="No answer generation possible",
                     internal=True,  # Post an internal note if no answer is generated to document the triage result and action execution
                 )
                 self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
-            elif triage.category.auto_publish and agent_response.auto_publish:
+            elif triage.category.auto_publish and (
+                isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
+            ):
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
-                    text=agent_response.response,
-                    subject=agent_response.subject,
+                    text=response.response,
+                    subject=response.subject if isinstance(response, AnswerCandidate) else "Answer",
                     internal=False,
                 )
                 self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
@@ -93,7 +93,7 @@ class ActionService:
             else:
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
-                    text=agent_response.response,
+                    text=response.response,
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
         except AppError:
@@ -109,7 +109,7 @@ class ActionService:
         action_name: str,
         user_text: str,
         session_id: str | None,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | StaticAnswer | NoAnswerPossible:
         """Resolve an answer payload for the given action and category.
 
         Performs guardrail checks on user text before answer generation.
@@ -143,12 +143,7 @@ class ActionService:
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )
 
-        response: StructuredAgentResponse = StructuredAgentResponse(
-            subject=None,
-            response="",
-            documents=[],
-            auto_publish=True,
-        )
+        response: AnswerCandidate | StaticAnswer | NoAnswerPossible
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
@@ -165,12 +160,12 @@ class ActionService:
                 raise ActionExecutionError(
                     f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
                 )
-            response.response = action.answer
+            response = StaticAnswer(response=action.answer)
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 
         # Evaluate guardrails on the generated response as well
-        if response.response and response.response.strip() != "":
+        if isinstance(response, AnswerCandidate):
             response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
                 text=user_text, response=response.response
             )

@@ -10,22 +10,40 @@ class DocumentDict(BaseModel):
     url: str = Field(description="The URL source of the document.")
 
 
-class StructuredAgentResponse(BaseModel):
-    """Structured response returned by the answer agent."""
+class AnswerCandidate(BaseModel):
+    """Answer candidate returned by the answer agent."""
 
     subject: str | None = Field(
-        description="The subject line for the answer, if applicable.",
-        default=None,
+        description="The subject line for the answer. Min length 50 chars, max length 200 chars.",
+        min_length=50,
         max_length=200,
     )
-    response: str | None = Field(
-        description="The final answer to the user's question. Can be None if the agent determines that an answer cannot be provided based on the retrieved context.",
-        default=None,
+    response: str = Field(
+        description="The final answer to the user's question. Min length 200 chars.",
+        min_length=200,
     )
     documents: list[DocumentDict] = Field(description="List of documents supporting the answer.")
     auto_publish: bool = Field(
         default=True,
         description="Whether the answer should be automatically published based on the judge's evaluation.",
+    )
+
+
+class NoAnswerPossible(BaseModel):
+    """Information that no answer can be given based on the available info or rules."""
+
+    reasoning: str = Field(
+        description="The reasoning to why no answer can be given. Min length 100 chars, max length 500 chars.",
+        min_length=100,
+        max_length=500,
+    )
+
+
+class StaticAnswer(BaseModel):
+    """Static Answer configured by admin."""
+
+    response: str = Field(
+        description="Predefined static response configured by admin to ensure accurate and consistent response."
     )
 
 
