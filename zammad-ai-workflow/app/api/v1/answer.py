@@ -67,11 +67,26 @@ async def answer(
             user_text=user_text,
             session_id=input.session_id,
         )
-        if response.response is None or response.response.strip() == "":
-            response.response = "No answer generated based on the provided input and current configuration."
+        if isinstance(response, NoAnswerPossible):
+            return AnswerOutput(
+                response=response.reasoning,
+                documents=[],
+                auto_publish=False,
+            )
+
+        if isinstance(response, StaticAnswer):
+            return AnswerOutput(
+                response=response.response,
+                documents=[],
+                auto_publish=False,
+            )
+
+        response_text = response.response.strip()
+        if response_text == "":
+            response_text = "No answer generated based on the provided input and current configuration."
 
         return AnswerOutput(
-            response=response.response,
+            response=response_text,
             documents=response.documents,
             auto_publish=response.auto_publish,
         )

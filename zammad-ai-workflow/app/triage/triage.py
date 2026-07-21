@@ -343,6 +343,8 @@ class TriageService:
                     confidence=cat_result.confidence,
                 )
 
+            cat_result = cat_result.model_copy(update={"category": self.categories_by_name[cat_result.category.name]})
+
             # Log the results
             logger.debug(f"Text to categorize: {message[:100] + '...' if len(message) > 100 else message}")
             logger.debug(f"Category: {cat_result.category}")

@@ -12,6 +12,17 @@ from app.models.answer import AnswerCandidate, DocumentDict
 from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConfig
 
+VALID_RESPONSE = (
+    "Dies ist eine ausreichend lange Testantwort fuer die Antwortgenerierung. "
+    "Sie enthaelt genug Inhalt, um die konfigurierte Mindestlaenge des "
+    "AnswerCandidate-Modells zu erfuellen und bleibt fuer die Assertions stabil."
+)
+REPAIRED_RESPONSE = (
+    "Dies ist eine ausreichend lange reparierte Testantwort fuer die Antwortgenerierung. "
+    "Sie enthaelt genug Inhalt, um die konfigurierte Mindestlaenge des "
+    "AnswerCandidate-Modells zu erfuellen und bleibt fuer die Assertions stabil."
+)
+
 
 class FakePromptTemplate:
     """Minimal prompt template fake used by answer service tests."""
@@ -101,7 +112,7 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {
             "structured_response": AnswerCandidate(
-                response="ok",
+                response=VALID_RESPONSE,
                 documents=[],
                 auto_publish=True,
             )
@@ -126,7 +137,7 @@ async def test_generate_answer_in_progress_gauge_increments_while_running(
         assert _get_answer_runs_in_progress_value() == expected
         return {
             "structured_response": AnswerCandidate(
-                response="ok",
+                response=VALID_RESPONSE,
                 documents=[],
                 auto_publish=True,
             )
@@ -146,7 +157,7 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
     async def _ainvoke(*_args, **_kwargs) -> dict:
         return {
             "structured_response": AnswerCandidate(
-                response="ok",
+                response=VALID_RESPONSE,
                 documents=[DocumentDict(title="Source", url="https://example.com")],
                 auto_publish=True,
             )
@@ -164,7 +175,8 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
 
     result = await service.generate_answer(user_text="hello", category="general")
 
-    assert result.response == "ok"
+    assert isinstance(result, AnswerCandidate)
+    assert result.response == VALID_RESPONSE
 
 
 @pytest.mark.asyncio
@@ -178,14 +190,14 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
         if len(calls) == 1:
             return {
                 "structured_response": AnswerCandidate(
-                    response="weak",
+                    response=VALID_RESPONSE,
                     documents=[DocumentDict(title="Source", url="https://example.com")],
                     auto_publish=True,
                 )
             }
         return {
             "structured_response": AnswerCandidate(
-                response="repaired",
+                response=REPAIRED_RESPONSE,
                 documents=[DocumentDict(title="Source", url="https://example.com")],
                 auto_publish=True,
             )
@@ -212,5 +224,6 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
 
     result = await service.generate_answer(user_text="hello", category="general")
 
-    assert result.response == "repaired"
+    assert isinstance(result, AnswerCandidate)
+    assert result.response == REPAIRED_RESPONSE
     assert len(calls) == 2

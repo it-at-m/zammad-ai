@@ -14,6 +14,7 @@ class AnswerCandidate(BaseModel):
     """Answer candidate returned by the answer agent."""
 
     subject: str | None = Field(
+        default=None,
         description="The subject line for the answer. Min length 50 chars, max length 200 chars.",
         min_length=50,
         max_length=200,

@@ -150,6 +150,12 @@ class ActionService:
             self.logger.info(
                 f"Action {action.name} is of type No_Action. No answer will be generated for ticket {ticket_id if ticket_id is not None else 'unknown'}."
             )
+            response = NoAnswerPossible(
+                reasoning=(
+                    f"No answer was generated because the selected action '{action.name}' is configured as NoAction. "
+                    f"The triage category was '{category_name}', so the ticket should not receive an automated answer."
+                )
+            )
         elif action.type == ActionTypes.AIAnswer:
             response = await self.answer_service.generate_answer(
                 user_text=user_text, category=category_name, session_id=session_id

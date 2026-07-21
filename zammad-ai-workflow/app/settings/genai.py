@@ -84,7 +84,6 @@ class GenAISettings(BaseModel):
             }
         return None
 
-
     @property
     def answer_reasoning_config(self) -> dict[str, str] | None:
         """Constructs a reasoning configuration dictionary for LLM interactions based on the configured reasoning effort."""

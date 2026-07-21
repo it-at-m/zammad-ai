@@ -4,8 +4,10 @@ from logging import Logger
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableConfig, RunnableSequence
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
+from langchain.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langfuse import propagate_attributes
 
@@ -13,6 +15,7 @@ from app.errors import TriageJudgeError, classify_provider_error
 from app.models.answer import JudgeResult
 from app.observe import LangfuseClient
 from app.settings.genai import GenAISettings
+from app.utils.langchain import extract_structured_response
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.answer.judge")
@@ -41,17 +44,18 @@ class JudgeHandler:
             case _:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
 
-        self._judge_chain = RunnableSequence(
-            ChatPromptTemplate(
-                messages=[
-                    ("system", prompt),
-                    (
-                        "user",
-                        "Question: {question}\n\nAnswer: {answer}\n\nDocuments: {documents}",
-                    ),
-                ]
+        self._judge_agent = create_agent(
+            model=self.chat_model,
+            tools=[],
+            system_prompt=(
+                f"{prompt}\n\n"
+                "When you are ready to produce the final judgment, call exactly one structured response tool "
+                "for the JudgeResult schema. Do not return the judgment as free text, markdown, or raw JSON."
             ),
-            self.chat_model.with_structured_output(schema=JudgeResult, strict=True),
+            response_format=ToolStrategy(
+                schema=JudgeResult,
+                tool_message_content="Answer judgment has been generated.",
+            ),
         )
 
     async def judge_answer(
@@ -66,15 +70,15 @@ class JudgeHandler:
 
         try:
             with propagate_attributes(session_id=session_id):
-                response: JudgeResult = await self._judge_chain.ainvoke(
+                agent_result: dict[str, Any] = await self._judge_agent.ainvoke(
                     input={
-                        "question": question,
-                        "answer": answer,
-                        "documents": documents,
+                        "messages": [
+                            HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}\n\nDocuments: {documents}")
+                        ],
                     },
                     config=config,
                 )
-            return response
+            return extract_structured_response(agent_result, JudgeResult)
         except Exception as e:
             logger.error("Error during judge invocation", exc_info=True)
             provider_error = classify_provider_error(e)
