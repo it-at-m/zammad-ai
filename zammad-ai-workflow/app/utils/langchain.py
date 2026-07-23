@@ -3,6 +3,7 @@
 import json
 from typing import Any, TypeVar, cast
 
+from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ValidationError
 
@@ -30,13 +31,30 @@ def extract_structured_response(
             # Prefer the last assistant/AI message
             for m in reversed(messages):
                 # messages may be message objects or dicts
+                # Only consider assistant/AI-originated messages. Skip raw
+                # strings and human/user messages because they lack trusted
+                # assistant provenance.
                 content = None
+                # Raw strings have no provenance - skip them.
                 if isinstance(m, str):
-                    content = m
-                elif isinstance(m, dict):
+                    continue
+
+                # Dict messages should explicitly declare a role/author.
+                if isinstance(m, dict):
+                    role = m.get("role") or m.get("author") or m.get("sender")
+                    if not (isinstance(role, str) and role.lower() in ("assistant", "ai")):
+                        continue
                     content = m.get("content")
                 else:
-                    # message objects from langchain have attribute 'content'
+                    # Message objects from langchain: skip HumanMessage instances
+                    # (user-originated). Accept AI/assistant message objects only.
+                    if isinstance(m, HumanMessage):
+                        continue
+                    # If the object exposes a role/type attribute, prefer that check.
+                    role = getattr(m, "role", None) or getattr(m, "type", None)
+                    if isinstance(role, str) and role.lower() not in ("assistant", "ai"):
+                        continue
+                    # Finally, accept the object as assistant-originated and read content.
                     content = getattr(m, "content", None)
 
                 if not content or not isinstance(content, str):

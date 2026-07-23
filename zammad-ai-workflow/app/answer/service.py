@@ -169,7 +169,6 @@ class AnswerService:
                 )
 
                 
-            logger.debug(agent_result)
             agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
                 agent_result,
                 (AnswerCandidate, NoAnswerPossible),
