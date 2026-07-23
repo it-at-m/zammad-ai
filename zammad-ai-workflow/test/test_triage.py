@@ -355,6 +355,7 @@ async def test_perform_triage_in_progress_gauge_increments_while_running(patched
 @pytest.mark.asyncio
 async def test_perform_triage_raises_triage_error_on_zammad_failure(patched_triage: TriageService) -> None:
     """A Zammad connection error should be wrapped in TriageError."""
+
     # Simulate a Zammad connection error during attachment fetch
     async def _raise_conn(*_args, **_kwargs):
         raise FakeZammadConnectionError("Fake connection error")
@@ -363,7 +364,12 @@ async def test_perform_triage_raises_triage_error_on_zammad_failure(patched_tria
     # Ensure document parsing is enabled so attachment fetching is attempted
     patched_triage.settings.zammad.document_parsing.mode = "local"
     patched_triage.settings.zammad.document_parsing.document_types = ["pdf"]
-    ticket = ZammadTicket(id=99, articles=[ZammadArticle(id=1, ticket_id=99, text="Hi", attachments=[ArticleAttachment(id=1, filename="file.pdf")])])
+    ticket = ZammadTicket(
+        id=99,
+        articles=[
+            ZammadArticle(id=1, ticket_id=99, text="Hi", attachments=[ArticleAttachment(id=1, filename="file.pdf")])
+        ],
+    )
     with pytest.raises(TriageError, match="Zammad connection error"):
         await patched_triage.perform_triage(ticket=ticket)
 
@@ -400,6 +406,26 @@ async def test_predict_category_valid_category_kept(patched_triage: TriageServic
     assert result.category.name == "General"
     assert result.reasoning == "looks right"
     assert result.confidence == 0.88
+
+
+@pytest.mark.asyncio
+async def test_predict_category_normalizes_string_category(patched_triage: TriageService) -> None:
+    """A plain string category from the model should become the configured Category object."""
+    parsed_result = CategorizationResult.model_validate(
+        {
+            "category": "General",
+            "reasoning": "string category",
+            "confidence": 0.91,
+        }
+    )
+    assert isinstance(parsed_result.category, Category)
+    assert parsed_result.category.name == "General"
+
+    patched_triage.genai_handler.categorization_result = parsed_result  # type: ignore
+    result = await patched_triage.predict_category(message="some text", session_id="session-id")
+
+    assert result.category is patched_triage.categories_by_name["General"]
+    assert result.category.name == "General"
 
 
 # ---------------------------------------------------------------------------
