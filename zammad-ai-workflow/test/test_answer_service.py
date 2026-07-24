@@ -254,5 +254,5 @@ def test_extract_structured_response_ignores_human_json() -> None:
     # should not return a parsed AnswerCandidate/NoAnswerPossible. It will
     # therefore attempt to access agent_result["structured_response"] and
     # raise a KeyError.
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         extract_structured_response(agent_result, (AnswerCandidate, NoAnswerPossible))

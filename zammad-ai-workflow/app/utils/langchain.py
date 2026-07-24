@@ -22,80 +22,147 @@ def extract_structured_response(
     expected_type: type[T] | tuple[type[Any], ...],
 ) -> T:
     """Return LangChain's validated structured response from an agent result."""
-    # Prefer the explicit structured_response when present
-    if "structured_response" not in agent_result:
-        # Fallback: some LangChain agent runtimes return raw messages where the
-        # assistant's content contains the JSON serialized structured response.
-        messages = agent_result.get("messages")
-        if messages:
-            # Prefer the last assistant/AI message
-            for m in reversed(messages):
-                # messages may be message objects or dicts
-                # Only consider assistant/AI-originated messages. Skip raw
-                # strings and human/user messages because they lack trusted
-                # assistant provenance.
-                content = None
-                # Raw strings have no provenance - skip them.
-                if isinstance(m, str):
-                    continue
+    types_to_try = (
+        expected_type
+        if isinstance(expected_type, tuple)
+        else (expected_type,)
+    )
 
-                # Dict messages should explicitly declare a role/author.
-                if isinstance(m, dict):
-                    role = m.get("role") or m.get("author") or m.get("sender")
-                    if not (isinstance(role, str) and role.lower() in ("assistant", "ai")):
-                        continue
-                    content = m.get("content")
-                else:
-                    # Message objects from langchain: skip HumanMessage instances
-                    # (user-originated). Accept AI/assistant message objects only.
-                    if isinstance(m, HumanMessage):
-                        continue
-                    # If the object exposes a role/type attribute, prefer that check.
-                    role = getattr(m, "role", None) or getattr(m, "type", None)
-                    if isinstance(role, str) and role.lower() not in ("assistant", "ai"):
-                        continue
-                    # Finally, accept the object as assistant-originated and read content.
-                    content = getattr(m, "content", None)
+    # Prefer LangChain's explicit structured response when available.
+    structured_response = agent_result.get("structured_response")
 
-                if not content or not isinstance(content, str):
-                    continue
+    if structured_response is not None:
+        if not isinstance(structured_response, expected_type):
+            raise TypeError(
+                "LangChain agent returned an unexpected "
+                "structured_response type."
+            )
 
-                # Try to parse JSON directly, otherwise attempt to extract a JSON
-                # substring between the first '{' and the last '}' as a fallback.
-                parsed = None
+        return cast(T, structured_response)
+
+    # Fallback: Some LangChain runtimes return raw messages where the final
+    # assistant message contains a JSON-serialized structured response.
+    messages = agent_result.get("messages") or []
+    validation_errors: list[str] = []
+
+    for message in reversed(messages):
+        content: str | None = None
+
+        # Raw strings have no trusted assistant provenance.
+        if isinstance(message, str):
+            continue
+
+        if isinstance(message, dict):
+            role = (
+                message.get("role")
+                or message.get("author")
+                or message.get("sender")
+                or message.get("type")
+            )
+
+            if not (
+                isinstance(role, str)
+                and role.lower() in ("assistant", "ai")
+            ):
+                continue
+
+            raw_content = message.get("content")
+
+            if isinstance(raw_content, str):
+                content = raw_content
+
+        else:
+            # Explicitly skip human-originated LangChain messages.
+            if isinstance(message, HumanMessage):
+                continue
+
+            role = (
+                getattr(message, "role", None)
+                or getattr(message, "type", None)
+            )
+
+            if not (
+                isinstance(role, str)
+                and role.lower() in ("assistant", "ai")
+            ):
+                continue
+
+            raw_content = getattr(message, "content", None)
+
+            if isinstance(raw_content, str):
+                content = raw_content
+
+        if not content or not content.strip():
+            continue
+
+        parsed: Any | None = None
+
+        # First try parsing the entire content as JSON.
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            # Otherwise, try extracting a JSON object from surrounding text.
+            start = content.find("{")
+            end = content.rfind("}")
+
+            if start != -1 and end > start:
                 try:
-                    parsed = json.loads(content)
-                except Exception:
-                    try:
-                        start = content.find("{")
-                        end = content.rfind("}")
-                        if start != -1 and end != -1 and end > start:
-                            parsed = json.loads(content[start : end + 1])
-                    except Exception:
-                        parsed = None
+                    parsed = json.loads(content[start : end + 1])
+                except json.JSONDecodeError:
+                    parsed = None
 
-                if parsed is None:
-                    continue
+        if parsed is None:
+            continue
 
-                # Attempt to validate parsed object into one of the expected types
-                types_to_try = expected_type if isinstance(expected_type, tuple) else (expected_type,)
-                for t in types_to_try:
-                    # If the target is a Pydantic model, use model_validate
-                    try:
-                        if isinstance(t, type) and issubclass(t, BaseModel):
-                            return cast(T, t.model_validate(parsed))
-                        # Otherwise, if the parsed object already matches the type, return it
-                        if isinstance(parsed, t):
-                            return cast(T, parsed)
-                    except ValidationError:
-                        # try next candidate type
-                        continue
+        for target_type in types_to_try:
+            try:
+                if (
+                    isinstance(target_type, type)
+                    and issubclass(target_type, BaseModel)
+                ):
+                    value_to_validate = parsed
 
-    structured_response = agent_result["structured_response"]
-    if structured_response is None:
-        raise ValueError("LangChain agent returned an empty structured_response.")
+                    if isinstance(parsed, dict):
+                        # Use a separate copy for each candidate model.
+                        value_to_validate = parsed.copy()
 
-    if not isinstance(structured_response, expected_type):
-        raise TypeError("LangChain agent returned an unexpected structured_response type.")
+                        model_fields = target_type.model_fields
 
-    return cast(T, structured_response)
+                        # These defaults are used only for manually recovered
+                        # responses, never for explicit structured responses.
+                        if "documents" in model_fields:
+                            value_to_validate.setdefault("documents", [])
+
+                        if "auto_publish" in model_fields:
+                            value_to_validate["auto_publish"] = False
+
+                    return cast(
+                        T,
+                        target_type.model_validate(value_to_validate),
+                    )
+
+                if isinstance(parsed, target_type):
+                    return cast(T, parsed)
+
+            except ValidationError as exc:
+                validation_errors.append(
+                    f"{target_type.__name__}:\n{exc}"
+                )
+
+    expected_names = ", ".join(
+        getattr(target_type, "__name__", repr(target_type))
+        for target_type in types_to_try
+    )
+
+    if validation_errors:
+        details = "\n\n".join(validation_errors)
+    else:
+        details = (
+            "No parseable JSON was found in an assistant message."
+        )
+
+    raise ValueError(
+        "LangChain agent returned no valid structured response. "
+        f"Expected one of: {expected_names}.\n\n"
+        f"{details}"
+    )
