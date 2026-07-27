@@ -16,6 +16,10 @@ class GuardrailSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    model: str | None = Field(
+        default=None,
+        description="Default model id to use for guardrail evaluations.",
+    )
     block_on_high_risk: bool = Field(
         default=False,
         description="Whether to block processing on high-risk content or just flag it.",

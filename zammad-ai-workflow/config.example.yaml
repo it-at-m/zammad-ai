@@ -326,6 +326,7 @@ api:
 # ============================================================================
 guardrails:
   enabled: true # Set to false to disable guardrail checks
+  model: null # Optional: override default model for guardrail evaluations
   confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
   block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
   base_url: "http://localhost:8080" # Base URL of the slm-guardrails FastAPI service

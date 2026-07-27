@@ -56,7 +56,11 @@ class GuardrailService:
             return SAFE_PROMPT_RESULT
 
         url = f"{self._base_url}/api/v1/guardrails/prompt"
-        payload = {"text": text, "threshold": self.settings.confidence_threshold}
+        payload = {
+            "text": text,
+            "threshold": self.settings.confidence_threshold,
+            "model": self.settings.model,
+        }
         try:
             resp: Response = await self._client.post(url, json=payload)
             resp.raise_for_status()
@@ -82,6 +86,7 @@ class GuardrailService:
             "text": text,
             "response": response,
             "threshold": self.settings.confidence_threshold,
+            "model": self.settings.model,
         }
         try:
             resp: Response = await self._client.post(url, json=payload)
