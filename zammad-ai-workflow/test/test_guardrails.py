@@ -15,7 +15,7 @@ def guardrail_settings() -> GuardrailSettings:
         enabled=True,
         confidence_threshold=0.7,
         block_on_high_risk=False,
-        base_url="http://testserver/api/v1",
+        base_url="http://testserver",
         request_timeout_seconds=2.0,
     )
 
@@ -92,7 +92,7 @@ async def test_guardrail_http_prompt_success(guardrail_settings: GuardrailSettin
     service = GuardrailService(guardrail_settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/guardrails/prompt"):
+        if request.url.path.endswith("/api/v1/guardrails/prompt"):
             return httpx.Response(
                 200,
                 json={
@@ -120,7 +120,7 @@ async def test_guardrail_http_response_success(guardrail_settings: GuardrailSett
     service = GuardrailService(guardrail_settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/guardrails/response"):
+        if request.url.path.endswith("/api/v1/guardrails/response"):
             return httpx.Response(
                 200,
                 json={

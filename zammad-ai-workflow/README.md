@@ -122,7 +122,7 @@ Build the image:
 docker build -t zammad-ai:latest -f Dockerfile .
 ```
 Run the container:
-- add `.env`: `-- env-file .env`
+- add `.env`: `--env-file .env`
 - add `config.yaml`: `-v "$(cygpath -m "$PWD")/config.yaml:/app/config.yaml"`
 - add cert: `-e SSL_CERT_FILE=/app/cert.pem -v "$(cygpath -m "$PWD")/cacerts-lhm.crt:/app/cert.pem"`
 - on PowerShell, use `${PWD}` or an absolute Windows path instead of `$(pwd)`

@@ -29,12 +29,12 @@ SAFE_RESPONSE_RESULT: Final[GuardrailResponseResult] = GuardrailResponseResult(
 
 
 class GuardrailService:
-    """Guardrail client that talks to the external slm-guardrail HTTP service."""
+    """Guardrail client that talks to the external slm-guardrails HTTP service."""
 
     def __init__(self, settings: GuardrailSettings) -> None:
         """Construct a client with base URL, timeout and optional auth header."""
         self.settings = settings
-        self._base_url = settings.base_url.rstrip("/")
+        self._base_url = str(settings.base_url).rstrip("/")
         self._timeout = settings.request_timeout_seconds
         self._auth_header = {"Authorization": f"Bearer {settings.auth_token}"} if settings.auth_token else {}
 

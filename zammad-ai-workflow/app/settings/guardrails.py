@@ -1,6 +1,6 @@
 """Configuration settings for remote guardrail HTTP client."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class GuardrailSettings(BaseModel):
@@ -20,9 +20,9 @@ class GuardrailSettings(BaseModel):
         default=False,
         description="Whether to block processing on high-risk content or just flag it.",
     )
-    base_url: str = Field(
-        default="http://localhost:8081",
-        description="Base URL of the slm-guardrail FastAPI service (without trailing slash).",
+    base_url: HttpUrl = Field(
+        default=HttpUrl("http://localhost:8080"),
+        description="Base URL of the slm-guardrails FastAPI service (without trailing slash).",
     )
     request_timeout_seconds: float = Field(
         default=3.0,
