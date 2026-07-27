@@ -1,4 +1,4 @@
-"""slm-guardrail FastAPI entrypoint with endpoints and metrics."""
+"""slm-guardrails FastAPI entrypoint with endpoints and metrics."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from guardrail_app.settings.settings import ServiceSettings, get_settings
 from guardrail_app.utils.logging import getLogger
 from prometheus_client import make_asgi_app
 
-logger = getLogger("slm-guardrail")
+logger = getLogger("slm-guardrails")
 
 
 @asynccontextmanager
@@ -26,15 +26,15 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     service = GuardrailService(settings.guardrails)
     app.state.service = service
-    logger.info("slm-guardrail started")
+    logger.info("slm-guardrails started")
     # Yield control to serve requests
     try:
         yield
     finally:
-        logger.info("slm-guardrail shutting down")
+        logger.info("slm-guardrails shutting down")
 
 
-app = FastAPI(title="slm-guardrail", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="slm-guardrails", version="0.1.0", lifespan=lifespan)
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 

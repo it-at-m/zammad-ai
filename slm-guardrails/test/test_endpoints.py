@@ -1,4 +1,4 @@
-"""Integration tests for slm-guardrail FastAPI endpoints.
+"""Integration tests for slm-guardrails FastAPI endpoints.
 
 These tests monkeypatch the model loading to avoid downloading a real model.
 """

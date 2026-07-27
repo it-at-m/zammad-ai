@@ -1,5 +1,5 @@
 [project]
-name = "slm-guardrail"
+name = "slm-guardrails"
 license = "MIT"
 version = "0.1.0"
 

@@ -20,7 +20,7 @@ def get_log_config() -> dict[str, Any]:
 _configured = False
 
 
-def getLogger(name: str = "slm-guardrail") -> logging.Logger:
+def getLogger(name: str = "slm-guardrails") -> logging.Logger:
     """Return a configured logger, applying config once per process."""
     global _configured
     if not _configured:

@@ -1,4 +1,4 @@
-# slm-guardrail
+# slm-guardrails
 
 FastAPI microservice providing content safety guardrails for Zammad-AI. It classifies user prompts and generated responses using a GLiNER-based model and exposes simple REST endpoints. It replaces any in-process guardrail logic in zammad-ai-workflow.
 
@@ -97,7 +97,7 @@ guardrails:
 
 - The service loads the model on startup; if the model cannot be initialized the process will fail to start so orchestrators can detect the condition.
 - Endpoints return structured results including `label_scores` and `raw_result`. The client is expected to decide allow/review/block based on these values.
-- Validation errors return `400`. Unexpected errors return `500` and the service fails open for individual checks.
+- Validation errors return `422`. Unexpected errors return `500` and the service fails open for individual checks.
 
 ## Resource Requirements
 
@@ -115,8 +115,8 @@ uv run python main.py
 - Docker
 
 ```bash
-docker build -t slm-guardrail:local .
-docker run --rm -p 8081:8081 -e SLM_GUARDRAIL_GUARDRAILS__OFFLINE_MODE=true slm-guardrail:local
+docker build -t slm-guardrails:local .
+docker run --rm -p 8081:8081 -v "$PWD/huggingface_cache:/app/huggingface_cache:Z" -e SLM_GUARDRAIL_GUARDRAILS__OFFLINE_MODE=true slm-guardrails:local
 ```
 
 ## Development
@@ -130,7 +130,7 @@ docker run --rm -p 8081:8081 -e SLM_GUARDRAIL_GUARDRAILS__OFFLINE_MODE=true slm-
 
 - In zammad-ai-workflow config, set:
   - `ZAMMAD_AI_GUARDRAILS__ENABLED=true`
-  - `ZAMMAD_AI_GUARDRAILS__BASE_URL=http://slm-guardrail:8081/api/v1`
+  - `ZAMMAD_AI_GUARDRAILS__BASE_URL=http://slm-guardrails:8081/api/v1`
   - `ZAMMAD_AI_GUARDRAILS__REQUEST_TIMEOUT_SECONDS=3.0`
   - `ZAMMAD_AI_GUARDRAILS__AUTH_TOKEN=...` if auth is enabled
   - `ZAMMAD_AI_GUARDRAILS__VERIFY_TLS=true` when using HTTPS

@@ -1,4 +1,4 @@
-"""Service settings for slm-guardrail (FastAPI)."""
+"""Service settings for slm-guardrails (FastAPI)."""
 
 from functools import lru_cache
 from typing import Dict
@@ -39,7 +39,9 @@ class GuardrailSettings(BaseModel):
 class ModelConfig(BaseModel):
     """Configuration for a specific guardrail model instance."""
 
-    hf_model_name: str = Field(default="fastino/gliguard-LLMGuardrails-300M", description="HuggingFace model name or local path")
+    hf_model_name: str = Field(
+        default="fastino/gliguard-LLMGuardrails-300M", description="HuggingFace model name or local path"
+    )
     offline_mode: bool | None = Field(default=None, description="Override global offline_mode for this model")
     huggingface_cache_dir: str | None = Field(default=None, description="Override global HF cache dir for this model")
     max_concurrency: int | None = Field(default=None, ge=1, description="Max concurrent inferences for this model")
@@ -72,7 +74,7 @@ class ServiceSettings(BaseSettings):
         yaml_file_encoding="utf-8",
         cli_parse_args=_should_enable_cli(),
         cli_kebab_case=True,
-        cli_prog_name="slm-guardrail",
+        cli_prog_name="slm-guardrails",
         extra="ignore",
     )
 

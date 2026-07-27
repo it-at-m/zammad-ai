@@ -14,7 +14,7 @@ from prometheus_client import Counter, Histogram
 
 from .labels import JAILBREAK_TASK, PROMPT_TOXICITY_TASK, REFUSAL_LABELS, RESPONSE_TOXICITY_TASK, SAFETY_LABELS
 
-logger = getLogger("slm-guardrail")
+logger = getLogger("slm-guardrails")
 
 GUARDRAIL_CHECKS_TOTAL = Counter(
     name="zammad_ai_guardrail_checks_total",
@@ -193,7 +193,9 @@ class GuardrailService:
             self._semaphores[model_id] = asyncio.Semaphore(max_conc)
             # create a dedicated executor sized to the model's concurrency
             exec_workers = max_conc if isinstance(max_conc, int) and max_conc > 0 else 1
-            self._executors[model_id] = ThreadPoolExecutor(max_workers=exec_workers, thread_name_prefix=f"guardrail-{model_id}")
+            self._executors[model_id] = ThreadPoolExecutor(
+                max_workers=exec_workers, thread_name_prefix=f"guardrail-{model_id}"
+            )
             logger.info("Guardrail model '%s' loaded successfully.", model_id)
         except Exception:
             logger.error("Guardrail model '%s' could not be loaded", model_id, exc_info=True)

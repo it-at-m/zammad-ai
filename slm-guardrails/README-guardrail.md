@@ -1,7 +1,7 @@
-slm-guardrail — Usage and Examples
+slm-guardrails — Usage and Examples
 =================================
 
-This document shows example requests and guidance for interpreting guardrail results returned by slm-guardrail.
+This document shows example requests and guidance for interpreting guardrail results returned by slm-guardrails.
 
 Endpoints
 ---------

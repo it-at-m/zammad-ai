@@ -8,7 +8,7 @@ handlers:
     formatter: simple
     stream: ext://sys.stdout
 loggers:
-  slm-guardrail:
+  slm-guardrails:
     level: INFO
     handlers: [console]
     propagate: false

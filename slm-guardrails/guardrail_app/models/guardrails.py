@@ -63,6 +63,15 @@ class PromptRequest(BaseModel):
     model: str | None = None
     threshold: float | None = None
 
+    @field_validator("threshold", mode="before", check_fields=False)
+    @classmethod
+    def _threshold_must_be_between_0_and_1(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not (0.0 <= value <= 1.0):
+            raise ValueError("Threshold must be between 0 and 1")
+        return value
+
 
 class ResponseRequest(BaseModel):
     """Request model for guardrail evaluation of generated response."""
@@ -71,3 +80,12 @@ class ResponseRequest(BaseModel):
     response: str
     model: str | None = None
     threshold: float | None = None
+
+    @field_validator("threshold", mode="before", check_fields=False)
+    @classmethod
+    def _threshold_must_be_between_0_and_1(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not (0.0 <= value <= 1.0):
+            raise ValueError("Threshold must be between 0 and 1")
+        return value
