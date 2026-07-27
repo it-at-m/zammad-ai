@@ -103,6 +103,25 @@ async def ready(request: Request) -> dict[str, dict[str, bool]]:
     return {"models": models_ready}
 
 
+@app.get("/api/v1/models")
+async def list_models(
+    request: Request,
+    settings: ServiceSettings = Depends(get_settings),
+    service: GuardrailService = Depends(_get_service),
+) -> dict:
+    """Return configured guardrail models with availability and configuration.
+
+    The response maps model_id -> {available: bool, config: dict}.
+    """
+    svc: GuardrailService = service
+    result: dict[str, dict] = {}
+    for model_id, cfg in settings.guardrails.models.items():
+        available = svc.has_model(model_id)
+        cfg_dict = cfg.model_dump() if cfg else {}
+        result[model_id] = {"available": available, "config": cfg_dict}
+    return {"models": result}
+
+
 if __name__ == "__main__":
     import uvicorn
 
