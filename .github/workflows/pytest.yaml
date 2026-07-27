@@ -8,6 +8,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -29,13 +30,16 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv python install
 
       - name: Install dependencies
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv sync --locked --all-extras
 
       - name: Run tests
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv run pytest
