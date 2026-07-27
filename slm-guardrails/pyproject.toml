@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest==9.0.3", "pytest-asyncio==1.4.0", "ruff==0.16.0", "ty==0.0.63"]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.0", "ty==0.0.63"]
 
 [tool.uv]
 add-bounds = "exact"
