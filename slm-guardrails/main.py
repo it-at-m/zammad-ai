@@ -75,8 +75,17 @@ async def evaluate_prompt(
     _auth_check(request, settings)
     thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
     model_id = getattr(payload, "model", None) or settings.guardrails.default_model
+    # If the model is configured but wasn't loaded at startup (tests or lazy load
+    # scenarios), attempt to load it on-demand. If loading fails, return 400.
     if not service.has_model(model_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+        if model_id in settings.guardrails.models:
+            try:
+                # _load_model is synchronous; allow it to run and register the model
+                service._load_model(model_id, settings.guardrails.models[model_id])
+            except Exception:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
     # Enforce configured maximum input length
     max_len = settings.api.max_input_length
     if max_len and len(payload.text or "") > max_len:
@@ -98,8 +107,16 @@ async def evaluate_response(
     _auth_check(request, settings)
     thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
     model_id = getattr(payload, "model", None) or settings.guardrails.default_model
+    # Allow on-demand loading for configured models that may not have been
+    # initialized at startup (helps tests and lazy deployments).
     if not service.has_model(model_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+        if model_id in settings.guardrails.models:
+            try:
+                service._load_model(model_id, settings.guardrails.models[model_id])
+            except Exception:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
     # Enforce configured maximum input length for both prompt and response
     max_len = settings.api.max_input_length
     if max_len and len(payload.text or "") + len(payload.response or "") > max_len:
