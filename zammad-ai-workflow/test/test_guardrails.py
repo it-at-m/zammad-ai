@@ -1,7 +1,7 @@
 """Tests for the HTTP-based guardrail client service."""
-
 import httpx
 import pytest
+from pydantic import HttpUrl
 
 from app.guardrails import GuardrailService
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
@@ -15,7 +15,7 @@ def guardrail_settings() -> GuardrailSettings:
         enabled=True,
         confidence_threshold=0.7,
         block_on_high_risk=False,
-        base_url="http://testserver",
+        base_url=HttpUrl("http://testserver"),
         request_timeout_seconds=2.0,
     )
 
