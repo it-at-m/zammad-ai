@@ -42,6 +42,30 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
+    async def update_ticket_group(
+        self,
+        ticket_id: int,
+        group_id: int,
+    ) -> None:
+        """Update the group assignment for a specified Zammad ticket.
+
+        Args:
+            ticket_id: ID of the ticket to update.
+            group_id: ID of the new group to assign to the ticket.
+        """
+        ...
+
+    @abstractmethod
+    async def set_ticket_pending_close(self, ticket_id: int, days: int) -> None:
+        """Update the ticket state to "pending close".
+
+        Args:
+            ticket_id: ID of the ticket to update.
+            days: Number of days after which the ticket should be marked as pending close.
+        """
+        ...
+
+    @abstractmethod
     async def post_answer(
         self,
         ticket_id: int,

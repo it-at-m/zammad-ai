@@ -11,6 +11,7 @@ from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
 from app.models.kafka import Event
 from app.models.triage import TriageResult
+from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
 from app.settings.kafka import EventProcessingSettings, KafkaSettings
@@ -107,6 +108,11 @@ def mock_triage() -> MagicMock:
         reasoning "Test reasoning", and confidence 0.95.
     """
     triage = MagicMock()
+    # Provide a zammad_client that returns a ticket when asked (router will call get_ticket)
+    triage.zammad_client = MagicMock()
+    triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(id=3720, articles=[ZammadArticle(id=1, ticket_id=3720, text="msg")])
+    )
     # Make perform_triage return an async mock that returns a TriageResult
     triage.perform_triage = AsyncMock(
         return_value=TriageResult(
@@ -161,7 +167,9 @@ async def test_event_handler_valid_message(
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
         # Verify the triage was called with the correct ticket ID
-        mock_triage.perform_triage.assert_called_once_with(id=3720)
+        assert mock_triage.perform_triage.call_count == 1
+        called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
+        assert called_ticket is not None and called_ticket.id == 3720
 
 
 @pytest.mark.asyncio
@@ -181,7 +189,9 @@ async def test_event_handler_with_requestType_alias(
         message["requestType"] = "technischer Bürgersupport"
         await test_broker.publish(topic=settings.kafka.topic, message=message)
         # Verify the triage was called with the correct ticket ID
-        mock_triage.perform_triage.assert_called_once_with(id=3720)
+        assert mock_triage.perform_triage.call_count == 1
+        called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
+        assert called_ticket is not None and called_ticket.id == 3720
 
 
 @pytest.mark.asyncio
@@ -245,7 +255,9 @@ async def test_event_handler_with_multiple_valid_request_types(
         message = kafka_message_factory(anliegenart="general support")
         await test_broker.publish(topic=settings.kafka.topic, message=message)
         # Verify the triage was called with the correct ticket ID
-        mock_triage.perform_triage.assert_called_once_with(id=3720)
+        assert mock_triage.perform_triage.call_count == 1
+        called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
+        assert called_ticket is not None and called_ticket.id == 3720
 
 
 @pytest.mark.asyncio

@@ -56,6 +56,7 @@ genai:
 
 zammad:
   type: "api" # Options: "api" or "eai"
+  pending_close_after_days: null # Number of days after which a ticket is marked as pending close. Only for "auto-publish" categories
 
   # For type: "api"
   base_url: "https://your-zammad-instance.example.com"
@@ -75,6 +76,7 @@ zammad:
   # For type: "eai" (alternative to "api"), use these instead:
   # eai_url: "https://your-zammad-eai.example.com/api/v1"
   # knowledge_base_id: "1"
+  # ai_ticket_group_id: 1 # Optional: set to null to disable AI ticket assignment
   # timeout: 30
   # max_retries: 3
   # http_proxy_url: null
@@ -221,9 +223,9 @@ triage:
   # syntax to your existing prompt files.
   #
   # Available Jinja2 variables:
-  # - Triage prompts: knowledge_base_enabled, dlf_enabled, no_category_name, no_action_name, categories
-  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer
-  # - Judge prompts: thresholds (dict), repair_enabled, max_repairs
+  # - Triage prompts: knowledge_base_enabled, dlf_enabled, no_category_name, no_action_name, categories, today
+  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer, retrieval_num_documents, today
+  # - Judge prompts: thresholds (dict), repair_enabled, max_repairs, today
   prompts:
     type: "file" # Options: "langfuse", "string", or "file"
     prompt_map:
@@ -306,6 +308,22 @@ guardrails:
   block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
   huggingface_cache_dir: "/app/huggingface_cache" # Directory to cache Hugging Face models
   offline_mode: true # If true, use local models only and do not call external APIs
+
+# ============================================================================
+# Preparser Configuration
+# ============================================================================
+# Optional preparser that can extract and reformat structured data (e.g., from
+# Markdown tables) before it is sent to the LLM. When `enabled: false` the
+# input text is passed through unchanged.
+preparser:
+  enabled: false
+  config:
+    type: "table"
+    keep_rows:
+      - "Summary"
+      - "Steps to reproduce"
+    case_sensitive: false
+    value_column: 1
 
 # ============================================================================
 # API Configuration

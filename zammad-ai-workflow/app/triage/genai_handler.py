@@ -8,19 +8,24 @@ executes calls with Langfuse tracing metadata.
 from logging import Logger
 from typing import Any, TypeVar
 
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableConfig, RunnableSequence
+from langchain_core.runnables import RunnableConfig
 from langfuse import observe, propagate_attributes
 
 from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.observe import LangfuseClient
 from app.settings.genai import GenAISettings
+from app.utils.langchain import extract_structured_response, with_recursion_limit
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.genai_handler")
 
 T = TypeVar("T")
+
+StructuredAgent = tuple[ChatPromptTemplate, Any]
 
 
 class GenAIHandler:
@@ -54,17 +59,23 @@ class GenAIHandler:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        empty_keys: list[str] = [
-            key for key, value in prompts.items() if not isinstance(value, str) or not value.strip()
-        ]
-        if empty_keys:
-            error_msg = f"Empty prompt values for keys: {', '.join(empty_keys)}. All prompts must be non-empty strings."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
         missing_keys = self.REQUIRED_PROMPT_KEYS - set(prompts)
         if missing_keys:
             error_msg = f"Missing required prompt keys: {', '.join(sorted(missing_keys))}."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        empty_required_keys: list[str] = [
+            key
+            for key in sorted(self.REQUIRED_PROMPT_KEYS)
+            if not isinstance(prompts.get(key), str) or not prompts[key].strip()
+        ]
+        if empty_required_keys:
+            error_msg = (
+                "Empty prompt values for required keys: "
+                f"{', '.join(empty_required_keys)}. "
+                "Required system prompts must be non-empty strings."
+            )
             logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -78,7 +89,6 @@ class GenAIHandler:
                     temperature=genai_settings.triage_temperature,
                     max_retries=genai_settings.max_retries,
                     reasoning=genai_settings.triage_reasoning_config,
-                    store=genai_settings.triage_store,
                 )
             case _:
                 raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
@@ -121,8 +131,10 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
+            logger.info("Starting ToolStrategy categorization invocation.")
             with propagate_attributes(session_id=session_id):
-                response: CategorizationResult = await self._categorization_chain.ainvoke(
+                response: CategorizationResult = await self._ainvoke_structured_agent(
+                    structured_agent=self._categorization_chain,
                     input={
                         "text": message,
                         "role_description": role_description,
@@ -131,7 +143,9 @@ class GenAIHandler:
                         "examples": examples,
                     },
                     config=config,
+                    expected_type=CategorizationResult,
                 )
+            logger.info("Finished ToolStrategy categorization invocation.")
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for categorization", exc_info=True)
@@ -155,14 +169,18 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
+            logger.info("Starting ToolStrategy days-since-request invocation.")
             with propagate_attributes(session_id=session_id):
-                response: DaysSinceRequestResponse = await self._days_since_request_chain.ainvoke(
+                response: DaysSinceRequestResponse = await self._ainvoke_structured_agent(
+                    structured_agent=self._days_since_request_chain,
                     input={
                         "text": message,
                         "today": today,
                     },
                     config=config,
+                    expected_type=DaysSinceRequestResponse,
                 )
+            logger.info("Finished ToolStrategy days-since-request invocation.")
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for days since request extraction", exc_info=True)
@@ -183,29 +201,32 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
+            logger.info("Starting ToolStrategy processing-id invocation.")
             with propagate_attributes(session_id=session_id):
-                response: ProcessingIdResponse = await self._processing_id_chain.ainvoke(
+                response: ProcessingIdResponse = await self._ainvoke_structured_agent(
+                    structured_agent=self._processing_id_chain,
                     input={
                         "text": message,
                     },
                     config=config,
+                    expected_type=ProcessingIdResponse,
                 )
+            logger.info("Finished ToolStrategy processing-id invocation.")
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for processing id extraction", exc_info=True)
             classified = classify_provider_error(e)
             raise classified from e
 
-    def _build_chain(self, prompt: str, output_schema: type[T] | None = None) -> RunnableSequence[Any, T]:
-        """Create a reusable structured-output chain for one prompt.
+    def _build_chain(self, prompt: str, output_schema: type[T]) -> StructuredAgent:
+        """Create a reusable ToolStrategy agent for one structured prompt.
 
         Args:
             prompt: The prompt to use.
             output_schema: Pydantic model used for strict structured output parsing.
 
         Returns:
-            A runnable sequence that accepts invocation input and returns a value
-            parsed as the provided schema.
+            A prompt template and agent that return a validated structured response.
 
         Raises:
             KeyError: If prompt_key is not present in configured prompts.
@@ -220,12 +241,36 @@ class GenAIHandler:
             ]
         )
 
-        return RunnableSequence(
-            prompt_template,
-            self.chat_model.with_structured_output(schema=output_schema, strict=True)
-            if output_schema
-            else self.chat_model,
+        agent = create_agent(
+            model=self.chat_model,
+            tools=[],
+            system_prompt=(
+                f"You must finish by calling exactly one structured response tool for the "
+                f"{output_schema.__name__} schema. Do not answer with free text, markdown, or raw JSON."
+            ),
+            response_format=ToolStrategy(
+                schema=output_schema,
+                tool_message_content="Structured triage response has been generated.",
+            ),
         )
+        return prompt_template, agent
+
+    async def _ainvoke_structured_agent(
+        self,
+        *,
+        structured_agent: StructuredAgent,
+        input: dict[str, Any],
+        config: RunnableConfig,
+        expected_type: type[T],
+    ) -> T:
+        """Render a prompt, invoke a ToolStrategy agent, and return its structured response."""
+        prompt_template, agent = structured_agent
+        messages = prompt_template.format_messages(**input)
+        agent_result: dict[str, Any] = await agent.ainvoke(
+            input={"messages": messages},
+            config=with_recursion_limit(config),
+        )
+        return extract_structured_response(agent_result, expected_type)
 
     def _build_runnable_config(self, session_id: str | None) -> tuple[str, RunnableConfig]:
         """Resolve session id and build runnable tracing configuration.

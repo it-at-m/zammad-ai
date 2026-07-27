@@ -1,6 +1,6 @@
 """Core triage service for ticket categorization and action selection."""
 
-from datetime import date
+from datetime import datetime
 from time import perf_counter
 
 from dotenv import load_dotenv
@@ -9,7 +9,6 @@ from truststore import inject_into_ssl
 
 from app.errors import (
     GenAIError,
-    TicketNotFoundError,
     TriageCategoryWrongError,
     ZammadRetryableError,
 )
@@ -24,6 +23,7 @@ from app.models.triage import (
     TriageResult,
 )
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.preparser.service import PreparserService, get_preparser_service
 from app.settings import ZammadAISettings
 from app.settings.triage import (
     Action,
@@ -79,6 +79,7 @@ class TriageService:
         """
         self.settings: ZammadAISettings = settings
         self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        self.preparser_service: PreparserService = get_preparser_service(settings=settings.preparser)
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -93,7 +94,7 @@ class TriageService:
         self.max_user_text_length: int = settings.max_user_text_length
 
         # Prompt setup based on the type of prompts provided in settings
-        self.prompts: dict[TriagePrompt, str]
+        self.prompts: dict[TriagePrompt, tuple[str, int | None]]
         if isinstance(settings.triage.prompts, LangfuseTriagePrompts):
             from app.observe import LangfuseClient, LangfuseError
 
@@ -112,9 +113,11 @@ class TriageService:
                     )
                     raise TriageError("Triage initialization failed due to Langfuse prompt retrieval error.") from e
         elif isinstance(settings.triage.prompts, FileTriagePrompts):
-            self.prompts = {name: load_prompt(path) for name, path in settings.triage.prompts.prompt_map.items()}
+            self.prompts = {
+                name: (load_prompt(path), None) for name, path in settings.triage.prompts.prompt_map.items()
+            }
         elif isinstance(settings.triage.prompts, StringTriagePrompts):
-            self.prompts = settings.triage.prompts.prompt_map.copy()
+            self.prompts = {name: (prompt, None) for name, prompt in settings.triage.prompts.prompt_map.items()}
         else:
             raise ValueError("Invalid type for triage prompts in configuration")
 
@@ -161,40 +164,31 @@ class TriageService:
 
         logger.info("Triage initialized successfully.")
 
-    async def perform_triage(self, id: int) -> TriageResult:
+    async def perform_triage(self, ticket: ZammadTicket) -> TriageResult:
         """Triage a Zammad ticket by analyzing its customer message to determine category, action, and any extracted values.
 
         Parameters:
-            id (int): Zammad ticket identifier.
+            ticket (ZammadTicket): The Zammad ticket to triage.
 
         Returns:
             TriageResult: Result containing the resolved category, selected action, human-readable reasoning, confidence score, and any extracted values (or `None`).
 
         Raises:
-            TriageError: If the ticket cannot be retrieved from Zammad (for example, due to a connection failure).
+            TriageError: If attachment retrieval or downstream triage processing fails.
         """
         start_time: float = perf_counter()
         outcome: str = "error"
         TRIAGE_RUNS_IN_PROGRESS.inc()
-        # Step 1: Fetch ticket data from Zammad
-        try:
-            try:
-                ticket: ZammadTicket = await self.zammad_client.get_ticket(id=id)
-            except TicketNotFoundError as e:
-                logger.info(f"Ticket {id} does not exist anymore.")
-                raise TriageError("Triage failed because ticket was not found", retryable=False) from e
-            except (ZammadRetryableError, ZammadConnectionError) as e:
-                logger.error("Error connecting to Zammad", exc_info=True)
-                raise TriageError("Triage failed due to Zammad connection error", retryable=True) from e
 
+        try:
             # TODO: Only use the first article or concatenate all articles?
             # Normally the `0` is the customer message, the rest are internal notes
             # But what if there are multiple customer messages? -> edge case
 
-            # Step 2: Check if there are articles in the ticket
-            logger.debug(f"Number of articles in ticket {id}: {len(ticket.articles)}")
+            # Step 1: Check if there are articles in the ticket
+            logger.debug(f"Number of articles in ticket {ticket.id}: {len(ticket.articles)}")
             if len(ticket.articles) == 0:
-                logger.warning(f"No articles found for ticket {id}, returning no_category and no_action")
+                logger.warning(f"No articles found for ticket {ticket.id}, returning no_category and no_action")
                 return TriageResult(
                     user_text="",
                     category=self.no_category,
@@ -204,13 +198,23 @@ class TriageService:
                     extracted_values=None,
                 )
 
-            # Step 3: Extract customer message, attachments and generate session ID for Langfuse
+            # Step 2: Extract customer message, attachments and generate session ID for Langfuse
             customer_message: str = ticket.articles[0].text
+
+            # Run preparser first (may be a no-op when disabled)
+            # Important: Preparse BEFORE any truncation to keep behavior consistent
+            # with API helpers and ensure TablePreparser sees the full message.
+            try:
+                customer_message = self.preparser_service.preparse(customer_message)
+            except Exception:
+                logger.error("Preparser failed during triage; continuing with original message", exc_info=True)
+
+            # Enforce max length on the preparsed string
             if len(customer_message) > self.max_user_text_length:
                 logger.warning(
-                    f"Customer message for ticket {id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
+                    f"Customer message for ticket {ticket.id} exceeds max_user_text_length={self.max_user_text_length} and will be truncated for triage processing"
                 )
-                customer_message: str = customer_message[: self.max_user_text_length]
+                customer_message = customer_message[: self.max_user_text_length]
 
             attachments: list[ArticleAttachment] = ticket.articles[0].attachments or []
             if self.settings.zammad.document_parsing.mode == "off":
@@ -218,14 +222,18 @@ class TriageService:
                 customer_message += f"\n\n{len(attachments)} attachments were included."
             else:
                 for attachment in attachments:
-                    data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
-                        ticket_id=id,
-                        article_id=ticket.articles[0].id,
-                        attachment=attachment,
-                    )
+                    try:
+                        data: str | None = await self.zammad_client.fetch_ticket_attachment_data(
+                            ticket_id=ticket.id,
+                            article_id=ticket.articles[0].id,
+                            attachment=attachment,
+                        )
+                    except (ZammadRetryableError, ZammadConnectionError) as e:
+                        logger.error("Error connecting to Zammad while fetching attachment", exc_info=True)
+                        raise TriageError("Triage failed due to Zammad connection error", retryable=True) from e
                     if not data:
                         logger.warning(
-                            f"Failed to fetch data for attachment {attachment.filename} in ticket {id}, skipping attachment content."
+                            f"Failed to fetch data for attachment {attachment.filename} in ticket {ticket.id}, skipping attachment content."
                         )
                         continue
 
@@ -235,12 +243,12 @@ class TriageService:
                     remaining_length: int = self.max_user_text_length - len(customer_message)
                     if remaining_length <= 0:
                         logger.warning(
-                            f"Customer message for ticket {id} already reached max_user_text_length={self.max_user_text_length}; stopping attachment processing"
+                            f"Customer message for ticket {ticket.id} already reached max_user_text_length={self.max_user_text_length}; stopping attachment processing"
                         )
                         break
                     if len(attachment_message) > remaining_length:
                         logger.warning(
-                            f"Truncating attachment {attachment.filename} for ticket {id} to keep customer_message within max_user_text_length={self.max_user_text_length}"
+                            f"Truncating attachment {attachment.filename} for ticket {ticket.id} to keep customer_message within max_user_text_length={self.max_user_text_length}"
                         )
                         customer_message += attachment_message[:remaining_length]
                         break
@@ -249,20 +257,20 @@ class TriageService:
 
             session_id: str = self.genai_handler.langfuse_client.generate_session_id()
 
-            # Step 4: Predict category using LLM
+            # Step 3: Predict category using LLM
             categorization: CategorizationResult = await self.predict_category(
                 message=customer_message,
                 session_id=session_id,
             )
 
-            # Step 5: Determine action based on predicted category and conditions
+            # Step 4: Determine action based on predicted category and conditions
             action_name: str = await self.get_action_name(
                 categorization_result=categorization,
                 message=customer_message,
                 session_id=session_id,
             )
             action: Action = self.actions_by_name.get(action_name, self.no_action)
-            # Step 6: Return the triage result
+            # Step 5: Return the triage result
             outcome = "success"
             return TriageResult(
                 user_text=customer_message,
@@ -321,10 +329,10 @@ class TriageService:
         try:
             cat_result: CategorizationResult = await self.genai_handler.categorize_ticket(
                 message=message,
-                role_description=self.prompts.get("role", ""),
+                role_description=self.prompts.get("role", [""])[0],
                 categories=self.categories,
-                categories_prompt=self.prompts.get("categories", ""),
-                examples=self.prompts.get("examples", ""),
+                categories_prompt=self.prompts.get("categories", [""])[0],
+                examples=self.prompts.get("examples", [""])[0],
                 session_id=session_id,
             )
 
@@ -334,6 +342,8 @@ class TriageService:
                     "Predicted category is invalid or unknown",
                     confidence=cat_result.confidence,
                 )
+
+            cat_result = cat_result.model_copy(update={"category": self.categories_by_name[cat_result.category.name]})
 
             # Log the results
             logger.debug(f"Text to categorize: {message[:100] + '...' if len(message) > 100 else message}")
@@ -384,10 +394,12 @@ class TriageService:
                         for condition in conditions:
                             if condition.field == "days_since_request":
                                 if days_since_request is None:
-                                    days_result: DaysSinceRequestResponse = await self.genai_handler.extract_days_since_request(
-                                        message=message,
-                                        today=date.today().isoformat(),  # TODO: Mpck date for benchmarks with old tickets
-                                        session_id=session_id,
+                                    days_result: DaysSinceRequestResponse = (
+                                        await self.genai_handler.extract_days_since_request(
+                                            message=message,
+                                            today=datetime.now().date().isoformat(),
+                                            session_id=session_id,
+                                        )
                                     )
                                     days_since_request = days_result.days_since_request
                                 if (get_operator_function(operator=condition.operator))(
@@ -448,6 +460,14 @@ class TriageService:
         global _service
         _service = None
         logger.info("Triage resources cleaned up.")
+
+    def get_prompt_versions(self) -> dict[str, int | None]:
+        """Return a dictionary mapping prompt names to their version numbers.
+
+        Returns:
+            dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
+        """
+        return {name: version for name, (_, version) in self.prompts.items()}
 
 
 _service: TriageService | None = None

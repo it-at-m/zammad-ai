@@ -1,5 +1,6 @@
 """Tests for the triage service and action selection logic."""
 
+import asyncio
 from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any, cast
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 
 from app.errors import TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
-from app.models.zammad import ZammadArticle, ZammadTicket
+from app.models.zammad import ArticleAttachment, ZammadArticle, ZammadTicket
 from app.settings.triage import (
     ActionRule,
     Category,
@@ -204,7 +205,7 @@ def triage_factory(
 @pytest.mark.asyncio
 async def test_perform_triage_returns_defaults_when_no_articles(patched_triage: TriageService) -> None:
     """Tickets without articles should return the no-category and no-action defaults."""
-    result = await patched_triage.perform_triage(id=123)
+    result = await patched_triage.perform_triage(ticket=ZammadTicket(id=123, articles=[]))
     assert result.category == patched_triage.no_category
     assert result.action == patched_triage.no_action
     assert result.reasoning == "No articles found"
@@ -284,16 +285,17 @@ async def test_get_action_id_returns_no_action_for_no_category(patched_triage: T
 @pytest.mark.asyncio
 async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
     """Full triage with a ticket that has an article returns a real category and action."""
-    patched_triage.zammad_client.ticket = ZammadTicket(  # type: ignore
+    ticket = ZammadTicket(
         id=42,
         articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
     )
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="General"),
         reasoning="hardware issue",
         confidence=0.9,
     )
-    result = await patched_triage.perform_triage(id=42)
+    result = await patched_triage.perform_triage(ticket=ticket)
     assert result.category.name == "General"
     assert result.reasoning == "hardware issue"
     assert result.confidence == 0.9
@@ -303,17 +305,18 @@ async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
 async def test_perform_triage_in_progress_gauge_returns_to_baseline_on_success(patched_triage: TriageService) -> None:
     """The in-progress gauge should return to baseline after a successful run."""
     baseline = _get_triage_runs_in_progress_value()
-    patched_triage.zammad_client.ticket = ZammadTicket(  # type: ignore
+    ticket = ZammadTicket(
         id=42,
         articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
     )
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="General"),
         reasoning="hardware issue",
         confidence=0.9,
     )
 
-    await patched_triage.perform_triage(id=42)
+    await patched_triage.perform_triage(ticket=ticket)
 
     assert _get_triage_runs_in_progress_value() == baseline
 
@@ -324,22 +327,23 @@ async def test_perform_triage_in_progress_gauge_increments_while_running(patched
     baseline = _get_triage_runs_in_progress_value()
     expected = baseline + 1
 
-    async def _get_ticket_and_assert_in_progress(id: int) -> ZammadTicket:
-        assert _get_triage_runs_in_progress_value() == expected
-        return ZammadTicket(
-            id=id,
-            articles=[ZammadArticle(id=1, ticket_id=id, text="My printer is broken")],
-        )
+    # Use a delayed categorize_ticket to observe the in-progress gauge while triage is running
+    event = asyncio.Event()
 
-    patched_triage.zammad_client.get_ticket = _get_ticket_and_assert_in_progress  # type: ignore
-    patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
-        category=Category(name="General"),
-        reasoning="hardware issue",
-        confidence=0.9,
-    )
+    async def delaying_categorize(*_args, **_kwargs):
+        # signal that we've reached the model call (triage should have incremented the gauge)
+        event.set()
+        await asyncio.sleep(0.05)
+        return CategorizationResult(category=Category(name="General"), reasoning="hardware issue", confidence=0.9)
 
-    await patched_triage.perform_triage(id=42)
+    patched_triage.genai_handler.categorize_ticket = delaying_categorize  # type: ignore
 
+    ticket = ZammadTicket(id=42, articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")])
+    task = asyncio.create_task(patched_triage.perform_triage(ticket=ticket))
+    await event.wait()
+    # While the categorize call is blocked, the in-progress gauge must have been incremented
+    assert _get_triage_runs_in_progress_value() == expected
+    await task
     assert _get_triage_runs_in_progress_value() == baseline
 
 
@@ -351,9 +355,23 @@ async def test_perform_triage_in_progress_gauge_increments_while_running(patched
 @pytest.mark.asyncio
 async def test_perform_triage_raises_triage_error_on_zammad_failure(patched_triage: TriageService) -> None:
     """A Zammad connection error should be wrapped in TriageError."""
-    patched_triage.zammad_client.raise_connection_error = True  # type: ignore
+
+    # Simulate a Zammad connection error during attachment fetch
+    async def _raise_conn(*_args, **_kwargs):
+        raise FakeZammadConnectionError("Fake connection error")
+
+    patched_triage.zammad_client.fetch_ticket_attachment_data = _raise_conn  # type: ignore
+    # Ensure document parsing is enabled so attachment fetching is attempted
+    patched_triage.settings.zammad.document_parsing.mode = "local"
+    patched_triage.settings.zammad.document_parsing.document_types = ["pdf"]
+    ticket = ZammadTicket(
+        id=99,
+        articles=[
+            ZammadArticle(id=1, ticket_id=99, text="Hi", attachments=[ArticleAttachment(id=1, filename="file.pdf")])
+        ],
+    )
     with pytest.raises(TriageError, match="Zammad connection error"):
-        await patched_triage.perform_triage(id=99)
+        await patched_triage.perform_triage(ticket=ticket)
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +406,26 @@ async def test_predict_category_valid_category_kept(patched_triage: TriageServic
     assert result.category.name == "General"
     assert result.reasoning == "looks right"
     assert result.confidence == 0.88
+
+
+@pytest.mark.asyncio
+async def test_predict_category_normalizes_string_category(patched_triage: TriageService) -> None:
+    """A plain string category from the model should become the configured Category object."""
+    parsed_result = CategorizationResult.model_validate(
+        {
+            "category": "General",
+            "reasoning": "string category",
+            "confidence": 0.91,
+        }
+    )
+    assert isinstance(parsed_result.category, Category)
+    assert parsed_result.category.name == "General"
+
+    patched_triage.genai_handler.categorization_result = parsed_result  # type: ignore
+    result = await patched_triage.predict_category(message="some text", session_id="session-id")
+
+    assert result.category is patched_triage.categories_by_name["General"]
+    assert result.category.name == "General"
 
 
 # ---------------------------------------------------------------------------
@@ -434,10 +472,11 @@ async def test_perform_triage_handles_processing_triage_error(patched_triage: Tr
 
     # Ensure there is a ticket with articles so it doesn't return early
     fake_zammad_client = cast(FakeZammadClient, patched_triage.zammad_client)
-    fake_zammad_client.ticket = ZammadTicket(id=123, articles=[ZammadArticle(id=1, ticket_id=123, text="Help me")])
+    ticket = ZammadTicket(id=123, articles=[ZammadArticle(id=1, ticket_id=123, text="Help me")])
+    fake_zammad_client.ticket = ticket
 
     with pytest.raises(TriageError, match="Simulated processing error"):
-        await patched_triage.perform_triage(id=123)
+        await patched_triage.perform_triage(ticket=ticket)
 
 
 # ---------------------------------------------------------------------------

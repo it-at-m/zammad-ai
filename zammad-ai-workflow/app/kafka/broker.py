@@ -16,10 +16,12 @@ from app.answer.service import AnswerService, get_answer_service
 from app.errors import AckDecision, ExceptionDecision, KafkaPayloadError, classify_exception
 from app.models.kafka import Event
 from app.models.triage import TriageResult
+from app.models.zammad import ZammadTicket
 from app.settings import ZammadAISettings
 from app.triage.triage import TriageService, get_triage_service
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
+from app.zammad.base import BaseZammadClient, TicketNotFoundError, ZammadConnectionError, ZammadRetryableError
 
 from .security import setup_security
 
@@ -121,9 +123,44 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
                 )
 
+            # Get ticket details from Zammad
+            try:
+                zammad_client: BaseZammadClient = triage_service.zammad_client
+                ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
+            except TicketNotFoundError as e:
+                logger.info(f"Ticket {ticket_id} does not exist anymore.")
+                raise KafkaPayloadError("Ticket was not found", retryable=False) from e
+            except (ZammadRetryableError, ZammadConnectionError) as e:
+                logger.error("Error connecting to Zammad", exc_info=True)
+                raise KafkaPayloadError("Failed due to Zammad connection error", retryable=True) from e
+
+            # Store the original group ID
+            original_group_id: int | None = ticket.group_id
+
+            # Move ticket to AI group if configured and not already in that group
+            if (
+                settings.zammad.type == "eai"
+                and settings.zammad.ai_ticket_group_id is not None
+                and original_group_id is not None
+                and original_group_id != settings.zammad.ai_ticket_group_id
+            ):
+                try:
+                    await zammad_client.update_ticket_group(
+                        ticket_id=ticket_id, group_id=settings.zammad.ai_ticket_group_id
+                    )
+                    logger.info(f"Moved ticket {ticket_id} to AI group {settings.zammad.ai_ticket_group_id}")
+                except (ZammadRetryableError, ZammadConnectionError) as e:
+                    logger.error("Error connecting to Zammad while moving ticket to AI group", exc_info=True)
+                    raise KafkaPayloadError(
+                        "Failed due to Zammad connection error while moving ticket to AI group",
+                        retryable=True,
+                    ) from e
+            else:
+                original_group_id = None  # No need to move back cause it stays in the same group
+
             # Perform triage and execute corresponding actions
             try:
-                result: TriageResult = await triage_service.perform_triage(id=ticket_id)
+                result: TriageResult = await triage_service.perform_triage(ticket=ticket)
                 logger.debug(
                     f"Triage result for ticket {ticket_id}: category: {result.category.name}, action: {result.action.name}"
                 )
@@ -134,6 +171,20 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     ticket=parsed_event.ticket,
                     category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
                 )
+            # Move ticket back to original group if it was moved to AI group
+            finally:
+                if original_group_id is not None:
+                    try:
+                        await zammad_client.update_ticket_group(ticket_id=ticket_id, group_id=original_group_id)
+                        logger.info(f"Moved ticket {ticket_id} back to original group {original_group_id}")
+                    except (ZammadRetryableError, ZammadConnectionError) as e:
+                        logger.error(
+                            "Error connecting to Zammad while moving ticket back to original group", exc_info=True
+                        )
+                        raise KafkaPayloadError(
+                            "Failed due to Zammad connection error while moving ticket back to original group",
+                            retryable=True,
+                        ) from e
             raise AckMessage()
 
     return router, event_handler

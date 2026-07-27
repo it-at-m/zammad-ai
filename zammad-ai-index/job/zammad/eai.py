@@ -100,6 +100,28 @@ class ZammadEAIClient(BaseZammadClient):
         return TypeAdapter(ZammadKnowledgebase).validate_python(data) if data else None
 
     @override
+    def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
+        if not category_ids:
+            return []
+        if not self.kb_id:
+            logger.warning("Knowledge base ID is not set. Cannot fetch answer IDs.")
+            return []
+        visited_categories: set[int] = set()
+        answer_ids: set[int] = set()
+        stack: list[int] = list(category_ids)
+        while stack:
+            category_id: int = stack.pop()
+            if category_id in visited_categories:
+                continue
+            visited_categories.add(category_id)
+            data = self._request("GET", f"/knowledge_bases/{self.kb_id}/categories/{category_id}")
+            if not data:
+                continue
+            stack.extend(data.get("childIds", []))
+            answer_ids.update(data["answerIds"])
+        return list(answer_ids)
+
+    @override
     def parse_rss_feed(self) -> FeedParserDict | None:
         if not self.kb_id:
             logger.warning("Knowledge base ID is not set. Cannot parse RSS feed.")

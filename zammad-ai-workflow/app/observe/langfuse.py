@@ -31,7 +31,7 @@ class LangfuseClient:
         self.langfuse_handler: CallbackHandler = CallbackHandler()
         self.langfuse: Langfuse = Langfuse()  # Assumes Langfuse is configured via environment variables or other means
 
-    def get_prompt(self, prompt_name: str, prompt_label: str = "production") -> str:
+    def get_prompt(self, prompt_name: str, prompt_label: str = "production") -> tuple[str, int]:
         """Retrieve a prompt template from Langfuse by name and label.
 
         Parameters:
@@ -39,7 +39,7 @@ class LangfuseClient:
             prompt_label (str): Label or version of the prompt to fetch (default: "production").
 
         Returns:
-            str: The text content of the fetched prompt template.
+            tuple[str, int]: A tuple containing the text content of the fetched prompt template and its version.
 
         Raises:
             LangfuseError: If fetching the prompt from Langfuse fails for any reason or if the returned prompt is not a string.
@@ -53,8 +53,7 @@ class LangfuseClient:
             )
             if not isinstance(res.prompt, str):
                 raise LangfuseError(f"Prompt '{prompt_name}' is not of type text.")
-
-            return res.prompt
+            return res.prompt, res.version
         except Exception as e:
             if isinstance(e, LangfuseError):
                 raise e

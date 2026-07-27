@@ -3,7 +3,7 @@
 from abc import ABC
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, SecretStr, model_validator
+from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, PositiveInt, SecretStr, model_validator
 
 KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
     {
@@ -165,9 +165,18 @@ class BaseZammadSettings(BaseModel, ABC):
         description="Optional proxy URL for routing HTTP requests to Zammad through a proxy server.",
         default=None,
     )
+    # If set, the integration will schedule a ticket state update after the configured number of days
+    pending_close_after_days: PositiveInt | None = Field(
+        description="If set, AI auto-published answers will schedule a ticket status update after this many days.",
+        default=None,
+    )
     document_parsing: DocumentParsingSettings = Field(
         description="Settings for parsing documents retrieved from Zammad.",
         default_factory=DocumentParsingSettings,
+    )
+    base_url: HttpUrl = Field(
+        description="Zammad base URL",
+        examples=["https://my-zammad.example.com"],
     )
 
 
@@ -176,10 +185,6 @@ class ZammadAPISettings(BaseZammadSettings):
 
     type: Literal["api"] = "api"
 
-    base_url: HttpUrl = Field(
-        description="Zammad base URL",
-        examples=["https://my-zammad.example.com"],
-    )
     auth_token: SecretStr = Field(
         description="Zammad API authentication token",
     )
@@ -197,6 +202,12 @@ class ZammadEAISettings(BaseZammadSettings):
     eai_url: HttpUrl = Field(
         description="Zammad EAI API endpoint",
         examples=["https://my-zammad-eai.example.com/api/v1"],
+    )
+
+    ai_ticket_group_id: PositiveInt | None = Field(
+        description="The ID of the group to which AI-generated tickets should be assigned. If set to None, tickets will not be assigned to any specific group.",
+        examples=[1],
+        default=None,
     )
 
     # OAuth 2.0 Client Credentials Flow settings

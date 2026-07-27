@@ -17,6 +17,7 @@ from app.action.service import get_action_service
 from app.answer import get_answer_service
 from app.frontend import mount_frontend
 from app.models.api_v1 import HealthCheckResponse
+from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
 from app.triage import get_triage_service
 from app.utils.logging import getLogger
@@ -104,17 +105,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     exc_info=True,
                 )
 
-        logger.info("Initializing shared Triage instance")
+        logger.info("Initializing shared Triage, Answer, Action, and Preparser services")
         app.state.triage_service = get_triage_service(settings=settings)
         app.state.answer_service = get_answer_service(settings=settings)
         app.state.action_service = get_action_service(settings=settings, answer_service=app.state.answer_service)
+        app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
         if kafka_router is None:
             set_status("ready")
 
         yield
 
-        logger.info("Shutting down shared Triage instance")
+        logger.info("Shutting down shared Triage, Answer and Action services")
         set_status("shutdown")
         try:
             await app.state.triage_service.cleanup()
@@ -221,6 +223,19 @@ backend.include_router(
     router=answer_router,
     prefix="/api/v1",
 )
+
+
+@backend.get("/api/v1/prompt_versions", tags=["status"])
+async def get_prompt_versions() -> dict[str, int | None]:
+    """Return the versions of all loaded prompts.
+
+    Returns:
+        dict[str, int | None]: A dictionary mapping prompt names to their version numbers.
+    """
+    prompts = backend.state.triage_service.get_prompt_versions()
+    prompts.update(backend.state.answer_service.get_prompt_versions())
+
+    return prompts
 
 
 @backend.get("/api/v1/health", tags=["health"])

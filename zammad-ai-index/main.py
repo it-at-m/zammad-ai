@@ -31,11 +31,16 @@ logger: Logger = getLogger("zammad-ai-index")
 def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient | ZammadEAIClient) -> None:
     """Execute the complete indexing workflow.
 
-    Performs a four-step process:
-    1. Retrieve answer IDs for processing (full or incremental based on settings)
-    2. Fetch detailed answer data from Zammad
-    3. Prepare and filter data for Qdrant (only changed documents)
-    4. Add documents to Qdrant vector database in batches
+    Performs a nine-step process:
+    0. Retrieves answer IDs of filtered categories if category filtering is enabled
+    1. Retrieves answer IDs for processing based on configured criteria
+    2. Fetches detailed answer data for the retrieved answer IDs
+    3. Gets all points from Qdrant to compare with new data
+    4. Prepares and filters data for Qdrant, keeping only new or changed documents
+    5. Checks for deleted documents in Zammad and retrieves their IDs
+    6. Creates a snapshot in Qdrant before indexing to allow rollback if needed
+    7. Adds new and changed documents to Qdrant in batches for optimal performance
+    8. Deletes documents from Qdrant that correspond to deleted answer IDs in Zammad
 
     The method handles errors gracefully and ensures cleanup of resources.
     Process completion status is logged at info level.
@@ -47,23 +52,24 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
     logger.info("Starting indexing process...")
 
     try:
-        # Step 1: Retrieve answer IDs for processing
-        answer_ids: list[int] = retrieve_answer_ids(zammad_client)
+        # Step 0: Retrieve answer IDs of filtered categories if category filtering is enabled
+        answer_ids_in_category: list[int] = zammad_client.get_answer_ids_of_categories(settings.zammad.category_ids)
 
+        # Step 1: Retrieve answer IDs for processing
+        answer_ids: list[int] = retrieve_answer_ids(zammad_client, answer_ids_in_category)
+        answers: dict[int, KnowledgeBaseAnswer] = {}
         if not answer_ids:
-            logger.warning("No answer IDs found for processing. Exiting.")
-            return
+            logger.info("No answer IDs found for processing.")
         else:
             logger.info("Retrieved %d answer IDs for processing.", len(answer_ids))
 
-        # Step 2: Fetch detailed answer data
-        answers: dict[int, KnowledgeBaseAnswer] = get_answers_data(answer_ids, zammad_client)
+            # Step 2: Fetch detailed answer data
+            answers: dict[int, KnowledgeBaseAnswer] = get_answers_data(answer_ids, zammad_client)
 
-        if not answers:
-            logger.warning("No answer data retrieved. Exiting.")
-            return
-        else:
-            logger.info("Fetched data for %d answers.", len(answers))
+            if not answers:
+                logger.info("No answer data retrieved for the provided answer IDs.")
+            else:
+                logger.info("Fetched data for %d answers.", len(answers))
 
         # Step 3: Get all points from Qdrant
         all_points: list[Record] = qdrant_client.get_all_points()
@@ -72,7 +78,7 @@ def run_indexing(qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient |
         qdrant_items: list[QdrantDocumentItem] = _prepare_and_filter_data(answers, all_points, zammad_client)
 
         # Step 5: Check for deleted documents
-        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client)
+        deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, answer_ids_in_category)
 
         if not qdrant_items:
             logger.info("No new or changed documents to index.")

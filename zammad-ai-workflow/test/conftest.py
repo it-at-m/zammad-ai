@@ -19,6 +19,7 @@ from app.settings import (
     GenAISettings,
     GuardrailSettings,
     KafkaSettings,
+    PreparserSettings,
     TriageSettings,
     ZammadAISettings,
     ZammadAPISettings,
@@ -143,6 +144,7 @@ def base_settings() -> ZammadAISettings:
         guardrails=GuardrailSettings(
             enabled=False
         ),  # Disable guardrails by default for tests; individual tests can enable with settings_factory overrides
+        preparser=PreparserSettings(enabled=False),
         answer=AnswerSettings(
             ai_answer_disclaimer="",
         ),

@@ -10,6 +10,7 @@ thresholds, tool lists) while LangChain variables (like {text}, {categories})
 are used for PER-REQUEST data.
 """
 
+from datetime import date
 from typing import Any
 
 from app.models.triage import Category
@@ -51,6 +52,8 @@ def build_triage_context(
         >>> # Pass to Jinja2 renderer
         >>> renderer.render_template(triage_prompt, context)
     """
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
     return {
         "knowledge_base_enabled": bool(settings.answer.qdrant.collection_name),
         "dlf_enabled": settings.answer.dlf is not None,
@@ -63,6 +66,8 @@ def build_triage_context(
             }
             for c in categories
         ],
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
@@ -93,12 +98,17 @@ def build_answer_context(
     """
     tools = _build_tool_definitions(settings)
 
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
+
     return {
         "available_tools": [{"name": tool.name, "description": tool.description} for tool in tools],
         "knowledge_base_enabled": bool(settings.qdrant.collection_name),
         "dlf_enabled": settings.dlf is not None,
         "disclaimer": settings.ai_answer_disclaimer,
         "retrieval_num_documents": settings.qdrant.retrieval_num_documents,
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
@@ -126,6 +136,9 @@ def build_judge_context(
     """
     judge_settings = settings.answer.judge
 
+    today: date = date.today()
+    today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
+
     return {
         "thresholds": {
             "context_relevance": judge_settings.thresholds.context_relevance,
@@ -134,6 +147,8 @@ def build_judge_context(
         },
         "repair_enabled": judge_settings.enabled and judge_settings.max_repairs > 0,
         "max_repairs": judge_settings.max_repairs,
+        # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
+        "today": today_str,
     }
 
 
@@ -148,19 +163,11 @@ def _build_tool_definitions(settings: AnswerSettings) -> list[ToolDefinition]:
     """
     tools = []
 
-    # Website search tool is always available
-    tools.append(
-        ToolDefinition(
-            name="search_website",
-            description="Search public-facing website documentation and FAQs",
-        )
-    )
-
     # Knowledge base search tool (Qdrant)
     if settings.qdrant.collection_name:
         tools.append(
             ToolDefinition(
-                name="search_internal_knowledge_base",
+                name="search_internal_knowledgebase",
                 description=(
                     f"Query the internal knowledgebase for policies, procedures, "
                     f"and detailed information (collection: {settings.qdrant.collection_name})"
@@ -172,7 +179,7 @@ def _build_tool_definitions(settings: AnswerSettings) -> list[ToolDefinition]:
     if settings.dlf:
         tools.append(
             ToolDefinition(
-                name="search_dlf",
+                name="search_website",
                 description=f"Search the Dienstleistungsfinder API at {settings.dlf.url}",
             )
         )

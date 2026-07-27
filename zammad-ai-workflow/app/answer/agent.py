@@ -4,12 +4,13 @@ from logging import Logger
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import BaseTool, ToolException, ToolRuntime, tool
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.settings import GenAISettings
 from app.utils.logging import getLogger
 
@@ -131,7 +132,6 @@ def build_agent(
         temperature=genai_settings.answer_temperature,
         max_retries=genai_settings.max_retries,
         reasoning=genai_settings.answer_reasoning_config,
-        store=genai_settings.answer_store,
     )
 
     # Configure the tools
@@ -146,7 +146,10 @@ def build_agent(
         model=chat_model,
         system_prompt=system_prompt,
         tools=available_tools,
-        response_format=StructuredAgentResponse,
+        response_format=ToolStrategy(
+            schema=AnswerCandidate | NoAnswerPossible,
+            tool_message_content="Response candidate has been generated!",
+        ),
         context_schema=AgentContext,
     )
 

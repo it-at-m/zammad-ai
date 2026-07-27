@@ -2,6 +2,7 @@
 
 from base64 import b64decode
 from binascii import Error as BinasciiError
+from datetime import datetime, timedelta
 from logging import Logger
 from typing import Any, override
 
@@ -50,7 +51,7 @@ class ZammadAPIClient(BaseZammadClient):
     async def get_ticket(self, id: int) -> ZammadTicket:
         data = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
         try:
-            articles = TypeAdapter(list[ZammadArticle]).validate_python(data)
+            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(data)
         except ValidationError as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
         return ZammadTicket(id=id, articles=articles)
@@ -60,6 +61,19 @@ class ZammadAPIClient(BaseZammadClient):
         payload = ZammadAnswer(ticket_id=ticket_id, body=text, internal=internal, subject=subject)
         await self._request("POST", "/api/v1/ticket_articles", json=payload.model_dump())
         logger.info(f"Posted answer to ticket {ticket_id}")
+
+    @override
+    async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:
+        payload = {"group_id": group_id, "id": ticket_id}
+        await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
+        logger.info(f"Updated ticket {ticket_id} group to {group_id}")
+
+    @override
+    async def set_ticket_pending_close(self, ticket_id: int, days: int) -> None:
+        pending_date = (datetime.now() + timedelta(days=days)).isoformat()
+        payload = {"id": ticket_id, "state": "pending close", "pending_time": pending_date}
+        await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
+        logger.info(f"Updated ticket {ticket_id} to pending close after {days} days")
 
     @override
     async def post_shared_draft(self, ticket_id: int, text: str) -> None:

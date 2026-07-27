@@ -12,7 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
 from app.settings.answer import (
@@ -21,7 +21,9 @@ from app.settings.answer import (
     LangfusePromptConfig,
     StringPromptConfig,
 )
-from app.utils.context_builders import build_answer_context
+from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
+from app.utils.jinja2 import PromptTemplateRenderer, get_template_renderer
+from app.utils.langchain import extract_structured_response, with_recursion_limit
 from app.utils.logging import getLogger
 from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
@@ -76,7 +78,7 @@ class AnswerService:
         if settings.langfuse_enabled:
             self.langfuse_client = LangfuseClient()
 
-        agent_prompt: str = self._resolve_prompt(
+        self.agent_prompt, self.agent_prompt_version = self._resolve_prompt(
             prompt_config=settings.answer.agent_prompt,
             prompt_source_name="agent system prompt",
         )
@@ -84,33 +86,32 @@ class AnswerService:
         self.judge_settings: JudgeSettings = settings.answer.judge
         self.judge_handler: JudgeHandler | None = None
         if self.judge_settings.enabled:
-            judge_prompt: str = self._resolve_prompt(
+            self.judge_prompt, self.judge_prompt_version = self._resolve_prompt(
                 prompt_config=self.judge_settings.prompt,
                 prompt_source_name="judge prompt",
             )
             self.judge_handler = JudgeHandler(
-                genai_settings=settings.genai, prompt=judge_prompt, langfuse_client=self.langfuse_client
+                genai_settings=settings.genai, prompt=self.judge_prompt, langfuse_client=self.langfuse_client
             )
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
         # Setup the user message template as an object variable
         # Render with Jinja2 if the template contains Jinja2 syntax
-        from app.utils.jinja2 import get_template_renderer
-
+        renderer: PromptTemplateRenderer = get_template_renderer()
         user_msg_template_str = load_prompt(file_path=get_prompts_dir() / "answer" / "user_message_template.prompt.md")
-        renderer = get_template_renderer()
         if renderer._has_jinja2_syntax(user_msg_template_str):
             context = build_answer_context(settings.answer)
             user_msg_template_str = renderer.render_template(user_msg_template_str, context)
+
         self.user_message_template: PromptTemplate = PromptTemplate.from_template(
             template=user_msg_template_str,
         )
 
         self.agent: CompiledStateGraph[
-            AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]  # type: ignore
+            AgentState[AnswerCandidate], AgentContext, AgentState, AgentState[AnswerCandidate]  # type: ignore
         ] = build_agent(
             genai_settings=settings.genai,
-            system_prompt=agent_prompt,
+            system_prompt=self.agent_prompt,
             dlf_enabled=settings.answer.dlf is not None,
         )
         self.qdrant_kb_client = QdrantKBClient(
@@ -131,7 +132,7 @@ class AnswerService:
         user_text: str,
         category: str,
         session_id: str | None = None,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | NoAnswerPossible:
         """Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
 
         Parameters:
@@ -161,22 +162,31 @@ class AnswerService:
                 else RunnableConfig()
             )
             with propagate_attributes(session_id=session_id):
-                agent_result: dict = await self.agent.ainvoke(
+                agent_result = await self.agent.ainvoke(
                     input={"messages": [user_message]},
-                    config=config,
+                    config=with_recursion_limit(config),
                     context=self.agent_context,
                 )
-            structured_response: StructuredAgentResponse = await self._judge_and_repair(
+
+                
+            agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
+                agent_result,
+                (AnswerCandidate, NoAnswerPossible),
+            )
+            structured_response: AnswerCandidate | NoAnswerPossible = await self._judge_and_repair(
                 user_text=user_text,
                 category=category,
                 user_message=user_message,
-                structured_response=agent_result["structured_response"],
+                structured_response=agent_structured_response,
                 session_id=session_id,
                 config=config,
             )
-            if structured_response.response is not None and self.settings.answer.ai_answer_disclaimer.strip() != "":
-                structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
-            outcome = "success"
+            if isinstance(structured_response, NoAnswerPossible):
+                outcome = "no_answer"
+            else:
+                if self.settings.answer.ai_answer_disclaimer:
+                    structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
+                outcome = "success"
             return structured_response
         except AppError:
             raise
@@ -193,15 +203,18 @@ class AnswerService:
         user_text: str,
         category: str,
         user_message: HumanMessage,
-        structured_response: StructuredAgentResponse,
+        structured_response: AnswerCandidate | NoAnswerPossible,
         session_id: str | None,
         config: RunnableConfig,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | NoAnswerPossible:
         """Run judgment and optionally repair a response that failed checks."""
-        structured_response.auto_publish = True
-        if self.judge_handler is None or structured_response.response is None:
+        if isinstance(structured_response, NoAnswerPossible):
             return structured_response
-        repair_prompt: str = self._resolve_prompt(
+
+        structured_response.auto_publish = True
+        if self.judge_handler is None:
+            return structured_response
+        repair_prompt, _ = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,
             prompt_source_name="judge repair prompt",
         )
@@ -237,7 +250,12 @@ class AnswerService:
                     context=self.agent_context,
                 )
 
-            structured_response = agent_result["structured_response"]
+            structured_response = extract_structured_response(
+                agent_result,
+                (AnswerCandidate, NoAnswerPossible),
+            )
+            if isinstance(structured_response, NoAnswerPossible):
+                return structured_response
         logger.debug(
             f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response."
         )
@@ -257,42 +275,43 @@ class AnswerService:
         self,
         prompt_config: StringPromptConfig | FilePromptConfig | LangfusePromptConfig,
         prompt_source_name: str,
-    ) -> str:
+    ) -> tuple[str, int | None]:
         """Resolve a prompt from settings, a file, or Langfuse."""
-        if isinstance(prompt_config, LangfusePromptConfig):
-            if self.langfuse_client is None:
-                raise ValueError(f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source.")
-            try:
-                return self.langfuse_client.get_prompt(
-                    prompt_name=prompt_config.prompt.name,
-                    prompt_label=prompt_config.prompt.label,
-                )
-            except LangfuseError as e:
-                logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
-                raise AnswerServiceError(
-                    f"Failed to fetch {prompt_source_name} from Langfuse",
-                    retryable=True,
-                ) from e
-        if isinstance(prompt_config, FilePromptConfig):
-            # Load from file and render with Jinja2 if it contains Jinja2 syntax
-            from app.utils.jinja2 import get_template_renderer
+        version: int | None = None
+        match prompt_config:
+            case LangfusePromptConfig():
+                if self.langfuse_client is None:
+                    raise ValueError(
+                        f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source."
+                    )
+                try:
+                    template_content, version = self.langfuse_client.get_prompt(
+                        prompt_name=prompt_config.prompt.name,
+                        prompt_label=prompt_config.prompt.label,
+                    )
+                except LangfuseError as e:
+                    logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
+                    raise AnswerServiceError(
+                        f"Failed to fetch {prompt_source_name} from Langfuse",
+                        retryable=True,
+                    ) from e
+            case FilePromptConfig():
+                template_content: str = load_prompt(file_path=prompt_config.prompt)
+            case StringPromptConfig():
+                template_content: str = prompt_config.prompt
+            case _:
+                raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
 
-            template_content = load_prompt(file_path=prompt_config.prompt)
-            renderer = get_template_renderer()
-            if renderer._has_jinja2_syntax(template_content):
-                context = build_answer_context(self.settings.answer)
-                return renderer.render_template(template_content, context)
-            return template_content
-        if isinstance(prompt_config, StringPromptConfig):
-            # Check if string contains Jinja2 syntax and render if so
-            from app.utils.jinja2 import get_template_renderer
-
-            renderer = get_template_renderer()
-            if renderer._has_jinja2_syntax(prompt_config.prompt):
-                context = build_answer_context(self.settings.answer)
-                return renderer.render_template(prompt_config.prompt, context)
-            return prompt_config.prompt
-        raise ValueError(f"Invalid type for {prompt_source_name} in settings.")
+        renderer: PromptTemplateRenderer = get_template_renderer()
+        if renderer._has_jinja2_syntax(template_content):
+            # Provide both answer and judge contexts so templates like the
+            # judge prompt can access 'thresholds', 'repair_enabled', etc.
+            answer_ctx = build_answer_context(self.settings.answer)
+            judge_ctx = build_judge_context(self.settings)
+            context = merge_contexts(answer_ctx, judge_ctx)
+            return renderer.render_template(template_content, context), version
+        else:
+            return template_content, version
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
@@ -306,6 +325,23 @@ class AnswerService:
         finally:
             global _service
             _service = None
+
+    def get_prompt_versions(self) -> dict[str, int | None]:
+        """Return a dictionary mapping prompt names to their version numbers.
+
+        Returns:
+            dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
+        """
+        if self.settings.answer.agent_prompt.type == "langfuse":
+            prompts: dict[str, int | None] = {
+                "answer": self.agent_prompt_version,
+            }
+        else:
+            prompts: dict[str, int | None] = {}
+
+        if self.judge_handler is not None and self.settings.answer.judge.prompt.type == "langfuse":
+            prompts["judge"] = self.judge_prompt_version
+        return prompts
 
 
 _service: AnswerService | None = None
