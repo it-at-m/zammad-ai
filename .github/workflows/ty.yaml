@@ -34,11 +34,14 @@ jobs:
         working-directory: ${{ matrix.working-directory }}
         run: |
           uv python install
-
       - name: Install dependencies
         working-directory: ${{ matrix.working-directory }}
         run: |
-          uv sync --locked --all-extras --group kreuzberg
+          if [ "${{ matrix.working-directory }}" = "./slm-guardrail" ]; then
+            uv sync --locked --all-extras
+          else
+            uv sync --locked --all-extras --group kreuzberg
+          fi
 
       - name: Run ty check
         working-directory: ${{ matrix.working-directory }}
