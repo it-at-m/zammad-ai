@@ -2,7 +2,7 @@ api:
   host: 0.0.0.0
   port: 8081
   auth_token:
-  max_payload_bytes: 65536
+  max_input_length: 10000
 
 guardrails:
   enabled: true

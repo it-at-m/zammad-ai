@@ -76,6 +76,13 @@ async def evaluate_prompt(
     model_id = getattr(payload, "model", None) or settings.guardrails.default_model
     if not service.has_model(model_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+    # Enforce configured maximum input length
+    max_len = settings.api.max_input_length
+    if max_len and len(payload.text or "") > max_len:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Input text length exceeds maximum allowed ({max_len} characters)",
+        )
     return await service.evaluate(payload.text, threshold=thr, model_id=model_id)
 
 
@@ -92,6 +99,13 @@ async def evaluate_response(
     model_id = getattr(payload, "model", None) or settings.guardrails.default_model
     if not service.has_model(model_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+    # Enforce configured maximum input length for both prompt and response
+    max_len = settings.api.max_input_length
+    if max_len and len(payload.text or "") + len(payload.response or "") > max_len:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Input text length exceeds maximum allowed ({max_len} characters)",
+        )
     return await service.evaluate_response(payload.text, payload.response, threshold=thr, model_id=model_id)
 
 

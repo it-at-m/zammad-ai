@@ -67,6 +67,7 @@ Configure via environment variables (prefix `SLM_GUARDRAIL_`) or `config.yaml`.
 - `API__HOST` bind host, default `0.0.0.0`
 - `API__PORT` bind port, default `8081`
 - `API__AUTH_TOKEN` optional Bearer token to require on requests
+ - `API__MAX_INPUT_LENGTH` maximum allowed characters for input text (prompt/response), default `10_000`
 - `GUARDRAILS__MAX_CONCURRENCY` maximum concurrent inferences (default 4)
 - `GUARDRAILS__CONFIDENCE_THRESHOLD` decision threshold, default `0.7`
 - `GUARDRAILS__HUGGINGFACE_CACHE_DIR` cache directory, default `/app/huggingface_cache`
@@ -79,7 +80,7 @@ api:
   host: 0.0.0.0
   port: 8081
   auth_token:
-  max_payload_bytes: 65536
+  max_input_length: 65536
 
 guardrails:
   confidence_threshold: 0.7

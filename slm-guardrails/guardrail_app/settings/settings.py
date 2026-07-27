@@ -19,7 +19,7 @@ class APISettings(BaseModel):
     host: str = Field(default="0.0.0.0", description="Bind host for FastAPI server")
     port: int = Field(default=8081, description="Bind port for FastAPI server", ge=1, le=65535)
     auth_token: str | None = Field(default=None, description="Optional bearer token for requests")
-    max_payload_bytes: int = Field(default=65536, description="Max request payload size")
+    max_input_length: int = Field(default=10_000, description="Max input length (characters) for text fields")
 
 
 class GuardrailSettings(BaseModel):
