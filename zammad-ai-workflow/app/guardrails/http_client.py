@@ -1,9 +1,4 @@
-"""HTTP client-based GuardrailService.
-
-This replaces the previous in-process GLiNER implementation. When enabled,
-all checks call the configured slm-guardrail FastAPI service. When disabled,
-the client returns safe results immediately (skips guardrails).
-"""
+"""HTTP client-based GuardrailService."""
 
 from __future__ import annotations
 
@@ -41,14 +36,8 @@ class GuardrailService:
         self.settings = settings
         self._base_url = settings.base_url.rstrip("/")
         self._timeout = settings.request_timeout_seconds
-        self._auth_header = (
-            {"Authorization": f"Bearer {settings.auth_token}"}
-            if settings.auth_token
-            else {}
-        )
+        self._auth_header = {"Authorization": f"Bearer {settings.auth_token}"} if settings.auth_token else {}
 
-        # Create a shared AsyncClient; FastAPI/uvicorn lifecycle will span calls.
-        # We rely on truststore's global injection for TLS roots.
         self._client = httpx.AsyncClient(
             timeout=self._timeout,
             verify=settings.verify_tls,
@@ -66,7 +55,7 @@ class GuardrailService:
             logger.debug("Guardrail skipped for empty text")
             return SAFE_PROMPT_RESULT
 
-        url = f"{self._base_url}/guardrails/prompt"
+        url = f"{self._base_url}/api/v1/guardrails/prompt"
         payload = {"text": text, "threshold": self.settings.confidence_threshold}
         try:
             resp: Response = await self._client.post(url, json=payload)
@@ -88,7 +77,7 @@ class GuardrailService:
             logger.debug("Guardrail skipped for empty response")
             return SAFE_RESPONSE_RESULT
 
-        url = f"{self._base_url}/guardrails/response"
+        url = f"{self._base_url}/api/v1/guardrails/response"
         payload = {
             "text": text,
             "response": response,

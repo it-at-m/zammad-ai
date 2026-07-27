@@ -21,7 +21,7 @@ class GuardrailSettings(BaseModel):
         description="Whether to block processing on high-risk content or just flag it.",
     )
     base_url: str = Field(
-        default="http://localhost:8081/api/v1",
+        default="http://localhost:8081",
         description="Base URL of the slm-guardrail FastAPI service (without trailing slash).",
     )
     request_timeout_seconds: float = Field(
