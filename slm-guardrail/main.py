@@ -73,10 +73,10 @@ async def evaluate_prompt(
     """Evaluate a user prompt text for safety via the model service."""
     _auth_check(request, settings)
     thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
-    mid = getattr(payload, "model", None) or settings.guardrails.default_model
-    if not service.has_model(mid):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {mid}")
-    return await service.evaluate(payload.text, threshold=thr, model_id=mid)
+    model_id = getattr(payload, "model", None) or settings.guardrails.default_model
+    if not service.has_model(model_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+    return await service.evaluate(payload.text, threshold=thr, model_id=model_id)
 
 
 @app.post("/api/v1/guardrails/response", response_model=GuardrailResponseResult)
@@ -89,10 +89,10 @@ async def evaluate_response(
     """Evaluate a generated response (with prompt context) for safety."""
     _auth_check(request, settings)
     thr = settings.guardrails.confidence_threshold if payload.threshold is None else float(payload.threshold)
-    mid = getattr(payload, "model", None) or settings.guardrails.default_model
-    if not service.has_model(mid):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {mid}")
-    return await service.evaluate_response(payload.text, payload.response, threshold=thr, model_id=mid)
+    model_id = getattr(payload, "model", None) or settings.guardrails.default_model
+    if not service.has_model(model_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id}")
+    return await service.evaluate_response(payload.text, payload.response, threshold=thr, model_id=model_id)
 
 
 @app.get("/ready")

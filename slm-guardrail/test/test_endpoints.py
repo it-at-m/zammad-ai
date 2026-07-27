@@ -93,7 +93,7 @@ async def test_service_starts_and_loads_opir(monkeypatch) -> None:
         },
     )
 
-    def fake_load_model(self, model_id, cfg, gliner_cls):
+    def fake_load_model(self, model_id, cfg):
         if model_id == "opir":
             self._models[model_id] = DummyOpirModel()
         else:
@@ -118,7 +118,7 @@ async def test_prompt_opir_model(monkeypatch) -> None:
 
     import asyncio
 
-    def fake_load_model(self, model_id, cfg, gliner_cls):
+    def fake_load_model(self, model_id, cfg):
         self._models[model_id] = DummyOpirModel() if model_id == "opir" else DummyModel()
         self._semaphores[model_id] = asyncio.Semaphore(1)
 

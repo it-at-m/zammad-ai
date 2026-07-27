@@ -62,7 +62,7 @@ class _GLiClassGuardrailAdapter:
         pipeline = self._binary_pipeline if single_label else self._multi_label_pipeline
         try:
             output = pipeline(text, labels, threshold=threshold, return_hierarchical=True)
-        except Exception as e:
+        except Exception:
             logger.error("GLiClass pipeline invocation failed.", exc_info=True)
             # Return zeros so upstream can still operate
             return {label: 0.0 for label in labels}
@@ -169,12 +169,11 @@ class GuardrailService:
             if backend == "gliclass":
                 model = _GLiClassGuardrailAdapter(model_name, cache_dir, offline)
             else:
-                # Import GLiNER2 only when needed so gliclass-only deployments don't require it
                 try:
                     from gliner2 import GLiNER2  # local import
                 except ImportError as e:
                     logger.error(
-                        "gliner2 is required for model '%s' but not installed. Install with `pip install gliner2`.",
+                        "gliner2 is required for model '%s' but not installed.",
                         model_id,
                         exc_info=True,
                     )
@@ -211,14 +210,24 @@ class GuardrailService:
         """Return True if the model_id is known and a model instance is loaded."""
         return model_id in self._models and self._models.get(model_id) is not None
 
+    def _get_executor(self, model_key: str) -> ThreadPoolExecutor:
+        executor = self._executors.get(model_key)
+        if executor is None:
+            executor = ThreadPoolExecutor(
+                max_workers=self.settings.max_concurrency,
+                thread_name_prefix=f"guardrail-{model_key}",
+            )
+            self._executors[model_key] = executor
+        return executor
+
     async def evaluate(self, text: str, threshold: float | None, model_id: str | None = None) -> GuardrailResult:
         """Classify input text for safety, toxicity, and jailbreak indicators."""
-        mid = model_id or self.settings.default_model
-        if mid not in self._models:
-            raise RuntimeError(f"Model '{mid}' is not loaded.")
+        model_key = model_id or self.settings.default_model
+        if model_key not in self._models:
+            raise RuntimeError(f"Model '{model_key}' is not loaded.")
 
-        model = self._models[mid]
-        sem = self._semaphores[mid]
+        model = self._models[model_key]
+        sem = self._semaphores[model_key]
 
         if not text or not text.strip():
             logger.debug("Guardrail check skipped for empty text")
@@ -229,7 +238,7 @@ class GuardrailService:
             try:
                 loop = asyncio.get_running_loop()
                 raw = await loop.run_in_executor(
-                    self._executors[mid],
+                    self._get_executor(model_key),
                     model.classify_text,
                     text,
                     {
@@ -260,12 +269,12 @@ class GuardrailService:
         self, text: str, response: str, threshold: float | None, model_id: str | None = None
     ) -> GuardrailResponseResult:
         """Classify a generated response (with prompt context) for safety and refusal."""
-        mid = model_id or self.settings.default_model
-        if mid not in self._models:
-            raise RuntimeError(f"Model '{mid}' is not loaded.")
+        model_key = model_id or self.settings.default_model
+        if model_key not in self._models:
+            raise RuntimeError(f"Model '{model_key}' is not loaded.")
 
-        model = self._models[mid]
-        sem = self._semaphores[mid]
+        model = self._models[model_key]
+        sem = self._semaphores[model_key]
 
         if not response or not response.strip():
             logger.debug("Guardrail check skipped for empty response text")
@@ -277,7 +286,7 @@ class GuardrailService:
                 combined_text = f"Prompt: {text}\nResponse: {response}"
                 loop = asyncio.get_running_loop()
                 raw = await loop.run_in_executor(
-                    self._executors[mid],
+                    self._get_executor(model_key),
                     model.classify_text,
                     combined_text,
                     {
