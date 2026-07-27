@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         logger.info("slm-guardrails shutting down")
+        await service.close()
 
 
 app = FastAPI(title="slm-guardrails", version="0.1.0", lifespan=lifespan)
