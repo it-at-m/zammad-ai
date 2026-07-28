@@ -8,13 +8,13 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
 from langfuse import propagate_attributes
 
 from app.errors import TriageJudgeError, classify_provider_error
 from app.models.answer import JudgeResult
 from app.observe import LangfuseClient
-from app.settings.genai import GenAISettings
+from app.settings.genai import GenAIProviderSettings
+from app.utils.genai_provider import get_chat_model
 from app.utils.langchain import extract_structured_response
 from app.utils.logging import getLogger
 
@@ -25,7 +25,7 @@ class JudgeHandler:
     """Judge generated answers with a structured LLM response."""
 
     def __init__(
-        self, genai_settings: GenAISettings, prompt: str, langfuse_client: LangfuseClient | None = None
+        self, genai_settings: GenAIProviderSettings, prompt: str, langfuse_client: LangfuseClient | None = None
     ) -> None:
         """Initialize the judge chain for the configured GenAI backend."""
         self.langfuse_client: LangfuseClient | None = langfuse_client
@@ -33,16 +33,8 @@ class JudgeHandler:
         if not prompt.strip():
             raise ValueError("Judge prompt cannot be empty.")
 
-        match genai_settings.sdk:
-            case "openai":
-                self.chat_model = ChatOpenAI(
-                    model=genai_settings.judge_model or genai_settings.chat_model,
-                    temperature=genai_settings.judge_temperature,
-                    max_retries=genai_settings.max_retries,
-                    reasoning=genai_settings.judge_reasoning_config,
-                )
-            case _:
-                raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
+        # Use provider factory to construct the chat model.
+        self.chat_model = get_chat_model(genai_settings, "judge")
 
         self._judge_agent = create_agent(
             model=self.chat_model,

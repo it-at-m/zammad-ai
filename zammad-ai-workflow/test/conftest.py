@@ -16,7 +16,7 @@ from pydantic import HttpUrl, SecretStr
 
 from app.settings import (
     AnswerSettings,
-    GenAISettings,
+    GenAIOpenAISettings,
     GuardrailSettings,
     KafkaSettings,
     PreparserSettings,
@@ -109,7 +109,7 @@ def base_settings() -> ZammadAISettings:
     return ZammadAISettings.model_construct(
         mode="unittest",
         langfuse_enabled=False,
-        genai=GenAISettings(),
+        genai=GenAIOpenAISettings(),
         zammad=ZammadAPISettings(
             base_url=HttpUrl(url="https://example.com"),
             auth_token=SecretStr(secret_value="test-token"),
@@ -380,13 +380,13 @@ def fake_langfuse_client() -> FakeLangfuseClient:
 
 @pytest.fixture
 def fake_genai_handler() -> FakeGenAIHandler:
-    """Create a FakeGenAIHandler configured with default GenAISettings and prompts.
+    """Create a FakeGenAIHandler configured with default GenAIProviderSettings and prompts.
 
     Returns:
-        handler (FakeGenAIHandler): A FakeGenAIHandler instance using a default GenAISettings() and DEFAULT_GENAI_PROMPTS.
+        handler (FakeGenAIHandler): A FakeGenAIHandler instance using a default GenAIOpenAISettings() and DEFAULT_GENAI_PROMPTS.
     """
     return FakeGenAIHandler(
-        genai_settings=GenAISettings(),
+        genai_settings=GenAIOpenAISettings(),
         prompts=DEFAULT_GENAI_PROMPTS,
     )
 

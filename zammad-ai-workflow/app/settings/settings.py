@@ -15,7 +15,7 @@ from pydantic_settings import (
 from .answer import AnswerSettings
 from .api import APISettings
 from .frontend import FrontendSettings
-from .genai import GenAISettings
+from .genai import GenAIOpenAISettings, GenAIProviderSettings
 from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .logging import LoggingSettings
@@ -79,9 +79,10 @@ class ZammadAISettings(BaseSettings):
             description="Default use case",
         ),
     )
-    genai: GenAISettings = Field(
+    genai: GenAIProviderSettings = Field(
         description="Settings for GenAI integration, including model selection and configuration.",
-        default_factory=lambda: GenAISettings(),
+        default_factory=lambda: GenAIOpenAISettings(),
+        discriminator="sdk",
     )
 
     zammad: ZammadAPISettings | ZammadEAISettings = Field(

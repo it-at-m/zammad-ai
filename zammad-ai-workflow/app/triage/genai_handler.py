@@ -17,7 +17,8 @@ from langfuse import observe, propagate_attributes
 from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.observe import LangfuseClient
-from app.settings.genai import GenAISettings
+from app.settings.genai import GenAIProviderSettings
+from app.utils.genai_provider import get_chat_model
 from app.utils.langchain import extract_structured_response, with_recursion_limit
 from app.utils.logging import getLogger
 
@@ -38,7 +39,7 @@ class GenAIHandler:
 
     REQUIRED_PROMPT_KEYS = {"triage", "days_since_request", "processing_id"}
 
-    def __init__(self, genai_settings: GenAISettings, prompts: dict[str, str]) -> None:
+    def __init__(self, genai_settings: GenAIProviderSettings, prompts: dict[str, str]) -> None:
         """Initialize model configuration and durable operation chains.
 
         Args:
@@ -79,19 +80,8 @@ class GenAIHandler:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        # Initialize LLM based on configured SDK
-        match genai_settings.sdk:
-            case "openai":
-                from langchain_openai import ChatOpenAI
-
-                self.chat_model = ChatOpenAI(
-                    model=genai_settings.chat_model,
-                    temperature=genai_settings.triage_temperature,
-                    max_retries=genai_settings.max_retries,
-                    reasoning=genai_settings.triage_reasoning_config,
-                )
-            case _:
-                raise ValueError(f"Unsupported GenAI SDK: {genai_settings.sdk}")
+        # Initialize LLM via provider factory.
+        self.chat_model = get_chat_model(genai_settings, "triage")
 
         # Build durable chains once so each operation reuses the same chain instance.
         self._categorization_chain = self._build_chain(prompt=prompts["triage"], output_schema=CategorizationResult)
