@@ -15,7 +15,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid5
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from markdownify import markdownify as md
-from pydantic import PositiveInt
+from pydantic import BaseModel, Field, PositiveInt
 
 from job.qdrant.qdrant import QdrantKBClient
 from job.settings.law import LawConfig
@@ -35,10 +35,22 @@ def _fetch_html(url: str, timeout: PositiveInt = 60) -> str:
         return resp.read().decode("utf-8", errors="ignore")
 
 
-def _extract_paragraphs_from_markdown(markdown_text: str) -> list[dict[str, str]]:
+class Paragraph(BaseModel):
+    """Typed paragraph extracted from markdown.
+
+    Keep fields small: full text and any references. Also preserve paragraph
+    identifier and title for metadata convenience.
+    """
+    paragraph: str
+    title: str = ""
+    full: str
+    references: list[str] = Field(default_factory=list)
+
+
+def _extract_paragraphs_from_markdown(markdown_text: str) -> list[Paragraph]:
     """Extract paragraphs based on markdownify-produced '### § <num><title>' headings.
 
-    Returns list of dicts with keys: paragraph, title, full.
+    Returns list of Paragraph model instances.
     """
     import re
 
@@ -50,7 +62,7 @@ def _extract_paragraphs_from_markdown(markdown_text: str) -> list[dict[str, str]
     if not matches:
         logger.warning("No paragraph headings detected in markdown text")
 
-    paragraphs: list[dict[str, str]] = []
+    paragraphs: list[Paragraph] = []
     for i, m in enumerate(matches):
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown_text)
@@ -58,18 +70,25 @@ def _extract_paragraphs_from_markdown(markdown_text: str) -> list[dict[str, str]
         para_title = (m.group("title") or "").strip()
         body = markdown_text[start:end].strip()
         full = f"§ {para_num} {para_title}\n\n{body}".strip()
-        paragraphs.append({
-            "paragraph": para_num,
-            "title": para_title,
-            "full": full,
-        })
+        paragraphs.append(Paragraph(paragraph=para_num, title=para_title, full=full))
     return paragraphs
 
 
-def _extract_annexes_from_markdown(markdown_text: str) -> list[dict[str, str | list[str]]]:
+class Annex(BaseModel):
+    """Typed annex extracted from markdown.
+
+    Contains the full annex text and the list of references it mentions.
+    """
+    annex: str
+    title: str = ""
+    full: str
+    references: list[str] = Field(default_factory=list)
+
+
+def _extract_annexes_from_markdown(markdown_text: str) -> list[Annex]:
     """Extract annexes based on markdownify-produced '### Anlage <num><title>' headings.
 
-    Returns list of dicts with keys: annex, title, full.
+    Returns list of Annex model instances.
     """
     import re
 
@@ -80,7 +99,7 @@ def _extract_annexes_from_markdown(markdown_text: str) -> list[dict[str, str | l
     if not matches:
         logger.debug("No annex headings detected in markdown text")
 
-    annexes: list[dict[str, str | list[str]]] = []
+    annexes: list[Annex] = []
     for i, m in enumerate(matches):
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown_text)
@@ -89,16 +108,11 @@ def _extract_annexes_from_markdown(markdown_text: str) -> list[dict[str, str | l
         annex_references = [ref.strip() for ref in m.group("references").split(",")]
         body = markdown_text[start:end].strip()
         full = f"Anlage {annex_num} {annex_title}\n\n{body}".strip()
-        annexes.append({
-            "annex": annex_num,
-            "references": annex_references,
-            "title": annex_title,
-            "full": full,
-        })
+        annexes.append(Annex(annex=annex_num, title=annex_title, references=annex_references, full=full))
     return annexes
 
 
-def _chunk_paragraphs(paragraphs: list[dict[str, str]], chunk_size: PositiveInt, chunk_overlap: PositiveInt) -> list[Document]:
+def _chunk_paragraphs(paragraphs: list[Paragraph], chunk_size: PositiveInt, chunk_overlap: PositiveInt) -> list[Document]:
     """Split full paragraph text into smaller chunks for better retrieval."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -110,14 +124,17 @@ def _chunk_paragraphs(paragraphs: list[dict[str, str]], chunk_size: PositiveInt,
     now = datetime.now(timezone.utc).isoformat()
 
     for p in paragraphs:
-        chunks = splitter.split_text(p["full"]) if p["full"] else []
+        # p is a Paragraph model; use its full text for splitting and preserve
+        # paragraph identifier and title in metadata.
+        text: str = p.full
+        chunks = splitter.split_text(text) if p.full else []
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
             meta = {
                 "document_type": "paragraph",
                 "source": "law",
-                "paragraph": p["paragraph"],
-                "title": p["title"],
+                "paragraph": p.paragraph,
+                "title": p.title,
                 "vector_updatedAt": now,
                 "chunk": idx,
                 "chunk_count": count,
@@ -127,8 +144,11 @@ def _chunk_paragraphs(paragraphs: list[dict[str, str]], chunk_size: PositiveInt,
     return docs
 
 
-def _chunk_annexes(annexes: list[dict[str, str | list[str]]], chunk_size: PositiveInt, chunk_overlap: PositiveInt) -> list[Document]:
-    """Split full annex text into smaller chunks for better retrieval."""
+def _chunk_annexes(annexes: list[Annex], chunk_size: PositiveInt, chunk_overlap: PositiveInt) -> list[Document]:
+    """Split full annex text (Annex models) into smaller chunks for better retrieval.
+
+    This preserves Annex.references in the chunk metadata.
+    """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -139,22 +159,19 @@ def _chunk_annexes(annexes: list[dict[str, str | list[str]]], chunk_size: Positi
     now = datetime.now(timezone.utc).isoformat()
 
     for a in annexes:
-
-        full = a["full"]
-
-        if isinstance(full, str):
-            chunks = splitter.split_text(full)
-        else:
-            chunks = []
+        # a is an Annex model; use a.full for splitting and keep a.references
+        # attached to each chunk's metadata.
+        text: str = a.full
+        chunks = splitter.split_text(text) if a.full else []
 
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
             meta = {
                 "document_type": "annex",
                 "source": "law",
-                "annex": a["annex"],
-                "title": a["title"],
-                "references": a["references"],
+                "annex": a.annex,
+                "title": a.title,
+                "references": a.references,
                 "vector_updatedAt": now,
                 "chunk": idx,
                 "chunk_count": count,
