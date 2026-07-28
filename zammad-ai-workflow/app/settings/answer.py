@@ -141,6 +141,21 @@ class QdrantSettings(BaseModel):
     )
 
 
+class LawToolSettings(BaseModel):
+    """Settings for exposing one indexed law as an answer-agent tool."""
+
+    id: str = Field(
+        description="Stable identifier of the indexed law, matching the law_id metadata in Qdrant.",
+        examples=["fev", "stvg"],
+        min_length=1,
+    )
+    name: str = Field(
+        description="Human-readable name of the law used in tool descriptions.",
+        examples=["Fahrerlaubnis-Verordnung"],
+        min_length=1,
+    )
+
+
 class DLFSettings(BaseModel):
     """Settings for the Dienstleistungsfinder (DLF) integration."""
 
@@ -176,6 +191,10 @@ class AnswerSettings(BaseModel):
     )
     qdrant: QdrantSettings = Field(
         default=QdrantSettings(),
+    )
+    laws: list[LawToolSettings] = Field(
+        default_factory=list,
+        description="Indexed laws to expose as separate retrieval tools. Each id must match Qdrant metadata law_id.",
     )
     judge: JudgeSettings = Field(
         default_factory=JudgeSettings,

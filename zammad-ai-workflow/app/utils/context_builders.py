@@ -13,6 +13,7 @@ are used for PER-REQUEST data.
 from datetime import date
 from typing import Any
 
+from app.answer.laws import build_law_tool_name
 from app.models.triage import Category
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings
@@ -181,6 +182,14 @@ def _build_tool_definitions(settings: AnswerSettings) -> list[ToolDefinition]:
             ToolDefinition(
                 name="search_website",
                 description=f"Search the Dienstleistungsfinder API at {settings.dlf.url}",
+            )
+        )
+
+    for law in settings.laws:
+        tools.append(
+            ToolDefinition(
+                name=build_law_tool_name(law.id),
+                description=f"Search indexed legal text from {law.name} (law_id: {law.id})",
             )
         )
 

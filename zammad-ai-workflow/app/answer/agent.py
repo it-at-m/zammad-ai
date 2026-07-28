@@ -11,10 +11,12 @@ from pydantic import BaseModel
 
 from app.models.answer import StructuredAgentResponse
 from app.settings import GenAISettings
+from app.settings.answer import LawToolSettings
 from app.utils.logging import getLogger
 
 from .dlf import DLFClient, DLFDocument, DLFError, SearchDLFInput
 from .knowledgebase import QdrantKBClient, QdrantKBError, RetrieveDocumentsKBOutput, SearchQdrantKBInput
+from .laws import build_law_tool_name
 
 logger: Logger = getLogger("zammad-ai.answer.agent")
 
@@ -109,10 +111,49 @@ async def search_knowledgebase(
         raise ToolException("Failed to retrieve documents from Knowledge Base") from e
 
 
+def build_law_tool(law: LawToolSettings) -> BaseTool:
+    """Create a retrieval tool scoped to one configured law."""
+    law_id = law.id
+    law_name = law.name
+    tool_name = build_law_tool_name(law_id)
+
+    @tool(
+        tool_name,
+        description=(
+            f"Retrieve relevant paragraphs and annexes from the indexed law '{law_name}' "
+            f"(law_id: {law_id}). Use this when additional legal information from this law is needed."
+        ),
+        args_schema=SearchQdrantKBInput,
+        parse_docstring=False,
+        response_format="content",
+    )
+    async def search_law(
+        runtime: ToolRuntime[AgentContext],
+        query: str,
+        num_documents: int = 5,
+        offset: int = 0,
+    ) -> RetrieveDocumentsKBOutput:
+        qdrant_client: QdrantKBClient = runtime.context.qdrant_kb_client
+        try:
+            relevant_documents_with_scores: list[tuple[Document, float]] = await qdrant_client.asearch_law_documents(
+                law_id=law_id,
+                query=query,
+                k=num_documents,
+                offset=offset,
+            )
+            return RetrieveDocumentsKBOutput(documents_with_relevance_score=relevant_documents_with_scores)
+        except QdrantKBError as e:
+            logger.error("Error retrieving law documents from Qdrant", exc_info=True)
+            raise ToolException(f"Failed to retrieve documents from {law_name}") from e
+
+    return search_law
+
+
 def build_agent(
     genai_settings: GenAISettings,
     system_prompt: str,
     dlf_enabled: bool = True,
+    laws: list[LawToolSettings] | None = None,
 ) -> Any:
     """Constructs a LangChain agent configured for Zammad AI Answer using the provided model settings, system prompt, and tools.
 
@@ -120,6 +161,7 @@ def build_agent(
         genai_settings (GenAISettings): Model and generation parameters used to create the chat model.
         system_prompt (str): System prompt supplied to the agent.
         dlf_enabled (bool): If True, include the DLF website search tool in the agent's toolset.
+        laws (list[LawToolSettings] | None): Indexed laws to expose as dedicated retrieval tools.
 
     Returns:
         CompiledStateGraph[AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]]:
@@ -139,6 +181,8 @@ def build_agent(
     ]
     if dlf_enabled:
         available_tools.append(search_dlf)
+    for law in laws or []:
+        available_tools.append(build_law_tool(law))
 
     # Create the agent via the factory method
     agent: Any = create_agent(
