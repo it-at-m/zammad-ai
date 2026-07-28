@@ -115,6 +115,29 @@ Common local services:
 - Prometheus: `http://localhost:9091`
 - Grafana: `http://localhost:3000`
 
+## Local image build and usage
+Build the image:
+
+```bash
+docker build -t zammad-ai:latest -f Dockerfile .
+```
+Run the container:
+- add `.env`: `--env-file .env`
+- add `config.yaml`: `-v "$(cygpath -m "$PWD")/config.yaml:/app/config.yaml"`
+- add cert: `-e SSL_CERT_FILE=/app/cert.pem -v "$(cygpath -m "$PWD")/cacerts-lhm.crt:/app/cert.pem"`
+- on PowerShell, use `${PWD}` or an absolute Windows path instead of `$(pwd)`
+- on Git Bash, use `$(cygpath -m "$PWD")` or an absolute Windows path with forward slashes
+- if `.env` already defines `SSL_CERT_FILE`, remove it or make sure it points to `/app/cert.pem` inside the container
+
+```bash
+docker run --env-file .env -v "$(cygpath -m "$PWD")/config.yaml:/app/config.yaml" -v "$(cygpath -m "$PWD")/huggingface_cache:/app/huggingface_cache" -p 8080:8080 zammad-ai:latest
+```
+Git Bash full example with config and cert:
+
+```bash
+docker run --env-file .env -e SSL_CERT_FILE=/app/cert.pem -v "$(cygpath -m "$PWD")/config.yaml:/app/config.yaml" -v "$(cygpath -m "$PWD")/cacerts-lhm.crt:/app/cert.pem" -p 8080:8080 zammad-ai:latest
+```
+
 ## Testing and Quality
 
 Run from this service directory (`zammad-ai-workflow/`):
