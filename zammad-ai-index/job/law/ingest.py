@@ -242,6 +242,25 @@ def ingest_law(law: LawConfig, qdrant: QdrantKBClient) -> None:
         ids = _build_ids_for_documents(law.id, docs)
         qdrant.add_raw_documents(docs, ids)
         logger.info("Indexed %d chunks for law %s", len(docs), law.id)
+        # Reconcile Qdrant: remove stale points belonging to this law that are
+        # not present in the newly generated ids. This ensures removed
+        # paragraphs/annexes cannot be retrieved after re-ingestion.
+        try:
+            all_points = qdrant.get_all_points()
+            stale_ids: list[str] = []
+            for p in all_points:
+                # payload is expected to contain metadata dict
+                payload = p.payload or {}
+                metadata = payload.get("metadata") or {}
+                if metadata.get("source") == "law" and metadata.get("law_id") == law.id:
+                    pid = str(p.id) if isinstance(p.id, str) else str(p.id)
+                    if pid not in ids:
+                        stale_ids.append(pid)
+            if stale_ids:
+                logger.info("Removing %d stale Qdrant points for law %s", len(stale_ids), law.id)
+                qdrant.delete_points_by_ids(stale_ids)
+        except Exception:
+            logger.error("Failed to reconcile existing Qdrant points for law %s", law.id, exc_info=True)
     except Exception:
         logger.error("Failed to ingest law %s", law.id, exc_info=True)
         raise
