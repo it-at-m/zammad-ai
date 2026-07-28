@@ -74,7 +74,7 @@ qdrant:
 # Law ingestion (optional)
 # ---------------------------------------------------------------------------
 # Configure one or more laws to ingest into the same Qdrant collection.
-# When configured, run: `uv run python main_law.py`
+# When configured, run: `uv run python main.py`
 #
 # laws:
 #   - id: fev

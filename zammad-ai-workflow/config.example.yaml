@@ -103,9 +103,8 @@ answer:
     vector_dimension: 1024
     timeout: 60 # Request timeout in seconds
     retrieval_num_documents: 5 # Number of documents to retrieve from Qdrant for context
-  laws:
+  laws: []
     # Optional: expose indexed laws as separate agent tools.
-    # Each id must match the law_id used by zammad-ai-index/main_law.py.
     # - id: "fev"
     #   name: "Fahrerlaubnis-Verordnung"
   dlf:

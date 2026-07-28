@@ -139,7 +139,14 @@ def _chunk_annexes(annexes: list[dict[str, str | list[str]]], chunk_size: Positi
     now = datetime.now(timezone.utc).isoformat()
 
     for a in annexes:
-        chunks = splitter.split_text(a["full"]) if a["full"] else []
+
+        full = a["full"]
+
+        if isinstance(full, str):
+            chunks = splitter.split_text(full)
+        else:
+            chunks = []
+
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
             meta = {
