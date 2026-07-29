@@ -79,7 +79,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: Literal["triage"
                     model_name=model_name,
                     temperature=temperature,
                     max_retries=max_retries,
-                    thinking=thinking,
+                    thinking=thinking.model_dump() if thinking is not None else None,
                     effort=effort,
                 )
                 return chat
