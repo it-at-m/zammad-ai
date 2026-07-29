@@ -2,7 +2,7 @@
 
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ZammadTicket
-from app.settings import GenAISettings
+from app.settings import GenAIProviderSettings
 from app.settings.zammad import ZammadAPISettings
 
 
@@ -39,7 +39,7 @@ class FakeGenAIHandler:
 
     REQUIRED_PROMPT_KEYS = {"categorization", "days_since_request", "processing_id"}
 
-    def __init__(self, genai_settings: GenAISettings, prompts: dict[str, str]) -> None:
+    def __init__(self, genai_settings: GenAIProviderSettings, prompts: dict[str, str]) -> None:
         """Initialize fake handler state and validate prompt configuration.
 
         Args:

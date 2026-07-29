@@ -7,7 +7,7 @@ import gradio as gr
 import httpx
 
 from app.settings import ZammadAISettings
-from app.settings.genai import GenAISettings
+from app.settings.genai import GenAIProviderSettings
 from app.utils.logging import getLogger
 
 logger = getLogger("zammad-ai.frontend")
@@ -214,7 +214,7 @@ def _render_config_md(
     *,
     prompt_versions_loaded: bool = False,
 ) -> str:
-    genai: GenAISettings = settings.genai
+    genai: GenAIProviderSettings = settings.genai
     prompt_versions = prompt_versions or {}
 
     triage_model: str = genai.triage_model or genai.chat_model

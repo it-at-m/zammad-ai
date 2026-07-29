@@ -1,7 +1,7 @@
 [project]
 name = "zammad-ai-workflow"
 license = "MIT"
-version = "0.1.14"
+version = "0.1.16"
 
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
@@ -22,13 +22,15 @@ dependencies = [
     "gradio==6.19.0",
     "httpx[socks]==0.28.1",
     "jinja2==3.1.6",
-    "langchain-core==1.4.8",
-    "langchain-openai==1.3.3",
+    "langchain-core==1.5.1",
+    "langchain-openai==1.4.1",
     "langchain-qdrant==1.1.0",
-    "langchain==1.3.11",
+    "langchain==1.3.14",
+    "langchain-anthropic==1.5.2",
     "langfuse==4.12.0",
+    "anthropic==0.120.0",
     "markdownify==1.2.2",
-    "openai==2.44.0",
+    "openai==2.49.0",
     "pandas==3.0.3",
     "pydantic-settings==2.14.2",
     "pydantic==2.13.4",
