@@ -1,7 +1,7 @@
 [project]
 name = "slm-guardrails"
 license = "MIT"
-version = "0.1.0"
+version = "1.0.0"
 
 description = "Content safety guardrail service for Zammad AI (FastAPI)"
 readme = "README.md"
