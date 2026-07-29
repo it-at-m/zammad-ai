@@ -124,7 +124,7 @@ def build_agent(
 
     Returns:
         CompiledStateGraph[AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]]:
-            A compiled agent configured with a ChatOpenAI model, the supplied system prompt, the knowledge-base search tool (and optionally the DLF tool), producing StructuredAgentResponse outputs and using AgentContext for runtime clients.
+            A compiled agent configured with the selected provider's chat model, the supplied system prompt, the knowledge-base search tool (and optionally the DLF tool), producing StructuredAgentResponse outputs and using AgentContext for runtime clients.
     """
     # Build the chat model via provider factory. Provider-specific
     chat_model = get_chat_model(genai_settings, "answer")
