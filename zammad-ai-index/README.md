@@ -99,6 +99,21 @@ Notes:
 - The job exits without writing if no new or changed documents are detected.
 - A Qdrant collection snapshot is created before any write; snapshot failure aborts the run.
 
+## Law Ingestion (Experimental)
+
+You can ingest legal texts (e.g., FeV) into the same Qdrant collection using the shared embeddings/Qdrant setup. Configure one or more laws in `config.yaml` under the `laws:` section (see `config.example.yaml`), then run:
+
+```bash
+uv run python main.py
+```
+
+Notes:
+
+- Documents are chunked and written with metadata including `source=law`, `law_id`, `document_type`, `law_name`, `paragraph`, `chunk`, and a `pagecontent_hash`.
+- Deterministic IDs are generated per paragraph chunk to upsert documents on subsequent runs.
+- A snapshot is created before writing; snapshot failure aborts the run.
+- `document_type` is either law or annex.
+
 ## Qdrant Prerequisites
 
 - The target collection must exist and have a vector size matching your `genai.embedding_model`.
@@ -120,6 +135,7 @@ Key sections (see `config.example.yaml` for a full example):
 - `genai`: `sdk`, `chat_model`, `embedding_model`, `max_retries`
 - `qdrant`: `url`, `api_key`, `collection_name`, `vector_name`, `vector_dimension`, `timeout`, `retrieval_num_documents`
 - `zammad`: `type` (`api` or `eai`), `base_url`, `knowledge_base_id`, auth fields, optional RSS feed token/locale, and `document_parsing` (`mode`, `url`, `http_proxy_url`, `document_types`)
+- `laws` (optional): list of law sources with `id`, `name`, `url`, `chunk_size`, `chunk_overlap`
 
 ## Modes
 

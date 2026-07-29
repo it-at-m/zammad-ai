@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     CliSettingsSource,
@@ -14,6 +14,7 @@ from pydantic_settings import (
 
 from .genai import GenAISettings
 from .index import IndexJobSettings
+from .law import LawConfig
 from .logging import LoggingSettings
 from .qdrant import QdrantSettings
 from .zammad import ZammadAPISettings, ZammadEAISettings
@@ -78,6 +79,12 @@ class ZammadAIIndexSettings(BaseSettings):
         default_factory=lambda: QdrantSettings(),
     )
 
+    # Optional: additional external sources to ingest (e.g., laws)
+    laws: list[LawConfig] = Field(
+        description="List of law ingestion sources to process when using the dedicated law entry point.",
+        default_factory=list,
+    )
+
     langfuse_enabled: bool = Field(
         description="Whether to enable Langfuse integration for logging and prompt fetching.",
         default=True,
@@ -136,6 +143,26 @@ class ZammadAIIndexSettings(BaseSettings):
             sources.append(YamlConfigSettingsSource(settings_cls))
 
         return tuple(sources)
+
+    @model_validator(mode="after")
+    def _validate_unique_law_ids(self) -> "ZammadAIIndexSettings":
+        """Ensure no duplicate law IDs are configured.
+
+        Raise a standard validation error (ValueError) if a law id appears more than once.
+        """
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for law in self.laws or []:
+            lid = getattr(law, "id", None)
+            if lid is None:
+                continue
+            if lid in seen:
+                duplicates.add(lid)
+            else:
+                seen.add(lid)
+        if duplicates:
+            raise ValueError(f"Duplicate law ids in settings: {', '.join(sorted(duplicates))}")
+        return self
 
 
 @lru_cache(maxsize=1)

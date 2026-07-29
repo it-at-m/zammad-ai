@@ -113,6 +113,7 @@ class AnswerService:
             genai_settings=settings.genai,
             system_prompt=self.agent_prompt,
             dlf_enabled=settings.answer.dlf is not None,
+            laws=settings.answer.laws,
         )
         self.qdrant_kb_client = QdrantKBClient(
             genai_settings=settings.genai,

@@ -126,6 +126,10 @@ answer:
     vector_dimension: 1024
     timeout: 60 # Request timeout in seconds
     retrieval_num_documents: 5 # Number of documents to retrieve from Qdrant for context
+  laws: []
+    # Optional: expose indexed laws as separate agent tools.
+    # - id: "fev"
+    #   name: "Fahrerlaubnis-Verordnung"
   dlf:
     url: "https://your-dlf-backend.example.com/api"
     filter_categories: [] # Optional: list of categories to filter DLF results, or null for no filtering

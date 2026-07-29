@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
 from app.settings import QdrantSettings
@@ -155,6 +156,7 @@ class QdrantKBClient:
         query: str,
         k: int | None = None,
         offset: int = 0,
+        search_filter: Filter | None = None,
     ) -> list[tuple[Document, float]]:
         """Search for relevant documents in the Qdrant collection based on a query string.
 
@@ -162,6 +164,7 @@ class QdrantKBClient:
             query (str): The query string to search for relevant documents.
             k (int, optional): The number of top relevant documents to return.
             offset (int, optional): The number of top relevant documents to skip for pagination. Defaults to 0.
+            search_filter (Filter, optional): Optional Qdrant metadata filter to scope retrieval.
 
         Returns:
             list[tuple[Document, float]]: A list of tuples containing relevant documents and their corresponding relevance scores between 0 and 1.
@@ -172,6 +175,28 @@ class QdrantKBClient:
             query=query,
             k=k,
             offset=offset,
+            filter=search_filter,
+        )
+
+    async def asearch_law_documents(
+        self,
+        law_id: str,
+        query: str,
+        k: int | None = None,
+        offset: int = 0,
+    ) -> list[tuple[Document, float]]:
+        """Search indexed law chunks for one configured law."""
+        law_filter = Filter(
+            must=[
+                FieldCondition(key="metadata.source", match=MatchValue(value="law")),
+                FieldCondition(key="metadata.law_id", match=MatchValue(value=law_id)),
+            ]
+        )
+        return await self.asearch_documents(
+            query=query,
+            k=k,
+            offset=offset,
+            search_filter=law_filter,
         )
 
     def search_documents(
@@ -179,6 +204,7 @@ class QdrantKBClient:
         query: str,
         k: int | None = None,
         offset: int = 0,
+        search_filter: Filter | None = None,
     ) -> list[tuple[Document, float]]:
         """Search for relevant documents in the Qdrant collection based on a query string.
 
@@ -186,6 +212,7 @@ class QdrantKBClient:
             query (str): The query string to search for relevant documents.
             k (int, optional): The number of top relevant documents to return.
             offset (int, optional): The number of top relevant documents to skip for pagination. Defaults to 0.
+            search_filter (Filter, optional): Optional Qdrant metadata filter to scope retrieval.
 
         Returns:
             list[tuple[Document, float]]: A list of tuples containing relevant documents and their corresponding relevance scores between 0 and 1.
@@ -196,6 +223,7 @@ class QdrantKBClient:
             query=query,
             k=k,
             offset=offset,
+            filter=search_filter,
         )
 
     async def close(self) -> None:
