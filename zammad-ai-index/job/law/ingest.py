@@ -234,10 +234,9 @@ def ingest_law(law: LawConfig, qdrant: QdrantKBClient) -> None:
             logger.info("No chunks generated for law %s, nothing to index.", law.id)
             return
 
-        # snapshot before writing
-        if not qdrant.create_snapshot():
-            logger.warning("Failed to create snapshot before law ingestion for %s, aborting.", law.id)
-            return
+        # NOTE: snapshot creation is handled by the caller (main) to avoid
+        # creating one snapshot per law. This prevents redundant snapshots
+        # when ingesting multiple laws in sequence.
 
         ids = _build_ids_for_documents(law.id, docs)
         qdrant.add_raw_documents(docs, ids)
