@@ -28,7 +28,8 @@ def test_get_chat_model_openai(monkeypatch):
     """Ensure an OpenAI chat model is constructed with expected kwargs."""
     # Provide fake langchain_openai module with ChatOpenAI
     fake_mod = _make_fake_module("langchain_openai", "ChatOpenAI")
-    sys.modules["langchain_openai"] = fake_mod
+    # Use monkeypatch to ensure the fake module is removed after the test
+    monkeypatch.setitem(sys.modules, "langchain_openai", fake_mod)
 
     settings = GenAIOpenAISettings(chat_model="gpt-test")
 
@@ -42,7 +43,8 @@ def test_get_chat_model_anthropic(monkeypatch):
     """Ensure an Anthropic chat model is constructed and reasoning maps to kwargs."""
     # Provide fake langchain_anthropic module with ChatAnthropic
     fake_mod = _make_fake_module("langchain_anthropic", "ChatAnthropic")
-    sys.modules["langchain_anthropic"] = fake_mod
+    # Use monkeypatch to ensure the fake module is removed after the test
+    monkeypatch.setitem(sys.modules, "langchain_anthropic", fake_mod)
 
     # (leave out the unused base settings variable)
 
