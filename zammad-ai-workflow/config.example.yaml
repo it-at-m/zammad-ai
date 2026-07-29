@@ -322,17 +322,6 @@ prometheus:
   port: 9090 # Port for Prometheus metrics server
 
 # ============================================================================
-# Guardrails Configuration
-# ============================================================================
-# Lightweight content safety filtering using GLiNER
-guardrails:
-  enabled: true # Set to false to disable guardrail checks
-  confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
-  block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
-  huggingface_cache_dir: "/app/huggingface_cache" # Directory to cache Hugging Face models
-  offline_mode: true # If true, use local models only and do not call external APIs
-
-# ============================================================================
 # Preparser Configuration
 # ============================================================================
 # Optional preparser that can extract and reformat structured data (e.g., from
@@ -354,3 +343,16 @@ preparser:
 # API Configuration for REST endpoints
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
+
+# ============================================================================
+# Guardrail Service Configuration
+# ============================================================================
+guardrails:
+  enabled: true # Set to false to disable guardrail checks
+  model: null # Optional: override default model for guardrail evaluations
+  confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
+  block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
+  base_url: "http://localhost:8080" # Base URL of the slm-guardrails FastAPI service
+  request_timeout_seconds: 3.0 # Request timeout for guardrail service calls
+  auth_token: null # Optional: Bearer token for authenticating with the guardrail service (set in .env)
+  verify_tls: true # Set to false to disable TLS verification for guardrail service (not recommended for production)

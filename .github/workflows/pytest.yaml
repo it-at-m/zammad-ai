@@ -8,9 +8,13 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./zammad-ai-workflow
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        working-directory:
+          - ./zammad-ai-workflow
+          - ./slm-guardrails
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
@@ -26,13 +30,16 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv python install
 
       - name: Install dependencies
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv sync --locked --all-extras
 
       - name: Run tests
+        working-directory: ${{ matrix.working-directory }}
         run: |
           uv run pytest
