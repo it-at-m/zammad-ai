@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.settings import GenAIProviderSettings
+from app.settings.answer import LawToolSettings
 from app.utils.genai_provider import get_chat_model
 from app.utils.logging import getLogger
 
