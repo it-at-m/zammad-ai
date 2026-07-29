@@ -113,6 +113,15 @@ class GenAIOpenAISettings(BaseGenAISettings):
 EffortType = Literal["max", "xhigh", "high", "medium", "low"]
 
 
+class ThinkingConfig(BaseModel):
+    """Configuration for thinking parameters in GenAI interactions."""
+
+    type: Literal["enabled", "adaptive"] = Field(description="Type of thinking configuration", default="enabled")
+    budget_tokens: NonNegativeInt | None = Field(
+        description="Budget tokens for thinking configuration", default=None, ge=1024
+    )
+
+
 class GenAIAnthropicSettings(BaseGenAISettings):
     """Anthropic-specific GenAI configuration.
 
@@ -123,16 +132,16 @@ class GenAIAnthropicSettings(BaseGenAISettings):
     sdk: Literal["anthropic"] = Field(description="GenAI SDK to use", default="anthropic")
 
     # Default thinking parameters to pass to ChatAnthropic (if supported)
-    triage_thinking: dict[str, object] | None = Field(
+    triage_thinking: ThinkingConfig | None = Field(
         description="Triage thinking configuration",
         default=None,
     )
-    answer_thinking: dict[str, object] | None = Field(
+    answer_thinking: ThinkingConfig | None = Field(
         description="Answer generation thinking configuration",
         default=None,
     )
-    judge_thinking: dict[str, object] | None = Field(
-        description=" Judge thinking configuration",
+    judge_thinking: ThinkingConfig | None = Field(
+        description="Judge thinking configuration",
         default=None,
     )
     # Convenience shorthand for output effort
