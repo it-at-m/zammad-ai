@@ -215,20 +215,19 @@ class AnswerSettings(BaseModel):
         """
         from app.answer.laws import build_law_tool_name
 
-        seen: set[str] = set()
-        duplicates: list[str] = []
-
+        tool_name_map: dict[str, list[str]] = {}
         for law in self.laws:
             tool_name = build_law_tool_name(law.id)
-            if tool_name in seen:
-                duplicates.append(tool_name)
-            seen.add(tool_name)
+            tool_name_map.setdefault(tool_name, []).append(law.id)
 
-        if duplicates:
-            # Provide a helpful error describing the problematic tool names
+        # Find tool names that are produced by more than one law id
+        conflicts = {name: ids for name, ids in tool_name_map.items() if len(ids) > 1}
+        if conflicts:
+            # Report the conflicting tool name and the law ids that produced it
+            conflict_lines = [f"{name}: {ids}" for name, ids in sorted(conflicts.items())]
             raise ValueError(
-                "Duplicate law tool names after normalization/truncation: "
-                + ", ".join(sorted(set(duplicates)))
+                "Duplicate law tool names after normalization/truncation; conflicting mappings:\n"
+                + "\n".join(conflict_lines)
             )
 
         return self
