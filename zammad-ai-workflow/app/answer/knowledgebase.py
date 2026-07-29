@@ -14,7 +14,8 @@ from qdrant_client.http.models import CollectionInfo
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
-from app.settings import GenAISettings, QdrantSettings
+from app.settings import QdrantSettings
+from app.settings.genai import GenAIProviderSettings
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.answer.knowledgebase")
@@ -60,13 +61,13 @@ class QdrantKBError(QdrantPermanentError):
 class QdrantKBClient:
     """Wrapper around Qdrant client to handle vector storage and retrieval."""
 
-    def __init__(self, qdrant_settings: QdrantSettings, genai_settings: GenAISettings) -> None:
+    def __init__(self, qdrant_settings: QdrantSettings, genai_settings: GenAIProviderSettings) -> None:
         # Create logger for QdrantClient
         """Initialize the QdrantKBClient, configure Qdrant clients, embeddings, vector store, and retriever.
 
         Parameters:
             qdrant_settings (QdrantSettings): Configuration for Qdrant connection, collection, vector dimensions, vector name, timeout, and retrieval defaults.
-            genai_settings (GenAISettings): Configuration for the embedding provider (SDK, embedding model, max retries).
+            genai_settings (GenAIProviderSettings): Configuration for the embedding provider (SDK, embedding model, max retries).
 
         Raises:
             QdrantKBError: If the configured Qdrant collection does not exist or is empty, if the GenAI SDK is unsupported, or if the embedding vector dimension does not match the configured Qdrant vector dimension.
@@ -115,7 +116,7 @@ class QdrantKBClient:
         self.embeddings: Embeddings
 
         match genai_settings.sdk:
-            case "openai":
+            case "openai" | "anthropic":
                 from langchain_openai import OpenAIEmbeddings
 
                 self.embeddings = OpenAIEmbeddings(

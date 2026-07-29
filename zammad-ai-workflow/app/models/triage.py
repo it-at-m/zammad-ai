@@ -1,6 +1,8 @@
 """Pydantic models for triage classification and responses."""
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.settings.triage import Action, Category
 
@@ -20,6 +22,15 @@ class CategorizationResult(BaseModel):
     extracted_values: dict[str, str | int | float | bool] | None = Field(
         default=None, description="Any extracted values as specified by the category definition"
     )
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def normalize_category(cls, value: Any) -> Any:
+        """Accept model outputs that provide the category name as a plain string."""
+        if isinstance(value, str):
+            stripped_value = value.strip()
+            return {"name": stripped_value} if stripped_value else None
+        return value
 
 
 class TriageResult(BaseModel):

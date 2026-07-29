@@ -12,7 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
 from app.settings.answer import (
@@ -23,6 +23,7 @@ from app.settings.answer import (
 )
 from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
 from app.utils.jinja2 import PromptTemplateRenderer, get_template_renderer
+from app.utils.langchain import extract_structured_response, with_recursion_limit
 from app.utils.logging import getLogger
 from app.utils.paths import get_prompts_dir
 from app.utils.prompts import load_prompt
@@ -107,7 +108,7 @@ class AnswerService:
         )
 
         self.agent: CompiledStateGraph[
-            AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]  # type: ignore
+            AgentState[AnswerCandidate], AgentContext, AgentState, AgentState[AnswerCandidate]  # type: ignore
         ] = build_agent(
             genai_settings=settings.genai,
             system_prompt=self.agent_prompt,
@@ -132,7 +133,7 @@ class AnswerService:
         user_text: str,
         category: str,
         session_id: str | None = None,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | NoAnswerPossible:
         """Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
 
         Parameters:
@@ -162,22 +163,31 @@ class AnswerService:
                 else RunnableConfig()
             )
             with propagate_attributes(session_id=session_id):
-                agent_result: dict = await self.agent.ainvoke(
+                agent_result = await self.agent.ainvoke(
                     input={"messages": [user_message]},
-                    config=config,
+                    config=with_recursion_limit(config),
                     context=self.agent_context,
                 )
-            structured_response: StructuredAgentResponse = await self._judge_and_repair(
+
+                
+            agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
+                agent_result,
+                (AnswerCandidate, NoAnswerPossible),
+            )
+            structured_response: AnswerCandidate | NoAnswerPossible = await self._judge_and_repair(
                 user_text=user_text,
                 category=category,
                 user_message=user_message,
-                structured_response=agent_result["structured_response"],
+                structured_response=agent_structured_response,
                 session_id=session_id,
                 config=config,
             )
-            if structured_response.response is not None and self.settings.answer.ai_answer_disclaimer.strip() != "":
-                structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
-            outcome = "success"
+            if isinstance(structured_response, NoAnswerPossible):
+                outcome = "no_answer"
+            else:
+                if self.settings.answer.ai_answer_disclaimer:
+                    structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
+                outcome = "success"
             return structured_response
         except AppError:
             raise
@@ -194,13 +204,16 @@ class AnswerService:
         user_text: str,
         category: str,
         user_message: HumanMessage,
-        structured_response: StructuredAgentResponse,
+        structured_response: AnswerCandidate | NoAnswerPossible,
         session_id: str | None,
         config: RunnableConfig,
-    ) -> StructuredAgentResponse:
+    ) -> AnswerCandidate | NoAnswerPossible:
         """Run judgment and optionally repair a response that failed checks."""
+        if isinstance(structured_response, NoAnswerPossible):
+            return structured_response
+
         structured_response.auto_publish = True
-        if self.judge_handler is None or structured_response.response is None:
+        if self.judge_handler is None:
             return structured_response
         repair_prompt, _ = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,
@@ -238,7 +251,12 @@ class AnswerService:
                     context=self.agent_context,
                 )
 
-            structured_response = agent_result["structured_response"]
+            structured_response = extract_structured_response(
+                agent_result,
+                (AnswerCandidate, NoAnswerPossible),
+            )
+            if isinstance(structured_response, NoAnswerPossible):
+                return structured_response
         logger.debug(
             f"Answer failed judgment after {self.judge_settings.max_repairs} repairs, returning final response."
         )

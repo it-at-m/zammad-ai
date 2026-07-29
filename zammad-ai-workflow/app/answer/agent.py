@@ -4,14 +4,14 @@ from logging import Logger
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import BaseTool, ToolException, ToolRuntime, tool
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from app.models.answer import StructuredAgentResponse
-from app.settings import GenAISettings
-from app.settings.answer import LawToolSettings
+from app.models.answer import AnswerCandidate, NoAnswerPossible
+from app.settings import GenAIProviderSettings
+from app.utils.genai_provider import get_chat_model
 from app.utils.logging import getLogger
 
 from .dlf import DLFClient, DLFDocument, DLFError, SearchDLFInput
@@ -150,7 +150,7 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
 
 
 def build_agent(
-    genai_settings: GenAISettings,
+    genai_settings: GenAIProviderSettings,
     system_prompt: str,
     dlf_enabled: bool = True,
     laws: list[LawToolSettings] | None = None,
@@ -158,22 +158,17 @@ def build_agent(
     """Constructs a LangChain agent configured for Zammad AI Answer using the provided model settings, system prompt, and tools.
 
     Parameters:
-        genai_settings (GenAISettings): Model and generation parameters used to create the chat model.
+        genai_settings (GenAIProviderSettings): Model and generation parameters used to create the chat model.
         system_prompt (str): System prompt supplied to the agent.
         dlf_enabled (bool): If True, include the DLF website search tool in the agent's toolset.
         laws (list[LawToolSettings] | None): Indexed laws to expose as dedicated retrieval tools.
 
     Returns:
         CompiledStateGraph[AgentState[StructuredAgentResponse], AgentContext, AgentState, AgentState[StructuredAgentResponse]]:
-            A compiled agent configured with a ChatOpenAI model, the supplied system prompt, the knowledge-base search tool (and optionally the DLF tool), producing StructuredAgentResponse outputs and using AgentContext for runtime clients.
+            A compiled agent configured with the selected provider's chat model, the supplied system prompt, the knowledge-base search tool (and optionally the DLF tool), producing StructuredAgentResponse outputs and using AgentContext for runtime clients.
     """
-    # Build the chat model
-    chat_model = ChatOpenAI(
-        model=genai_settings.answer_model or genai_settings.chat_model,
-        temperature=genai_settings.answer_temperature,
-        max_retries=genai_settings.max_retries,
-        reasoning=genai_settings.answer_reasoning_config,
-    )
+    # Build the chat model via provider factory. Provider-specific
+    chat_model = get_chat_model(genai_settings, "answer")
 
     # Configure the tools
     available_tools: list[BaseTool] = [
@@ -189,7 +184,10 @@ def build_agent(
         model=chat_model,
         system_prompt=system_prompt,
         tools=available_tools,
-        response_format=StructuredAgentResponse,
+        response_format=ToolStrategy(
+            schema=AnswerCandidate | NoAnswerPossible,
+            tool_message_content="Response candidate has been generated!",
+        ),
         context_schema=AgentContext,
     )
 

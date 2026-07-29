@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.action.service import ActionService
 from app.errors import AppError
-from app.models.answer import StructuredAgentResponse
+from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.api_v1 import AnswerInput, AnswerOutput
 from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import getLogger
@@ -60,18 +60,33 @@ async def answer(
         # Preparse input text via shared helper
         user_text = get_preparsed_text(request, input.text)
 
-        response: StructuredAgentResponse = await service.get_answer(
+        response: AnswerCandidate | StaticAnswer | NoAnswerPossible = await service.get_answer(
             ticket_id=input.ticket_id,
             category_name=input.category,
             action_name=input.action,
             user_text=user_text,
             session_id=input.session_id,
         )
-        if response.response is None or response.response.strip() == "":
-            response.response = "No answer generated based on the provided input and current configuration."
+        if isinstance(response, NoAnswerPossible):
+            return AnswerOutput(
+                response=response.reasoning,
+                documents=[],
+                auto_publish=False,
+            )
+
+        if isinstance(response, StaticAnswer):
+            return AnswerOutput(
+                response=response.response,
+                documents=[],
+                auto_publish=False,
+            )
+
+        response_text = response.response.strip()
+        if response_text == "":
+            response_text = "No answer generated based on the provided input and current configuration."
 
         return AnswerOutput(
-            response=response.response,
+            response=response_text,
             documents=response.documents,
             auto_publish=response.auto_publish,
         )

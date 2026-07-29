@@ -69,6 +69,7 @@ Follow these steps IN THIS ORDER:
 <validation>
 Before output, ensure:
 ✓ Category exists in the list
+✓ The category field is an object with a name field, for example: {% raw %}{{"name": "Fragen"}}{% endraw %}. Never return category as a plain string.
 ✓ Confidence aligns with justification
 ✓ Extracted values (if applicable) follow the specified format
 ✓ Decision is based on the current message (not quotes)

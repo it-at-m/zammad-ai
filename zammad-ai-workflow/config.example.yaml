@@ -24,16 +24,13 @@ usecase:
 # GenAI Configuration
 # ============================================================================
 genai:
-  sdk: "openai" # Currently only "openai" is supported
+  sdk: "openai" # Options: "openai" or "anthropic"
   max_retries: 3 # Maximum number of retries for API calls
   chat_model: "gpt-4.1-mini" # Model for chat completions
   triage_model: null # Optional override for triage model (fallback: chat_model)
   answer_model: null # Optional override for answer model (fallback: chat_model)
   judge_model: "gpt-4.1-mini" # Model for triage judgment (can be same as chat_model)
   embedding_model: "text-embedding-3-large" # Model for embeddings
-  # Migration note:
-  # - old `temperature` -> use `triage_temperature` / `answer_temperature` / `judge_temperature`
-  # - old `reasoning_effort` -> use `triage_reasoning_effort` / `answer_reasoning_effort` / `judge_reasoning_effort`
   # Ensure you set all role-specific values explicitly when upgrading existing configs.
   triage_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
   answer_reasoning_effort: null # Options: "minimal", "low", "medium", "high", or null
@@ -42,9 +39,35 @@ genai:
   answer_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
 
+# Anthropic-specific settings (only used when sdk: "anthropic")
+#  sdk: "anthropic"
+#  max_retries: 3 # Maximum number of retries for API calls
+#  chat_model: "gpt-4.1-mini" # Model for chat completions
+#  triage_model: null # Optional override for triage model (fallback: chat_model)
+#  answer_model: null # Optional override for answer model (fallback: chat_model)
+#  judge_model: "gpt-4.1-mini" # Model for triage judgment (can be same as chat_model)
+#  embedding_model: "text-embedding-3-large" # Model for embeddings
+#  # Ensure you set all role-specific values explicitly when upgrading existing configs.
+#  triage_thinking: null # For example, {"type": "enabled", "budget_tokens": 1000}
+#  answer_thinking: null # For example, {"type": "enabled", "budget_tokens": 2000}
+#  judge_thinking: null # For example, {"type": "enabled", "budget_tokens": 1000}
+#
+#  triage_effort: null # Options: "max", "xhigh", "high", "medium" or "low"
+#  answer_effort: null # Options: "max", "xhigh", "high", "medium" or "low"
+#  judge_effort: null # Options: "max", "xhigh", "high", "medium" or "low"
+#
+#  triage_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+#  answer_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+#  judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+
 # Note: OpenAI SDK requires environment variables (set in .env):
 #   OPENAI_API_KEY (required)
 #   OPENAI_BASE_URL (optional, for custom endpoints/proxies)
+#
+# Note: Anthropic SDK requires environment variables (set in .env) when
+# using sdk: "anthropic":
+#   ANTHROPIC_API_KEY (required)
+#   ANTHROPIC_API_URL (optional, for custom endpoints/proxies)
 
 # ============================================================================
 # Zammad Configuration
@@ -303,17 +326,6 @@ prometheus:
   port: 9090 # Port for Prometheus metrics server
 
 # ============================================================================
-# Guardrails Configuration
-# ============================================================================
-# Lightweight content safety filtering using GLiNER
-guardrails:
-  enabled: true # Set to false to disable guardrail checks
-  confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
-  block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
-  huggingface_cache_dir: "/app/huggingface_cache" # Directory to cache Hugging Face models
-  offline_mode: true # If true, use local models only and do not call external APIs
-
-# ============================================================================
 # Preparser Configuration
 # ============================================================================
 # Optional preparser that can extract and reformat structured data (e.g., from
@@ -335,3 +347,16 @@ preparser:
 # API Configuration for REST endpoints
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
+
+# ============================================================================
+# Guardrail Service Configuration
+# ============================================================================
+guardrails:
+  enabled: true # Set to false to disable guardrail checks
+  model: null # Optional: override default model for guardrail evaluations
+  confidence_threshold: 0.7 # Confidence threshold for flagging harmful content (0.0-1.0)
+  block_on_high_risk: false # If true, reject high-risk inputs; if false, log only
+  base_url: "http://localhost:8080" # Base URL of the slm-guardrails FastAPI service
+  request_timeout_seconds: 3.0 # Request timeout for guardrail service calls
+  auth_token: null # Optional: Bearer token for authenticating with the guardrail service (set in .env)
+  verify_tls: true # Set to false to disable TLS verification for guardrail service (not recommended for production)

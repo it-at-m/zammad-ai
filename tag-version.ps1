@@ -2,7 +2,7 @@
 
 param(
     [Parameter(Mandatory=$false)]
-    [ValidateSet("workflow", "index")]
+    [ValidateSet("workflow", "index", "guardrails")]
     [string]$Service,
 
     [Parameter(Mandatory=$false)]
@@ -22,6 +22,12 @@ $serviceConfig = @{
         Prefix = "zammad-ai-index-"
         PackageUrl = "https://github.com/it-at-m/zammad-ai/pkgs/container/zammad-ai%2Fzammad-ai-index"
         ManifestPath = [System.IO.Path]::Combine("zammad-ai-index", "pyproject.toml")
+        ManifestType = "pyproject"
+    }
+    guardrails = @{
+        Prefix = "slm-guardrails-"
+        PackageUrl = "https://github.com/it-at-m/zammad-ai/pkgs/container/zammad-ai%2Fslm-guardrails"
+        ManifestPath = [System.IO.Path]::Combine("slm-guardrails", "pyproject.toml")
         ManifestType = "pyproject"
     }
 }

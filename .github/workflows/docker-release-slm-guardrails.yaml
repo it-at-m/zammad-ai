@@ -3,13 +3,13 @@ name: Build and Release Core Workflow Docker Image
 on:
   push:
     tags:
-      - "zammad-ai-workflow-*" # Triggers only on zammad-ai-workflow tags
+      - "slm-guardrails-*" # Triggers only on slm-guardrails tags
   workflow_dispatch: # Allows manual triggering of the workflow
     inputs:
       tag:
-        description: "Core tag to release (e.g., zammad-ai-workflow-1.0.0)"
+        description: "Core tag to release (e.g., slm-guardrails-1.0.0)"
         required: true
-        default: "zammad-ai-workflow-latest"
+        default: "slm-guardrails-latest"
 
 jobs:
   build-and-push-core-service:
@@ -24,7 +24,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Set up QEMU
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
       - name: Set up Docker Buildx
@@ -35,7 +35,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract version from zammad-ai-workflow tag
+      - name: Extract version from slm-guardrails tag
         id: vars
         env:
           MANUAL_TAG: ${{ github.event.inputs.tag }}
@@ -46,11 +46,11 @@ jobs:
             FULL_TAG=${GITHUB_REF#refs/tags/}
           fi
 
-          # Extract version from zammad-ai-workflow-* tag (e.g., zammad-ai-workflow-1.0.0 -> 1.0.0)
-          if [[ "$FULL_TAG" =~ ^zammad-ai-workflow-(.+)$ ]]; then
+          # Extract version from slm-guardrails-* tag (e.g., slm-guardrails-1.0.0 -> 1.0.0)
+          if [[ "$FULL_TAG" =~ ^slm-guardrails-(.+)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
           else
-            echo "Error: Tag must start with 'zammad-ai-workflow-'"
+            echo "Error: Tag must start with 'slm-guardrails-'"
             exit 1
           fi
 
@@ -60,17 +60,17 @@ jobs:
       - name: Set build timestamp
         id: build_ts
         run: echo "BUILD_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-      - name: Build and push zammad-ai-workflow Docker image
+      - name: Build and push slm-guardrails Docker image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
-          context: ./zammad-ai-workflow
-          file: ./zammad-ai-workflow/Dockerfile
+          context: ./slm-guardrails
+          file: ./slm-guardrails/Dockerfile
           push: true
           sbom: true
           provenance: true
           tags: |
-            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-workflow:${{ steps.vars.outputs.version }}
-            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/zammad-ai-workflow:latest
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/slm-guardrails:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.repo_lowercase }}/slm-guardrails:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -79,6 +79,6 @@ jobs:
             IMAGE_VERSION=${{ steps.vars.outputs.version }}
       - name: Image digest
         run: |
-          echo "zammad-ai-workflow image built and pushed:"
-          echo "  ghcr.io/${{ github.repository }}/zammad-ai-workflow:${{ steps.vars.outputs.version }}"
-          echo "  ghcr.io/${{ github.repository }}/zammad-ai-workflow:latest"
+          echo "slm-guardrails image built and pushed:"
+          echo "  ghcr.io/${{ github.repository }}/slm-guardrails:${{ steps.vars.outputs.version }}"
+          echo "  ghcr.io/${{ github.repository }}/slm-guardrails:latest"

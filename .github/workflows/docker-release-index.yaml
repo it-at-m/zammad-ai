@@ -1,6 +1,4 @@
 name: Build and Release Index Docker Image
-permissions:
-  contents: read
 
 on:
   push:
@@ -17,6 +15,7 @@ jobs:
   build-and-push-core-service:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       actions: write
       packages: write
     steps:
@@ -38,9 +37,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract version from zammad-ai-index tag
         id: vars
+        env:
+          MANUAL_TAG: ${{ github.event.inputs.tag }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            FULL_TAG="${{ github.event.inputs.tag }}"
+            FULL_TAG="$MANUAL_TAG"
           else
             FULL_TAG=${GITHUB_REF#refs/tags/}
           fi

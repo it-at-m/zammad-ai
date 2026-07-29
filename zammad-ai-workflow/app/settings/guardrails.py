@@ -1,30 +1,43 @@
-"""Configuration settings for guardrail service."""
+"""Configuration settings for remote guardrail HTTP client."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class GuardrailSettings(BaseModel):
-    """Settings for the guardrail content safety service."""
+    """Settings for the remote guardrail content safety service."""
 
     enabled: bool = Field(
         default=True,
-        description="Enable or disable guardrail checks",
+        description="Enable or disable guardrail checks.",
     )
     confidence_threshold: float = Field(
         default=0.7,
-        description="Confidence threshold above which harmful content is flagged (0-1)",
+        description="Confidence threshold above which harmful content is flagged (0-1).",
         ge=0.0,
         le=1.0,
     )
+    model: str | None = Field(
+        default=None,
+        description="Default model id to use for guardrail evaluations.",
+    )
     block_on_high_risk: bool = Field(
         default=False,
-        description="Whether to block processing on high-risk content or just flag it",
+        description="Whether to block processing on high-risk content or just flag it.",
     )
-    huggingface_cache_dir: str = Field(
-        default="/app/huggingface_cache",
-        description="Directory for caching Hugging Face models and tokenizers",
+    base_url: HttpUrl = Field(
+        default=HttpUrl("http://localhost:8080"),
+        description="Base URL of the slm-guardrails FastAPI service (without trailing slash).",
     )
-    offline_mode: bool = Field(
+    request_timeout_seconds: float = Field(
+        default=3.0,
+        description="HTTP request timeout when calling guardrail service.",
+        gt=0.0,
+    )
+    auth_token: str | None = Field(
+        default=None,
+        description="Optional bearer token for authenticating to the guardrail service.",
+    )
+    verify_tls: bool = Field(
         default=True,
-        description="Whether to operate in offline mode, using only cached models (if true) or allowing downloads (if false)",
+        description="Verify TLS certificates for HTTPS connections.",
     )

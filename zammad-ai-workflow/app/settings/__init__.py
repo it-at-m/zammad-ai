@@ -2,7 +2,7 @@
 
 from .answer import AnswerSettings, JudgeSettings, JudgeThresholds, LawToolSettings, QdrantSettings
 from .frontend import FrontendSettings
-from .genai import GenAISettings
+from .genai import GenAIAnthropicSettings, GenAIOpenAISettings, GenAIProviderSettings
 from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .preparser import PreparserSettings
@@ -15,7 +15,9 @@ __all__: list[str] = [
     "AnswerSettings",
     "BaseZammadSettings",
     "FrontendSettings",
-    "GenAISettings",
+    "GenAIProviderSettings",
+    "GenAIOpenAISettings",
+    "GenAIAnthropicSettings",
     "get_settings",
     "KafkaSettings",
     "JudgeSettings",
