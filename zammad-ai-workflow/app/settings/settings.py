@@ -119,6 +119,11 @@ class ZammadAISettings(BaseSettings):
         default=2000,
     )
 
+    recursion_limit: PositiveInt = Field(
+        description="Maximum recursion depth limit for the agents to prevent the agent from running infinite tool call loops.",
+        default=30,
+    )
+
     api: APISettings = Field(
         description="Settings for the REST API, including authentication and rate limiting configuration.",
         default_factory=lambda: APISettings(),

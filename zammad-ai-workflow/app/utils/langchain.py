@@ -7,14 +7,15 @@ from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ValidationError
 
+from app.settings import ZammadAISettings, get_settings
+
 T = TypeVar("T")
 
-DEFAULT_RECURSION_LIMIT = 10
-
-
-def with_recursion_limit(config: RunnableConfig, limit: int = DEFAULT_RECURSION_LIMIT) -> RunnableConfig:
+def with_recursion_limit(config: RunnableConfig, settings: ZammadAISettings | None = None) -> RunnableConfig:
     """Return a RunnableConfig with a bounded LangGraph recursion limit."""
-    return RunnableConfig({**config, "recursion_limit": limit})
+    if settings is None:
+        settings = get_settings()
+    return RunnableConfig({**config, "recursion_limit": settings.recursion_limit})
 
 
 def extract_structured_response(
