@@ -23,7 +23,7 @@ class QdrantSettings(BaseModel):
     )
     vector_name: str = Field(
         description="Qdrant vector name (used for namespacing vectors, optional)",
-        default="",
+        default="dense",
     )
     vector_dimension: PositiveInt = Field(
         description="Dimension of the embeddings stored in Qdrant",

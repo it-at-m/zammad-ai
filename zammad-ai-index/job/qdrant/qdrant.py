@@ -93,29 +93,7 @@ class QdrantKBClient:
                 f"Embedding dimension mismatch: expected {self.qdrant_settings.vector_dimension}, got {len(test_result)}. Check your GenAI embedding model configuration."
             )
 
-        # Determine vector name to use. If user did not set one, try to infer
-        # from the existing collection (use the first vector name found). This
-        # avoids QdrantVectorStore errors when the collection was created with
-        # a non-empty vector name (e.g. 'dense'). If nothing can be inferred,
-        # fall back to 'dense' which is the Qdrant default name in many setups.
-        # Ensure `vector_name` is a plain str for type checkers. If the user did
-        # not set one, prefer to infer it from the collection metadata or fall
-        # back to the conventional default 'dense'.
-        vector_name: str = self.qdrant_settings.vector_name or ""
-        try:
-            collection_vectors = getattr(collection_info, "vectors", None)
-            if not vector_name and isinstance(collection_vectors, dict) and collection_vectors:
-                vector_name = next(iter(collection_vectors.keys()))
-                self.logger.info(f"Using existing Qdrant vector name '{vector_name}' from collection.")
-        except Exception:
-            # Be conservative: do not fail setup just for missing metadata; fall back
-            # to a reasonable default.
-            if not vector_name:
-                vector_name = "dense"
-
-        if not vector_name:
-            vector_name = "dense"
-
+        vector_name: str = self.qdrant_settings.vector_name
         # Short startup log showing which Qdrant vector name is being used.
         self.logger.info(f"Qdrant vector name: '{vector_name}'")
 
