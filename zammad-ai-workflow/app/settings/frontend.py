@@ -12,7 +12,7 @@ class FrontendSettings(BaseModel):
     )
     request_timeout_seconds: float = Field(
         description="HTTP request timeout used by the frontend API calls in seconds.",
-        default=30.0,
+        default=300.0,
         gt=0,
     )
     auth_username: SecretStr = Field(

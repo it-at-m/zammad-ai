@@ -29,7 +29,7 @@ Frontend settings are configured under `frontend` in `zammad-ai-workflow/config.
 ```yaml
 frontend:
   enabled: true
-  request_timeout_seconds: 30.0
+  request_timeout_seconds: 300.0
   auth_username: "admin"
   auth_password: "change-me"
 ```
