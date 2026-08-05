@@ -1,5 +1,6 @@
 """Answer service orchestration for triaged ticket responses."""
 
+import re
 from logging import Logger
 from time import perf_counter
 
@@ -162,11 +163,20 @@ class AnswerService:
                 if self.langfuse_client is not None
                 else RunnableConfig()
             )
+            # Create a fresh AgentContext per request to avoid leaking runtime state
+            # (such as `searched_laws`) between different answer generations. The
+            # service previously reused a single AgentContext instance which could
+            # cause a law to appear already-searched if a prior request added it.
+            per_request_context = AgentContext(
+                qdrant_kb_client=self.qdrant_kb_client,
+                dlf_client=self.dlf_client,
+            )
+
             with propagate_attributes(session_id=session_id):
                 agent_result = await self.agent.ainvoke(
                     input={"messages": [user_message]},
                     config=with_recursion_limit(config),
-                    context=self.agent_context,
+                    context=per_request_context,
                 )
 
                 
@@ -182,6 +192,22 @@ class AnswerService:
                 session_id=session_id,
                 config=config,
             )
+            # Sanitize Markdown asterisks used for emphasis (e.g. **bold**, *italic*)
+            # to avoid the frontend/model re-rendering them and consuming context.
+            def _sanitize_asterisks(s: str) -> str:
+                if not s:
+                    return s
+                # Remove triple asterisks first, then double, then single.
+                s = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", s, flags=re.DOTALL)
+                s = re.sub(r"\*\*(.+?)\*\*", r"\1", s, flags=re.DOTALL)
+                # Match single-star emphasis like *word* but avoid list markers '* item'.
+                s = re.sub(r"(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)", r"\1", s, flags=re.DOTALL)
+                return s
+
+            if isinstance(structured_response, AnswerCandidate):
+                structured_response.response = _sanitize_asterisks(structured_response.response)
+                if structured_response.subject:
+                    structured_response.subject = _sanitize_asterisks(structured_response.subject)
             if isinstance(structured_response, NoAnswerPossible):
                 outcome = "no_answer"
             else:

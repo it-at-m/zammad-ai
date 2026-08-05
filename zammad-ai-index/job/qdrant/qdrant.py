@@ -93,18 +93,52 @@ class QdrantKBClient:
                 f"Embedding dimension mismatch: expected {self.qdrant_settings.vector_dimension}, got {len(test_result)}. Check your GenAI embedding model configuration."
             )
 
-        # Create LangChain Qdrant vector store
+        # Determine vector name to use. If user did not set one, try to infer
+        # from the existing collection (use the first vector name found). This
+        # avoids QdrantVectorStore errors when the collection was created with
+        # a non-empty vector name (e.g. 'dense'). If nothing can be inferred,
+        # fall back to 'dense' which is the Qdrant default name in many setups.
+        vector_name = self.qdrant_settings.vector_name or ""
+        try:
+            collection_vectors = getattr(collection_info, "vectors", None)
+            if not vector_name and isinstance(collection_vectors, dict) and collection_vectors:
+                vector_name = next(iter(collection_vectors.keys()))
+                self.logger.info(f"Using existing Qdrant vector name '{vector_name}' from collection.")
+        except Exception:
+            # Be conservative: do not fail setup just for missing metadata; fall back
+            # to a reasonable default.
+            if not vector_name:
+                vector_name = "dense"
+
+        if not vector_name:
+            vector_name = "dense"
+
+        # Short startup log showing which Qdrant vector name is being used.
+        self.logger.info(f"Qdrant vector name: '{vector_name}'")
+
         self.vectorstore = QdrantVectorStore(
             client=self.client,
             collection_name=self.qdrant_settings.collection_name,
             embedding=self.embeddings,
-            vector_name=self.qdrant_settings.vector_name,
+            vector_name=vector_name,
         )
 
-        self.retriever: VectorStoreRetriever = self.vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": self.qdrant_settings.retrieval_num_documents},
-        )
+        # Configure retriever. Support hybrid (vector + BM25/text) retrieval when enabled in settings.
+        # LangChain/Qdrant accepts search_type="hybrid" and an `alpha` parameter to weight text vs vector relevance.
+        if getattr(self.qdrant_settings, "enable_hybrid_search", False):
+            alpha = getattr(self.qdrant_settings, "hybrid_alpha", 0.5)
+            self.retriever: VectorStoreRetriever = self.vectorstore.as_retriever(
+                search_type="hybrid",
+                search_kwargs={
+                    "k": self.qdrant_settings.retrieval_num_documents,
+                    "alpha": alpha,
+                },
+            )
+        else:
+            self.retriever: VectorStoreRetriever = self.vectorstore.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": self.qdrant_settings.retrieval_num_documents},
+            )
 
     def create_snapshot(self) -> bool:
         """Create a snapshot of the Qdrant collection for backup purposes.

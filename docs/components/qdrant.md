@@ -12,6 +12,10 @@ The Qdrant integration is configured via `app.settings.answer.QdrantSettings` (n
 - `api_key`: Secret key for authentication.
 - `collection_name`: The name of the collection where knowledge vectors are stored.
 - `vector_dimension`: The dimensionality of the embeddings (defaults to 1024, matching common models like `text-embedding-3-large`).
+ - `vector_dimension`: The dimensionality of the embeddings (defaults to 1024, matching common models like `text-embedding-3-large`).
+ - `enable_hybrid_search`: When true, the indexer will use Qdrant's hybrid retrieval (vector + text/BM25) instead of pure vector similarity.
+ - `hybrid_alpha`: Float 0..1 that controls the weighting between vector similarity (0.0) and text/BM25 (1.0) when hybrid search is enabled.
+ - `bm25_enabled`: Toggle to indicate BM25/text scoring should be considered on the Qdrant side. The Qdrant server must be configured to support text search for BM25 to take effect.
 
 ## Data Models
 

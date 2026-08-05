@@ -37,3 +37,17 @@ class QdrantSettings(BaseModel):
         description="The number of relevant documents to retrieve for each search query.",
         default=5,
     )
+    enable_hybrid_search: bool = Field(
+        description="Enable hybrid search (vector + BM25/text) in Qdrant retrieval. When enabled the retriever will use search_type='hybrid' and respect hybrid_alpha.",
+        default=False,
+    )
+    hybrid_alpha: float = Field(
+        description="Weighting factor for hybrid search: 0.0 = pure vector, 1.0 = pure text/BM25. Typical default is 0.5.",
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+    )
+    bm25_enabled: bool = Field(
+        description="Whether to enable BM25-based text scoring on the Qdrant side when using hybrid search. Qdrant server must have text search enabled/configured.",
+        default=False,
+    )
