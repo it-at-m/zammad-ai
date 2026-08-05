@@ -98,7 +98,10 @@ class QdrantKBClient:
         # avoids QdrantVectorStore errors when the collection was created with
         # a non-empty vector name (e.g. 'dense'). If nothing can be inferred,
         # fall back to 'dense' which is the Qdrant default name in many setups.
-        vector_name = self.qdrant_settings.vector_name or ""
+        # Ensure `vector_name` is a plain str for type checkers. If the user did
+        # not set one, prefer to infer it from the collection metadata or fall
+        # back to the conventional default 'dense'.
+        vector_name: str = self.qdrant_settings.vector_name or ""
         try:
             collection_vectors = getattr(collection_info, "vectors", None)
             if not vector_name and isinstance(collection_vectors, dict) and collection_vectors:
@@ -116,11 +119,13 @@ class QdrantKBClient:
         # Short startup log showing which Qdrant vector name is being used.
         self.logger.info(f"Qdrant vector name: '{vector_name}'")
 
+        # Cast vector_name to str to satisfy static type checkers which may
+        # infer more specific literal/falsy types during analysis.
         self.vectorstore = QdrantVectorStore(
             client=self.client,
-            collection_name=self.qdrant_settings.collection_name,
+            collection_name=self.collection_name,
             embedding=self.embeddings,
-            vector_name=vector_name,
+            vector_name=str(vector_name),
         )
 
         # Configure retriever. Support hybrid (vector + BM25/text) retrieval when enabled in settings.
