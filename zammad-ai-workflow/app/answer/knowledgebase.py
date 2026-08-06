@@ -175,6 +175,7 @@ class QdrantKBClient:
                 self.logger.warning(
                     "Requested Qdrant retrieval_mode '%s' but no sparse embedding is available. Falling back to 'dense'.",
                     requested_mode,
+                    exc_info=True,
                 )
                 retrieval_mode = RetrievalMode.DENSE
                 sparse_embedding = None

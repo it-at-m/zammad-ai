@@ -1,5 +1,7 @@
 """Settings for Qdrant connectivity and retrieval in the index job."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, HttpUrl, PositiveInt, SecretStr
 
 
@@ -37,16 +39,11 @@ class QdrantSettings(BaseModel):
         description="The number of relevant documents to retrieve for each search query.",
         default=5,
     )
-    retrieval_mode: str = Field(
-        description="Retrieval mode for QdrantVectorStore. One of 'dense', 'sparse' or 'hybrid'. When 'sparse' or 'hybrid' are selected a compatible sparse embedding implementation (e.g. FastEmbedSparse) must be available in the environment.",
-        default="dense",
-        examples=["dense", "sparse", "hybrid"],
+    retrieval_mode: Literal["dense", "sparse", "hybrid"] = Field(
+        description="Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be available in the environment.",
+        default="hybrid",
     )
     sparse_vector_name: str = Field(
         description="Name of the sparse vector configuration in the Qdrant collection (used when retrieval_mode is 'sparse' or 'hybrid').",
         default="langchain-sparse",
-    )
-    bm25_enabled: bool = Field(
-        description="Whether to enable BM25-based text scoring on the Qdrant side when using hybrid search. Qdrant server must have text search enabled/configured.",
-        default=False,
     )

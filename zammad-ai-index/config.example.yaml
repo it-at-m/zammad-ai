@@ -70,11 +70,9 @@ qdrant:
   # Number of nearest-neighbour documents to retrieve per search query.
   retrieval_num_documents: 5
   # Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be used
-  retrieval_mode: hybrid
+  # retrieval_mode: hybrid
   # Optional: Name of the sparse vector
-  sparse_vector_name: sparse
-  # Optional: Enable bm25 text scoring
-  bm25_enabled: true
+  # sparse_vector_name: sparse
 
 # ---------------------------------------------------------------------------
 # Law ingestion (optional)
