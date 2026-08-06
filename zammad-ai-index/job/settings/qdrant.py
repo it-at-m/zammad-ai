@@ -37,15 +37,14 @@ class QdrantSettings(BaseModel):
         description="The number of relevant documents to retrieve for each search query.",
         default=5,
     )
-    enable_hybrid_search: bool = Field(
-        description="Enable hybrid search (vector + BM25/text) in Qdrant retrieval. When enabled the retriever will use search_type='hybrid' and respect hybrid_alpha.",
-        default=False,
+    retrieval_mode: str = Field(
+        description="Retrieval mode for QdrantVectorStore. One of 'dense', 'sparse' or 'hybrid'. When 'sparse' or 'hybrid' are selected a compatible sparse embedding implementation (e.g. FastEmbedSparse) must be available in the environment.",
+        default="dense",
+        examples=["dense", "sparse", "hybrid"],
     )
-    hybrid_alpha: float = Field(
-        description="Weighting factor for hybrid search: 0.0 = pure vector, 1.0 = pure text/BM25. Typical default is 0.5.",
-        default=0.5,
-        ge=0.0,
-        le=1.0,
+    sparse_vector_name: str = Field(
+        description="Name of the sparse vector configuration in the Qdrant collection (used when retrieval_mode is 'sparse' or 'hybrid').",
+        default="langchain-sparse",
     )
     bm25_enabled: bool = Field(
         description="Whether to enable BM25-based text scoring on the Qdrant side when using hybrid search. Qdrant server must have text search enabled/configured.",
