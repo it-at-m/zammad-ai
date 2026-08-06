@@ -148,9 +148,6 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
             small_doc = Document(page_content=short_msg, metadata={})
             return RetrieveDocumentsKBOutput(documents_with_relevance_score=[(small_doc, 0.0)])
 
-        # Mark as searched for the current request and proceed with retrieval.
-        searched.add(law_id)
-
         qdrant_client: QdrantKBClient = runtime.context.qdrant_kb_client
         try:
             relevant_documents_with_scores: list[tuple[Document, float]] = await qdrant_client.asearch_law_documents(
@@ -159,6 +156,10 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
                 k=num_documents,
                 offset=offset,
             )
+            # Record that this law has been searched for this runtime only after
+            # retrieval succeeded so that transient Qdrant errors do not prevent
+            # retries later in the same request.
+            runtime.context.searched_laws.add(law_id)
             return RetrieveDocumentsKBOutput(documents_with_relevance_score=relevant_documents_with_scores)
         except QdrantKBError as e:
             logger.error("Error retrieving law documents from Qdrant", exc_info=True)
