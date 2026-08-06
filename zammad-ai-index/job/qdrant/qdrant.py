@@ -150,7 +150,7 @@ class QdrantKBClient:
             retrieval_mode=retrieval_mode,
             vector_name=str(vector_name),
             sparse_embedding=sparse_embedding,
-            sparse_vector_name=getattr(self.qdrant_settings, "sparse_vector_name", "langchain-sparse"),
+            sparse_vector_name=getattr(self.qdrant_settings, "sparse_vector_name"),
         )
 
         # Use a supported search type for the retriever. `similarity` is widely supported

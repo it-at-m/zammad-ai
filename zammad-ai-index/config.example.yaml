@@ -62,7 +62,7 @@ qdrant:
   # Name of the Qdrant collection to store embeddings in.
   collection_name: zammad-ai_default
   # Optional vector namespace within the collection.
-  vector_name: ""
+  vector_name: null
   # Must match the output dimension of the configured embedding_model.
   vector_dimension: 1024
   # HTTP timeout in seconds for Qdrant client operations.

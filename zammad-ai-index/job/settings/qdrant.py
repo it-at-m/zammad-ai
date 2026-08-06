@@ -25,7 +25,7 @@ class QdrantSettings(BaseModel):
     )
     vector_name: str = Field(
         description="Qdrant vector name (used for namespacing vectors, optional)",
-        default="dense",
+        default="",
     )
     vector_dimension: PositiveInt = Field(
         description="Dimension of the embeddings stored in Qdrant",
@@ -45,5 +45,5 @@ class QdrantSettings(BaseModel):
     )
     sparse_vector_name: str = Field(
         description="Name of the sparse vector configuration in the Qdrant collection (used when retrieval_mode is 'sparse' or 'hybrid').",
-        default="langchain-sparse",
+        default="sparse",
     )
