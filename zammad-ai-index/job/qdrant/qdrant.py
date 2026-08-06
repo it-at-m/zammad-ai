@@ -131,7 +131,7 @@ class QdrantKBClient:
                 # Use a sensible default model name; users can override by installing and
                 # configuring a different sparse embedding provider in the environment.
                 sparse_embedding = FastEmbedSparse()
-            except Exception as e:
+            except Exception:
                 # If sparse embedding isn't available (fastembed not installed or
                 # misconfigured), fall back to dense retrieval and log a clear message.
                 self.logger.warning(
