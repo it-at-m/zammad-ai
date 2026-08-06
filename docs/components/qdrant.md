@@ -12,6 +12,9 @@ The Qdrant integration is configured via `app.settings.answer.QdrantSettings` (n
 - `api_key`: Secret key for authentication.
 - `collection_name`: The name of the collection where knowledge vectors are stored.
 - `vector_dimension`: The dimensionality of the embeddings (defaults to 1024, matching common models like `text-embedding-3-large`).
+- `vector_name`: The name of the vector configuration in the Qdrant collection (defaults to `dense`)
+- `retrieval_mode`: One of `dense`, `sparse` or `hybrid`. When selecting `sparse` or `hybrid` the QdrantVectorStore requires a compatible sparse embedding implementation and a collection configured with sparse vectors, such as FastEmbedSparse.
+- `sparse_vector_name`: Name of the sparse vector configuration in the Qdrant collection (defaults to `sparse`).
 
 ## Data Models
 

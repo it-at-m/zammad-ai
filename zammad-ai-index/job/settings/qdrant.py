@@ -1,5 +1,7 @@
 """Settings for Qdrant connectivity and retrieval in the index job."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, HttpUrl, PositiveInt, SecretStr
 
 
@@ -36,4 +38,12 @@ class QdrantSettings(BaseModel):
     retrieval_num_documents: PositiveInt = Field(
         description="The number of relevant documents to retrieve for each search query.",
         default=5,
+    )
+    retrieval_mode: Literal["dense", "sparse", "hybrid"] = Field(
+        description="Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be available in the environment.",
+        default="hybrid",
+    )
+    sparse_vector_name: str = Field(
+        description="Name of the sparse vector configuration in the Qdrant collection (used when retrieval_mode is 'sparse' or 'hybrid').",
+        default="sparse",
     )

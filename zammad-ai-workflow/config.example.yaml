@@ -126,6 +126,8 @@ answer:
     vector_dimension: 1024
     timeout: 60 # Request timeout in seconds
     retrieval_num_documents: 5 # Number of documents to retrieve from Qdrant for context
+    # retrieval_mode: hybrid # Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be available
+    # sparse_vector_name: sparse # Optional: Name of the sparse vector
   laws: []
     # Optional: expose indexed laws as separate agent tools.
     # - id: "fev"

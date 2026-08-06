@@ -6,7 +6,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid5
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_qdrant import QdrantVectorStore
+from langchain_qdrant import QdrantVectorStore, RetrievalMode
 from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
@@ -138,14 +138,60 @@ class QdrantKBClient:
                 f"Embedding dimension mismatch: expected {qdrant_settings.vector_dimension}, got {len(test_result)}. Check your GenAI embedding model configuration."
             )
 
-        # Create LangChain Qdrant vector store
+        vector_name = qdrant_settings.vector_name
+        # Short startup log showing which Qdrant vector name is being used.
+        self.logger.info(f"Qdrant vector name: '{vector_name}'")
+
+        # Determine retrieval mode (dense, sparse, hybrid) and optionally provide
+        # a sparse embedding implementation required by SPARSE/HYBRID modes.
+        requested_mode = getattr(self.qdrant_settings, "retrieval_mode", "dense")
+        try:
+            retrieval_mode = RetrievalMode.DENSE
+            if isinstance(requested_mode, str):
+                match requested_mode.lower():
+                    case "dense":
+                        retrieval_mode = RetrievalMode.DENSE
+                    case "sparse":
+                        retrieval_mode = RetrievalMode.SPARSE
+                    case "hybrid":
+                        retrieval_mode = RetrievalMode.HYBRID
+                    case _:
+                        self.logger.warning(
+                            "Unknown Qdrant retrieval_mode '%s', defaulting to 'dense'",
+                            requested_mode,
+                        )
+        except Exception:
+            retrieval_mode = RetrievalMode.DENSE
+
+        sparse_embedding = None
+        if retrieval_mode in (RetrievalMode.SPARSE, RetrievalMode.HYBRID):
+            try:
+                from langchain_qdrant.fastembed_sparse import FastEmbedSparse
+
+                # Provide a default sparse embedding implementation. If the
+                # dependency isn't available we'll fall back to dense retrieval.
+                sparse_embedding = FastEmbedSparse()
+            except Exception:
+                self.logger.warning(
+                    "Requested Qdrant retrieval_mode '%s' but no sparse embedding is available. Falling back to 'dense'.",
+                    requested_mode,
+                    exc_info=True,
+                )
+                retrieval_mode = RetrievalMode.DENSE
+                sparse_embedding = None
+
+        # Create LangChain Qdrant vector store with configured retrieval mode.
         self.vectorstore = QdrantVectorStore(
             client=self.client,
             collection_name=qdrant_settings.collection_name,
             embedding=self.embeddings,
-            vector_name=qdrant_settings.vector_name,
+            vector_name=vector_name,
+            retrieval_mode=retrieval_mode,
+            sparse_embedding=sparse_embedding,
+            sparse_vector_name=getattr(self.qdrant_settings, "sparse_vector_name", "langchain-sparse"),
         )
 
+        # Use a supported search_type; 'similarity' works for dense and hybrid stores.
         self.retriever: VectorStoreRetriever = self.vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={"k": qdrant_settings.retrieval_num_documents},

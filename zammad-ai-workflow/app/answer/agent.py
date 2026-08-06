@@ -7,7 +7,7 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import BaseTool, ToolException, ToolRuntime, tool
 from langchain_core.documents import Document
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.settings import GenAIProviderSettings
@@ -27,6 +27,7 @@ class AgentContext(BaseModel):
 
     qdrant_kb_client: QdrantKBClient
     dlf_client: DLFClient | None
+    searched_laws: set[str] = Field(default_factory=set)
 
     model_config = {
         "arbitrary_types_allowed": True,  # Allow arbitrary types like QdrantKBClient and DLFClient
@@ -122,7 +123,7 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
         tool_name,
         description=(
             f"Retrieve relevant paragraphs and annexes from the indexed law '{law_name}' "
-            f"(law_id: {law_id}). Use this when additional legal information from this law is needed."
+            f"(law_id: {law_id}). Use this when additional legal information from this law is needed. This tool already performs semantic retrieval over the complete law. One call is normally sufficient. Do not reformulate similar queries."
         ),
         args_schema=SearchQdrantKBInput,
         parse_docstring=False,
@@ -134,6 +135,19 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
         num_documents: int = 5,
         offset: int = 0,
     ) -> RetrieveDocumentsKBOutput:
+        # Per-request guard: avoid retrieving the same law multiple times during one agent run.
+        # If this law has already been searched in the current runtime context, return
+        # a minimal message instructing the agent to reuse previously retrieved documents.
+        searched: set[str] = runtime.context.searched_laws
+        if law_id in searched:
+            # Return a very short structured response (Pydantic model) to avoid
+            # violating the tool's return type. Use one tiny document with a
+            # short message so the agent sees an explanation but the token cost
+            # is minimal.
+            short_msg = "This law has already been searched during this request. Use the previously retrieved documents."
+            small_doc = Document(page_content=short_msg, metadata={})
+            return RetrieveDocumentsKBOutput(documents_with_relevance_score=[(small_doc, 0.0)])
+
         qdrant_client: QdrantKBClient = runtime.context.qdrant_kb_client
         try:
             relevant_documents_with_scores: list[tuple[Document, float]] = await qdrant_client.asearch_law_documents(
@@ -142,6 +156,10 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
                 k=num_documents,
                 offset=offset,
             )
+            # Record that this law has been searched for this runtime only after
+            # retrieval succeeded so that transient Qdrant errors do not prevent
+            # retries later in the same request.
+            runtime.context.searched_laws.add(law_id)
             return RetrieveDocumentsKBOutput(documents_with_relevance_score=relevant_documents_with_scores)
         except QdrantKBError as e:
             logger.error("Error retrieving law documents from Qdrant", exc_info=True)
