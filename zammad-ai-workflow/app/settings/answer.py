@@ -140,6 +140,18 @@ class QdrantSettings(BaseModel):
         description="The number of relevant documents to retrieve for each search query.",
         default=5,
     )
+    retrieval_mode: str = Field(
+        description="Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be available in the environment.",
+        default="hybrid",
+    )
+    sparse_vector_name: str = Field(
+        description="Optional: Name of the sparse vector",
+        default="sparse",
+    )
+    bm25_enabled: bool = Field(
+        description="Optional: Enable bm25 text scoring",
+        default=True,
+    )
 
 
 class LawToolSettings(BaseModel):
