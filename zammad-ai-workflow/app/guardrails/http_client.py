@@ -45,10 +45,10 @@ class GuardrailService:
             follow_redirects=True,
         )
 
-    async def evaluate(self, text: str) -> GuardrailResult:
+    async def evaluate(self, text: str) -> GuardrailResult | None:
         """Evaluate user input text via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return SAFE_PROMPT_RESULT
+            return None
 
         # Skip empty text to avoid unnecessary calls
         if not text or not text.strip():
@@ -70,12 +70,12 @@ class GuardrailService:
         except Exception:
             # Fail-open on any error
             logger.error("Remote guardrail evaluate failed.", exc_info=True)
-            return SAFE_PROMPT_RESULT
+            return None
 
-    async def evaluate_response(self, text: str, response: str) -> GuardrailResponseResult:
+    async def evaluate_response(self, text: str, response: str) -> GuardrailResponseResult | None:
         """Evaluate generated response via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return SAFE_RESPONSE_RESULT
+            return None
 
         if not response or not response.strip():
             logger.debug("Guardrail skipped for empty response")
@@ -95,7 +95,7 @@ class GuardrailService:
             return GuardrailResponseResult(**data)
         except Exception:
             logger.error("Remote guardrail evaluate_response failed.", exc_info=True)
-            return SAFE_RESPONSE_RESULT
+            return None
 
 
 _service: GuardrailService | None = None

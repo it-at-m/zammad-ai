@@ -16,6 +16,7 @@ from app.errors import (
     TriageError as AppTriageError,
 )
 from app.guardrails import GuardrailService, get_guardrail_service
+from app.models.guardrails import GuardrailResult
 from app.models.triage import (
     CategorizationResult,
     DaysSinceRequestResponse,
@@ -307,14 +308,23 @@ class TriageService:
             )
 
         # Evaluate guardrails before categorization
-        guardrail_result = await self.guardrail_service.evaluate(message)
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(message)
         if self.settings.guardrails.enabled:
             logger.info(
-                f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+                f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"
             )
 
-        if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
+        if (
+            (not guardrail_result or not guardrail_result.prompt_safety == "safe")
+            and self.guardrail_service.settings.block_on_high_risk
+            and self.guardrail_service.settings.enabled
+        ):
             logger.warning("Categorization blocked by guardrails")
+            if not guardrail_result:
+                raise TriageError(
+                    "Guardrail evaluation failed or returned no result; categorization blocked",
+                    retryable=True,
+                )
             raise TriageError(
                 f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
                 retryable=False,
