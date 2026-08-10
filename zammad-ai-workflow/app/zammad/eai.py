@@ -122,7 +122,7 @@ class ZammadEAIClient(BaseZammadClient):
     @override
     async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:
         payload = {"group_id": group_id, "id": ticket_id}
-        await self._request("PUT", f"/tickets/{ticket_id}", json=payload)
+        await self._request("PATCH", f"/tickets/{ticket_id}", json=payload)
         logger.info(f"Updated ticket {ticket_id} group to {group_id}")
 
     @override
