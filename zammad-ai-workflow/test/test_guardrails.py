@@ -78,7 +78,7 @@ async def test_guardrail_response_disabled() -> None:
 
     result = await service.evaluate_response("prompt", "response")
 
-    assert not result
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -150,5 +150,5 @@ async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSetti
     result_prompt = await service.evaluate("text")
     result_response = await service.evaluate_response("prompt", "response")
 
-    assert not result_prompt
-    assert not result_response
+    assert result_prompt is None
+    assert result_response is None
