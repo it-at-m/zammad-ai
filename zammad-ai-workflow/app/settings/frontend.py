@@ -25,3 +25,12 @@ class FrontendSettings(BaseModel):
         default=SecretStr("zammad-ai"),
         min_length=6,
     )
+    feedback_access_key: SecretStr | None = Field(
+        description="Secret key required in the feedback URL query string.",
+        default=None,
+    )
+    feedback_score_name: str = Field(
+        description="Name of the Langfuse score written by the feedback frontend.",
+        default="user-thumbs",
+        min_length=1,
+    )
