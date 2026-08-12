@@ -4,8 +4,15 @@ from types import SimpleNamespace
 from typing import cast
 
 import gradio as gr
+import pytest
 
-from app.frontend.feedback_ui import _compute_feedback_token, _load_feedback_trace, _resolve_feedback_request
+from app.frontend.feedback_ui import (
+    _compute_feedback_token,
+    _load_feedback_trace,
+    _load_translations,
+    _resolve_feedback_request,
+    _submit_feedback,
+)
 from app.observe.langfuse import LangfuseClient, LangfuseError
 
 
@@ -16,23 +23,28 @@ def _make_request(query_params: dict[str, str], headers: dict[str, str] | None =
     )
 
 
-def test_resolve_feedback_request_uses_query_params() -> None:
-    """Resolve query parameters into the expected feedback request values (no auth here)."""
-    request = _make_request({"trace_id": "trace-123", "score_name": "custom-score"})
+@pytest.fixture
+def german_translations() -> dict[str, str]:
+    """Load the default German feedback frontend translations."""
+    return _load_translations("de")
 
-    authorized, status, trace_id, score_name = _resolve_feedback_request(
+
+def test_resolve_feedback_request_uses_trace_id_query_param(german_translations: dict[str, str]) -> None:
+    """Resolve the trace ID query parameter into feedback request context."""
+    request = _make_request({"trace_id": "trace-123"})
+
+    authorized, status, trace_id = _resolve_feedback_request(
         request=request,
         expected_access_key="secret-salt",
-        default_score_name="user-thumbs",
+        translations=german_translations,
     )
 
     assert authorized is True
     assert status == ""
     assert trace_id == "trace-123"
-    assert score_name == "custom-score"
 
 
-def test_load_feedback_trace_validates_query_token() -> None:
+def test_load_feedback_trace_validates_query_token(german_translations: dict[str, str]) -> None:
     """Authorize using per-link token from URL and load trace IO."""
 
     class DummyClient(LangfuseClient):
@@ -56,7 +68,8 @@ def test_load_feedback_trace_validates_query_token() -> None:
         request=request,
         lf=DummyClient(),
         expected_access_key=salt,
-        default_score_name="user-thumbs",
+        score_name="user-thumbs",
+        translations=german_translations,
     )
 
     assert input_text == "hello"
@@ -64,7 +77,7 @@ def test_load_feedback_trace_validates_query_token() -> None:
     assert status == "Trace geladen"
 
 
-def test_load_feedback_trace_hides_io_when_score_exists() -> None:
+def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dict[str, str]) -> None:
     """Do not expose trace content when the requested feedback already exists."""
 
     class DummyClient(LangfuseClient):
@@ -92,7 +105,8 @@ def test_load_feedback_trace_hides_io_when_score_exists() -> None:
         request=request,
         lf=DummyClient(),
         expected_access_key=salt,
-        default_score_name="user-thumbs",
+        score_name="user-thumbs",
+        translations=german_translations,
     )
 
     assert input_text == ""
@@ -100,7 +114,7 @@ def test_load_feedback_trace_hides_io_when_score_exists() -> None:
     assert status == "Bewertung bereits vorhanden"
 
 
-def test_load_feedback_trace_reports_invalid_trace_id() -> None:
+def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[str, str]) -> None:
     """Return a localized error when Langfuse cannot load the trace."""
 
     class DummyClient(LangfuseClient):
@@ -116,7 +130,8 @@ def test_load_feedback_trace_reports_invalid_trace_id() -> None:
         request=request,
         lf=DummyClient(),
         expected_access_key="secret-salt",
-        default_score_name="user-thumbs",
+        score_name="user-thumbs",
+        translations=german_translations,
     )
 
     assert input_text == ""
@@ -124,8 +139,8 @@ def test_load_feedback_trace_reports_invalid_trace_id() -> None:
     assert status == "Ungültige Trace ID oder Trace nicht gefunden"
 
 
-def test_attach_evaluation_to_trace_uses_configurable_score_name(monkeypatch) -> None:
-    """Use the configured score name when storing trace feedback."""
+def test_attach_evaluation_to_trace_records_tags_as_categorical_scores(monkeypatch) -> None:
+    """Store each feedback tag as an individual categorical score."""
     recorded_calls: list[dict[str, object]] = []
 
     class DummyLangfuse:
@@ -140,8 +155,151 @@ def test_attach_evaluation_to_trace_uses_configurable_score_name(monkeypatch) ->
         thumbs_up=True,
         comment="ok",
         user="sachbearbeiter",
-        score_name="feedback-vote",
+        tags=["outdated information", "wrong tone"],
     )
 
-    assert recorded_calls[0]["name"] == "feedback-vote"
+    assert recorded_calls[0]["name"] == "thumbs"
     assert recorded_calls[0]["trace_id"] == "trace-123"
+    assert recorded_calls[0]["metadata"] == {"user": "sachbearbeiter"}
+    assert recorded_calls[1] == {
+        "name": "tags",
+        "value": "outdated information",
+        "trace_id": "trace-123",
+        "data_type": "CATEGORICAL",
+        "metadata": {"user": "sachbearbeiter"},
+    }
+    assert recorded_calls[2] == {
+        "name": "tags",
+        "value": "wrong tone",
+        "trace_id": "trace-123",
+        "data_type": "CATEGORICAL",
+        "metadata": {"user": "sachbearbeiter"},
+    }
+
+
+def test_submit_feedback_only_stores_configured_tags(german_translations: dict[str, str]) -> None:
+    """Reject tags not included in the configured feedback tag list."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            self.tags: list[str] | None = None
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+        ) -> None:
+            self.tags = tags
+
+    salt = "secret-salt"
+    client = DummyClient()
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=client,
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs="down",
+        comment="",
+        user_name=None,
+        tags=["outdated information", "unconfigured"],
+        allowed_tags=["outdated information"],
+        translations=german_translations,
+    )
+
+    assert result == "Bewertung gespeichert"
+    assert client.tags == ["outdated information"]
+
+
+@pytest.mark.parametrize(
+    ("thumbs", "comment", "user_name"),
+    [
+        ("unexpected", "valid comment", "AB"),
+        ("up", "x" * 2_001, "AB"),
+        ("up", "valid comment", "x" * 101),
+    ],
+)
+def test_submit_feedback_rejects_invalid_submission(
+    thumbs: str,
+    comment: str,
+    user_name: str,
+    german_translations: dict[str, str],
+) -> None:
+    """Reject invalid browser input without creating a negative score."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            self.evaluation_attached = False
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+        ) -> None:
+            self.evaluation_attached = True
+
+    salt = "secret-salt"
+    client = DummyClient()
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=client,
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs=thumbs,
+        comment=comment,
+        user_name=user_name,
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+    )
+
+    assert result == "Ungültige Bewertung"
+    assert client.evaluation_attached is False
+
+
+def test_load_feedback_trace_uses_english_translations() -> None:
+    """Return status messages from the configured English translation catalog."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+    translations = _load_translations("en")
+    salt = "secret-salt"
+    input_text, output_text, status = _load_feedback_trace(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=DummyClient(),
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        translations=translations,
+    )
+
+    assert input_text == "hello"
+    assert output_text == "world"
+    assert status == "Trace loaded"

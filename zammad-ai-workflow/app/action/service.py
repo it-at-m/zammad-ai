@@ -99,7 +99,7 @@ class ActionService:
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
                 if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):
                     await self._post_feedback_internal_note(
-                        ticket_id=ticket_id, user_text=triage.user_text, response=response
+                        ticket_id=ticket_id, user_text=triage.user_text[: self.max_user_text_length], response=response
                     )
         except AppError:
             raise

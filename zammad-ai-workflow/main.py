@@ -33,7 +33,13 @@ if __name__ == "__main__":
     }
 
     try:
-        uvicorn.run(app=backend, host=hosts[settings.mode], port=8080, log_config=get_log_config())
+        uvicorn.run(
+            app=backend,
+            host=hosts[settings.mode],
+            port=8080,
+            log_config=get_log_config(),
+            timeout_graceful_shutdown=settings.api.shutdown_timeout_seconds,
+        )
     except KeyboardInterrupt:
         logger.info(msg="Shutdown signal received. Stopping Zammad AI Backend.")
     except asyncio.CancelledError:

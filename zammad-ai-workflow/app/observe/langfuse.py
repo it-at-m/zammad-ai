@@ -93,7 +93,7 @@ class LangfuseClient:
         thumbs_up: bool,
         comment: str | None = None,
         user: str | None = None,
-        score_name: str = "user-thumbs",
+        tags: list[str] | None = None,
     ) -> None:
         """Attach a simple thumbs-up/thumbs-down evaluation to an existing Langfuse trace.
 
@@ -106,18 +106,29 @@ class LangfuseClient:
             thumbs_up: True for positive (stored as BOOLEAN 1), False for negative (0)
             comment: Optional short text comment to attach to the score
             user: Optional user id or name to store in score metadata
+            tags: Optional predefined tags to store as individual categorical scores
         """
         try:
             value = 1.0 if thumbs_up else 0.0
             metadata = {"user": user} if user is not None else None
             self.langfuse.create_score(
-                name=score_name,
+                name="thumbs",
                 value=value,
                 trace_id=trace_id,
                 data_type="BOOLEAN",
                 comment=comment,
                 metadata=metadata,
             )
+
+            for tag in tags or []:
+                self.langfuse.create_score(
+                    name="tags",
+                    value=tag,
+                    trace_id=trace_id,
+                    data_type="CATEGORICAL",
+                    metadata=metadata,
+                )
+
             logger.info(f"Attached evaluation to trace {trace_id}: thumbs_up={thumbs_up}")
         except Exception as e:
             logger.error("Failed to attach evaluation to Langfuse trace.", exc_info=True)

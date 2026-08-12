@@ -418,7 +418,7 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
             answer_documents_output,
         ]
 
-        submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
+        submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)  # ty: ignore[unresolved-attribute]
         input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
         frontend.load(fn=_load_config_md, outputs=config_md)
 

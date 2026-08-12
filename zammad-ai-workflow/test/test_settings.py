@@ -1,9 +1,39 @@
 """Tests for application settings loading behavior."""
 
-import pytest
-from pydantic import ValidationError
+from typing import Literal
 
+import pytest
+from pydantic import SecretStr, ValidationError
+
+from app.settings.api import APISettings
+from app.settings.frontend import FeedbackSettings
 from app.settings.settings import ZammadAISettings, get_settings
+
+
+def test_feedback_settings_require_salt_for_internal_notes() -> None:
+    """Feedback links posted internally must use a per-link token salt."""
+    with pytest.raises(ValidationError, match="salt must be configured"):
+        FeedbackSettings(post_internal_note=True)
+
+
+@pytest.mark.parametrize(
+    ("post_internal_note", "salt"),
+    [(False, None), (False, "secret"), (True, "secret")],
+)
+def test_feedback_settings_accept_valid_internal_note_configurations(
+    post_internal_note: bool, salt: SecretStr | None
+) -> None:
+    """Feedback settings should retain all supported configurations."""
+    settings = FeedbackSettings(post_internal_note=post_internal_note, salt=salt)
+
+    assert settings.post_internal_note is post_internal_note
+    assert settings.salt is None or settings.salt.get_secret_value() == salt
+
+
+@pytest.mark.parametrize("language", ["de", "en"])
+def test_feedback_settings_accept_supported_languages(language: Literal["de", "en"]) -> None:
+    """Feedback settings should accept each provided translation catalog."""
+    assert FeedbackSettings(language=language).language == language
 
 
 def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch) -> None:
@@ -30,6 +60,11 @@ def test_max_user_text_length_defaults_to_2000() -> None:
     get_settings.cache_clear()
     settings = get_settings()
     assert settings.max_user_text_length == 2000
+
+
+def test_api_shutdown_timeout_defaults_to_10_seconds() -> None:
+    """Limit the wait for browser connections during graceful shutdown."""
+    assert APISettings().shutdown_timeout_seconds == 10
 
 
 @pytest.mark.parametrize("value", [1, 100, 4096])

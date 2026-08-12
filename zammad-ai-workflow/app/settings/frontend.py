@@ -1,6 +1,8 @@
 """Settings for the optional Gradio frontend."""
 
-from pydantic import BaseModel, Field, SecretStr
+from typing import Literal
+
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
 class FeedbackSettings(BaseModel):
@@ -19,6 +21,21 @@ class FeedbackSettings(BaseModel):
         default="user-thumbs",
         min_length=1,
     )
+    tags: list[str] = Field(
+        description="Predefined tags stored as categorical feedback scores.",
+        default_factory=list,
+    )
+    language: Literal["de", "en"] = Field(
+        description="Language used by the feedback frontend.",
+        default="de",
+    )
+
+    @model_validator(mode="after")
+    def validate_internal_note_salt(self) -> "FeedbackSettings":
+        """Require a salt when posting feedback links internally."""
+        if self.post_internal_note and self.salt is None:
+            raise ValueError("salt must be configured when post_internal_note is true")
+        return self
 
 
 class FrontendSettings(BaseModel):

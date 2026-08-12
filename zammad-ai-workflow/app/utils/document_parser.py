@@ -1,6 +1,7 @@
 """Helpers for parsing attachment documents through Kreuzberg."""
 
 from asyncio import to_thread
+from importlib import import_module
 from logging import Logger
 from typing import Any, Literal
 
@@ -23,7 +24,7 @@ class DocumentParser:
         self.mode: Literal["off", "local", "remote"] = settings.mode
         if self.mode == "local":
             try:
-                import langchain_kreuzberg  # noqa: F401
+                import_module("langchain_kreuzberg")
             except ImportError:
                 logger.error("langchain_kreuzberg is not installed. Local Kreuzberg parsing will be unavailable.")
                 raise
@@ -59,7 +60,7 @@ class DocumentParser:
         Returns:
             The extracted document text.
         """
-        from langchain_kreuzberg import KreuzbergLoader
+        KreuzbergLoader = import_module("langchain_kreuzberg").KreuzbergLoader
 
         document_bytes: bytes = self._coerce_document_bytes(data)
         loader = KreuzbergLoader(

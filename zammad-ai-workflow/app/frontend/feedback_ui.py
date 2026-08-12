@@ -2,17 +2,35 @@
 
 from collections.abc import Mapping
 from hashlib import sha256
+from json import load
 from logging import Logger
+from pathlib import Path
 from secrets import compare_digest
-from typing import Tuple
+from typing import Literal, Tuple
 
 import gradio as gr
+from pydantic import BaseModel, Field, ValidationError
 
 from app.observe.langfuse import LangfuseClient, LangfuseError
 from app.settings import FrontendSettings
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.frontend.feedback")
+LOCALE_DIRECTORY = Path(__file__).with_name("locales")
+
+
+def _load_translations(language: Literal["de", "en"]) -> dict[str, str]:
+    """Load the selected feedback frontend translation catalog."""
+    with (LOCALE_DIRECTORY / f"{language}.json").open(encoding="utf-8") as locale_file:
+        return load(locale_file)
+
+
+class FeedbackSubmission(BaseModel):
+    """Validate feedback values received from the browser."""
+
+    thumbs: Literal["up", "down"]
+    comment: str = Field(max_length=2_000)
+    user_name: str | None = Field(default=None, max_length=100)
 
 
 def _request_query_params(request: gr.Request | None) -> Mapping[str, str]:
@@ -33,17 +51,16 @@ def _request_query_params(request: gr.Request | None) -> Mapping[str, str]:
 def _resolve_feedback_request(
     request: gr.Request | None,
     expected_access_key: str | None,
-    default_score_name: str,
-) -> tuple[bool, str, str, str]:
+    translations: Mapping[str, str],
+) -> tuple[bool, str, str]:
     """Resolve basic request context (trace_id, score_name) and configuration."""
     query_params = _request_query_params(request)
     resolved_trace_id = query_params.get("trace_id", "")
-    resolved_score_name = query_params.get("score_name", default_score_name)
 
     if expected_access_key is None:
-        return False, "Zugriffsschlüssel ist nicht konfiguriert", resolved_trace_id, resolved_score_name
+        return False, translations["error.access_key_not_configured"], resolved_trace_id
 
-    return True, "", resolved_trace_id, resolved_score_name
+    return True, "", resolved_trace_id
 
 
 def _compute_feedback_token(inp: str, out: str, salt: str) -> str:
@@ -59,182 +76,229 @@ def _load_feedback_trace(
     request: gr.Request | None,
     lf: LangfuseClient,
     expected_access_key: str | None,
-    default_score_name: str,
+    score_name: str,
+    translations: Mapping[str, str],
 ) -> Tuple[str, str, str]:
-    authorized, status, trace_id, score_name = _resolve_feedback_request(
+    authorized, status, trace_id = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
-        default_score_name=default_score_name,
+        translations=translations,
     )
     if not authorized:
         return "", "", status
     if not trace_id:
-        return "", "", "Keine Trace ID in der URL"
+        return "", "", translations["error.trace_id_missing"]
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
         inp, out = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while loading feedback trace", exc_info=True)
-        return "", "", "Ungültige Trace ID oder Trace nicht gefunden"
+        return "", "", translations["error.trace_not_found"]
     except Exception:
         logger.warning("Failed to load trace", exc_info=True)
-        return "", "", "Fehler beim Laden des Traces"
+        return "", "", translations["error.trace_load_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
     params = _request_query_params(request)
     provided_key = params.get("key") or params.get("token")
     if not provided_key:
-        return "", "", "Kein Zugriffsschlüssel in der URL"
+        return "", "", translations["error.access_key_missing"]
 
     expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
 
     if not compare_digest(provided_key, expected_token):
-        return "", "", "Ungültiger Zugriffsschlüssel"
+        return "", "", translations["error.access_key_invalid"]
 
     try:
         if lf.has_score(trace_id=trace_id, score_name=score_name):
-            return "", "", "Bewertung bereits vorhanden"
+            return "", "", translations["status.feedback_exists"]
     except Exception:
         logger.warning("Failed to check existing score while loading feedback trace", exc_info=True)
 
-    return inp or "", out or "", "Trace geladen"
+    return inp or "", out or "", translations["status.trace_loaded"]
 
 
 def _submit_feedback(
     request: gr.Request | None,
     lf: LangfuseClient,
     expected_access_key: str | None,
-    default_score_name: str,
+    score_name: str,
     thumbs: str,
     comment: str,
     user_name: str | None,
+    tags: list[str] | None,
+    allowed_tags: list[str],
+    translations: Mapping[str, str],
 ) -> str:
-    authorized, status, trace_id, score_name = _resolve_feedback_request(
+    authorized, status, trace_id = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
-        default_score_name=default_score_name,
+        translations=translations,
     )
     if not authorized:
         return status
     if not trace_id:
-        return "Keine Trace ID in der URL"
+        return translations["error.trace_id_missing"]
+
+    try:
+        submission: FeedbackSubmission = FeedbackSubmission.model_validate({"thumbs": thumbs, "comment": comment, "user_name": user_name})
+    except ValidationError:
+        logger.warning("Invalid feedback submission", exc_info=True)
+        return translations["error.feedback_invalid"]
 
     # Load IO to compute expected token
     try:
         inp, out = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
-        return "Ungültige Trace ID oder Trace nicht gefunden"
+        return translations["error.trace_not_found"]
     except Exception:
         logger.exception("Failed to load trace for feedback submit")
-        return "Fehler beim Speichern der Bewertung"
+        return translations["error.feedback_save_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
     params = _request_query_params(request)
     provided_key = params.get("key") or params.get("token")
     if not provided_key:
-        return "Kein Zugriffsschlüssel in der URL"
+        return translations["error.access_key_missing"]
     expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
     if not compare_digest(provided_key, expected_token):
-        return "Ungültiger Zugriffsschlüssel"
+        return translations["error.access_key_invalid"]
 
     # Enforce single evaluation per trace/score
     try:
         if lf.has_score(trace_id=trace_id, score_name=score_name):
-            return "Bewertung bereits vorhanden"
+            return translations["status.feedback_exists"]
     except Exception:
         logger.warning("Failed to check existing score before storing feedback", exc_info=True)
 
-    thumbs_up: bool = thumbs == "up"
     try:
         # Use provided user name/initials if given, else default label
-        user_meta: str = (user_name or "").strip() or "sachbearbeiter"
+        user_meta: str = (submission.user_name or "").strip() or "sachbearbeiter"
+        selected_tags = [tag for tag in tags or [] if tag in allowed_tags]
         lf.attach_evaluation_to_trace(
             trace_id=trace_id,
-            thumbs_up=thumbs_up,
-            comment=comment,
+            thumbs_up=submission.thumbs == "up",
+            comment=submission.comment,
             user=user_meta,
-            score_name=score_name,
+            tags=selected_tags,
         )
-        return "Bewertung gespeichert"
+        return translations["status.feedback_saved"]
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
-        return "Ungültige Trace ID oder Trace nicht gefunden"
+        return translations["error.trace_not_found"]
     except Exception:
         logger.exception("Failed to attach evaluation to trace")
-        return "Fehler beim Speichern der Bewertung"
+        return translations["error.feedback_save_failed"]
 
 
 def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
     """Build a compact Gradio UI mounted separately for feedback collection."""
     lf = LangfuseClient()
     expected_access_key = settings.feedback.salt.get_secret_value() if settings.feedback.salt else None
-    default_score_name = settings.feedback.score_name
+    score_name = settings.feedback.score_name
+    allowed_tags = settings.feedback.tags
+    translations = _load_translations(settings.feedback.language)
 
     def load_feedback(request: gr.Request | None = None):
         input_text, output_text, result = _load_feedback_trace(
             request=request,
             lf=lf,
             expected_access_key=expected_access_key,
-            default_score_name=default_score_name,
+            score_name=score_name,
+            translations=translations,
         )
-        if result == "Trace geladen":
+        if result == translations["status.trace_loaded"]:
             return input_text, output_text, gr.update(visible=True), gr.update(visible=False), ""
         return "", "", gr.update(visible=False), gr.update(visible=True), result
 
-    def submit_feedback(thumbs: str, comment: str, user_name: str | None, request: gr.Request | None = None) -> str:
+    def submit_feedback(
+        thumbs: str,
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
         return _submit_feedback(
             request=request,
             lf=lf,
             expected_access_key=expected_access_key,
-            default_score_name=default_score_name,
+            score_name=score_name,
             thumbs=thumbs,
             comment=comment,
             user_name=user_name,
+            tags=tags,
+            allowed_tags=allowed_tags,
+            translations=translations,
         )
 
-    def submit_feedback_up(comment: str, user_name: str | None, request: gr.Request | None = None) -> str:
-        return submit_feedback("up", comment, user_name, request)
+    def submit_feedback_up(
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
+        return submit_feedback("up", comment, user_name, tags, request)
 
-    def submit_feedback_down(comment: str, user_name: str | None, request: gr.Request | None = None) -> str:
-        return submit_feedback("down", comment, user_name, request)
+    def submit_feedback_down(
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
+        return submit_feedback("down", comment, user_name, tags, request)
 
     def display_submission_result(result: str):
-        if result == "Bewertung gespeichert":
+        if result == translations["status.feedback_saved"]:
             return gr.update(visible=False), gr.update(visible=False), "", gr.update(visible=True)
         return gr.update(visible=False), gr.update(visible=True), result, gr.update(visible=False)
 
-    with gr.Blocks(title="Zammad AI Feedback") as feedback_app:
+    with gr.Blocks(title=translations["ui.page_title"]) as feedback_app:
         with gr.Column(visible=False) as error_page:
-            gr.Markdown("# Feedback nicht verfügbar")
+            gr.Markdown(translations["ui.error_title"])
             error_message = gr.Markdown()
 
         with gr.Column(visible=False) as success_page:
-            gr.Markdown("# Feedback gespeichert")
-            gr.Markdown("Feedback wurde erfolgreich gespeichert, Sie können die Seite jetzt schließen.")
+            gr.Markdown(translations["ui.success_title"])
+            gr.Markdown(translations["ui.success_message"])
 
         with gr.Column(visible=False) as feedback_page:
-            gr.Markdown("# Zammad AI Feedback")
+            gr.Markdown(f"# {translations['ui.page_title']}")
 
             with gr.Row():
                 with gr.Column(scale=1):
-                    gr.Markdown("**Original Anfrage**")
-                    input_box = gr.Textbox(label="", interactive=False, lines=20, placeholder="Keine Anfrage geladen")
+                    gr.Markdown(translations["ui.input_label"])
+                    input_box = gr.Textbox(
+                        label="", interactive=False, lines=20, placeholder=translations["ui.input_placeholder"]
+                    )
                 with gr.Column(scale=1):
-                    gr.Markdown("**KI-Antwort**")
-                    output_box = gr.Textbox(label="", interactive=False, lines=20, placeholder="Keine Antwort geladen")
+                    gr.Markdown(translations["ui.output_label"])
+                    output_box = gr.Textbox(
+                        label="", interactive=False, lines=20, placeholder=translations["ui.output_placeholder"]
+                    )
 
             with gr.Row():
                 feedback_comment = gr.Textbox(
-                    label="Kommentar (optional)",
+                    label=translations["ui.comment_label"],
                     lines=3,
-                    placeholder="Kurz begründen, warum die Antwort hilfreich war oder nicht.",
+                    placeholder=translations["ui.comment_placeholder"],
                 )
-                feedback_user = gr.Textbox(label="Name/Kürzel (optional)", lines=1, placeholder="z. B. AB")
+                feedback_user = gr.Textbox(
+                    label=translations["ui.user_label"],
+                    lines=1,
+                    placeholder=translations["ui.user_placeholder"],
+                    visible=False,
+                )  # hidden for now, can be enabled if needed
+
+            feedback_tags = gr.CheckboxGroup(
+                choices=allowed_tags,
+                label=translations["ui.tags_label"],
+                visible=bool(allowed_tags),
+            )
 
             with gr.Row():
-                thumbs_up = gr.Button("👍 Gut", variant="secondary")
-                thumbs_down = gr.Button("👎 Schlecht", variant="secondary")
+                thumbs_up = gr.Button("👍 " + translations["ui.thumbs_up"], variant="secondary")
+                thumbs_down = gr.Button("👎 " + translations["ui.thumbs_down"], variant="secondary")
 
         submission_result = gr.State("")
 
@@ -244,9 +308,9 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs up submission
         (
-            thumbs_up.click(
+            thumbs_up.click(  # ty: ignore[unresolved-attribute]
                 fn=submit_feedback_up,
-                inputs=[feedback_comment, feedback_user],
+                inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(
                 fn=display_submission_result,
@@ -256,9 +320,9 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs down submission
         (
-            thumbs_down.click(
+            thumbs_down.click(  # ty: ignore[unresolved-attribute]
                 fn=submit_feedback_down,
-                inputs=[feedback_comment, feedback_user],
+                inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(
                 fn=display_submission_result,
