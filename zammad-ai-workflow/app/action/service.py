@@ -1,5 +1,6 @@
 """Action service for executing post-triage ticket handling."""
 
+from hashlib import sha256
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
@@ -96,11 +97,44 @@ class ActionService:
                     text=response.response,
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
+                if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):
+                    await self._post_feedback_internal_note(
+                        ticket_id=ticket_id, user_text=triage.user_text, response=response
+                    )
         except AppError:
             raise
         except Exception as e:
             self.logger.error("Action execution failed.", exc_info=True)
             raise ActionExecutionError("Action execution failed", retryable=True) from e
+
+    async def _post_feedback_internal_note(self, ticket_id: int, user_text: str, response: AnswerCandidate) -> None:
+        trace_id: str | None = (
+            self.answer_service.langfuse_client.langfuse_handler.last_trace_id
+            if self.answer_service.langfuse_client
+            else None
+        )
+        if trace_id and self.settings.frontend.base_url:
+            # Generate a per-link token using the trace IO and the configured salt
+            try:
+                input: str = user_text or ""
+                output: str = (response.subject or "") + "\n\n" + (response.response or "")
+                output: str = output.replace("<br>", "\n").strip()
+                salt: str = (
+                    self.settings.frontend.feedback.salt.get_secret_value()
+                    if self.settings.frontend.feedback.salt
+                    else ""
+                )
+                token = sha256(f"{input}|{output}|{salt}".encode("utf-8")).hexdigest()
+            except Exception:
+                token = ""
+
+            text = f"<a href='{self.settings.frontend.base_url}/feedback/?trace_id={trace_id}&key={token}' target='_blank'>Feedback zu Shared Draft geben</a> (öffnet ein neues Fenster)"
+            await self.zammad_client.post_answer(
+                ticket_id=ticket_id,
+                text=text,
+                subject="Feedback zum KI-Antwortvorschlag",
+                internal=True,  # Post an internal note to document that feedback can be given for the answer suggestion
+            )
 
     async def get_answer(
         self,

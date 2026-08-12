@@ -189,7 +189,6 @@ class AnswerService:
                     context=per_request_context,
                 )
 
-                
             agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
                 agent_result,
                 (AnswerCandidate, NoAnswerPossible),
@@ -206,6 +205,7 @@ class AnswerService:
                 config=config,
                 context=per_request_context,
             )
+
             # Sanitize Markdown asterisks used for emphasis (e.g. **bold**, *italic*)
             # to avoid the frontend/model re-rendering them and consuming context.
             def _sanitize_asterisks(s: str) -> str:

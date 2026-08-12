@@ -5,21 +5,24 @@ from typing import cast
 
 import gradio as gr
 
-from app.frontend.feedback_ui import _load_feedback_trace, _resolve_feedback_request
+from app.frontend.feedback_ui import _compute_feedback_token, _load_feedback_trace, _resolve_feedback_request
 from app.observe.langfuse import LangfuseClient, LangfuseError
 
 
-def _make_request(query_params: dict[str, str]) -> gr.Request:
-    return cast(gr.Request, SimpleNamespace(request=SimpleNamespace(query_params=query_params)))
+def _make_request(query_params: dict[str, str], headers: dict[str, str] | None = None) -> gr.Request:
+    return cast(
+        gr.Request,
+        SimpleNamespace(request=SimpleNamespace(query_params=query_params, headers=headers or {})),
+    )
 
 
 def test_resolve_feedback_request_uses_query_params() -> None:
-    """Resolve query parameters into the expected feedback request values."""
-    request = _make_request({"key": "secret-value", "trace_id": "trace-123", "score_name": "custom-score"})
+    """Resolve query parameters into the expected feedback request values (no auth here)."""
+    request = _make_request({"trace_id": "trace-123", "score_name": "custom-score"})
 
     authorized, status, trace_id, score_name = _resolve_feedback_request(
         request=request,
-        expected_access_key="secret-value",
+        expected_access_key="secret-salt",
         default_score_name="user-thumbs",
     )
 
@@ -29,20 +32,72 @@ def test_resolve_feedback_request_uses_query_params() -> None:
     assert score_name == "custom-score"
 
 
-def test_resolve_feedback_request_rejects_wrong_access_key() -> None:
-    """Reject a request when the access key does not match."""
-    request = _make_request({"key": "wrong", "trace_id": "trace-123"})
+def test_load_feedback_trace_validates_query_token() -> None:
+    """Authorize using per-link token from URL and load trace IO."""
 
-    authorized, status, trace_id, score_name = _resolve_feedback_request(
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:  # noqa: D401
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            assert trace_id == "trace-123"
+            assert score_name == "user-thumbs"
+            return False
+
+    salt = "secret-salt"
+    expected = _compute_feedback_token("hello", "world", salt)
+    request = _make_request({"trace_id": "trace-123", "key": expected})
+
+    input_text, output_text, status = _load_feedback_trace(
         request=request,
-        expected_access_key="secret-value",
+        lf=DummyClient(),
+        expected_access_key=salt,
         default_score_name="user-thumbs",
     )
 
-    assert authorized is False
-    assert status == "Ungültiger Zugriffsschlüssel"
-    assert trace_id == "trace-123"
-    assert score_name == "user-thumbs"
+    assert input_text == "hello"
+    assert output_text == "world"
+    assert status == "Trace geladen"
+
+
+def test_load_feedback_trace_hides_io_when_score_exists() -> None:
+    """Do not expose trace content when the requested feedback already exists."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            assert trace_id == "trace-123"
+            assert score_name == "user-thumbs"
+            return True
+
+    salt = "secret-salt"
+    request = _make_request(
+        {
+            "trace_id": "trace-123",
+            "key": _compute_feedback_token("hello", "world", salt),
+        }
+    )
+
+    input_text, output_text, status = _load_feedback_trace(
+        request=request,
+        lf=DummyClient(),
+        expected_access_key=salt,
+        default_score_name="user-thumbs",
+    )
+
+    assert input_text == ""
+    assert output_text == ""
+    assert status == "Bewertung bereits vorhanden"
 
 
 def test_load_feedback_trace_reports_invalid_trace_id() -> None:
@@ -55,12 +110,12 @@ def test_load_feedback_trace_reports_invalid_trace_id() -> None:
         def get_trace_io(self, trace_id: str):
             raise LangfuseError("trace not found")
 
-    request = _make_request({"key": "secret-value", "trace_id": "bad"})
+    request = _make_request({"trace_id": "bad"})
 
     input_text, output_text, status = _load_feedback_trace(
         request=request,
         lf=DummyClient(),
-        expected_access_key="secret-value",
+        expected_access_key="secret-salt",
         default_score_name="user-thumbs",
     )
 

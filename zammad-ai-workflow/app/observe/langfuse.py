@@ -123,6 +123,29 @@ class LangfuseClient:
             logger.error("Failed to attach evaluation to Langfuse trace.", exc_info=True)
             raise LangfuseError("Failed to attach evaluation to Langfuse trace.") from e
 
+    def has_score(self, trace_id: str, score_name: str) -> bool:
+        """Return True if a score with the given name already exists on the trace."""
+        try:
+            trace = self.langfuse.api.trace.get(trace_id=trace_id, fields="scores")
+            try:
+                data = trace.dict() if hasattr(trace, "dict") else dict(trace)
+            except Exception:
+                data = {}
+            scores = data.get("scores") if isinstance(data, dict) else None
+            if not isinstance(scores, list):
+                return False
+            for s in scores:
+                try:
+                    name = s.get("name") if isinstance(s, dict) else getattr(s, "name", None)
+                    if name == score_name:
+                        return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            logger.warning("Failed to check existing scores on trace.", exc_info=True)
+            return False
+
     def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None]:
         """Fetch a trace and try to extract a representative input/output pair.
 

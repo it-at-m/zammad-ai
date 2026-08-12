@@ -55,6 +55,7 @@ def mount_feedback_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI
         return app
 
     logger.info("Mounting feedback frontend at /feedback/")
+
     feedback = build_feedback_frontend(settings.frontend)
 
     return gr.mount_gradio_app(app=app, blocks=feedback, path="/feedback")
