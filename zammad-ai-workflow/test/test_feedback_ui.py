@@ -7,12 +7,12 @@ import gradio as gr
 import pytest
 
 from app.frontend.feedback_ui import (
-    _compute_feedback_token,
     _load_feedback_trace,
     _load_translations,
     _resolve_feedback_request,
     _submit_feedback,
 )
+from app.utils.token import compute_feedback_token
 from app.observe.langfuse import LangfuseClient, LangfuseError
 
 
@@ -78,7 +78,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
             return False
 
     salt = "secret-salt"
-    expected = _compute_feedback_token("hello", "world", salt)
+    expected = compute_feedback_token("hello", "world", salt)
     request = _make_request({"trace_id": "trace-123", "key": expected})
 
     input_text, output_text, status = _load_feedback_trace(
@@ -114,7 +114,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
     request = _make_request(
         {
             "trace_id": "trace-123",
-            "key": _compute_feedback_token("hello", "world", salt),
+            "key": compute_feedback_token("hello", "world", salt),
         }
     )
 
@@ -174,7 +174,7 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
 
     salt = "secret-salt"
     input_text, output_text, status = _load_feedback_trace(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=DummyClient(),
         expected_access_key=salt,
         score_name="user-thumbs",
@@ -230,6 +230,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
     class DummyClient(LangfuseClient):
         def __init__(self) -> None:
             self.tags: list[str] | None = None
+            self.score_name: str | None = None
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
@@ -248,14 +249,15 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
             score_name: str = "user-thumbs",
         ) -> None:
             self.tags = tags
+            self.score_name = score_name
 
     salt = "secret-salt"
     client = DummyClient()
     result = _submit_feedback(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=client,
         expected_access_key=salt,
-        score_name="user-thumbs",
+        score_name="configured-thumbs",
         thumbs="down",
         comment="",
         user_name=None,
@@ -266,6 +268,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
 
     assert result == "Bewertung gespeichert"
     assert client.tags == ["outdated information"]
+    assert client.score_name == "configured-thumbs"
 
 
 @pytest.mark.parametrize(
@@ -309,7 +312,7 @@ def test_submit_feedback_rejects_invalid_submission(
     salt = "secret-salt"
     client = DummyClient()
     result = _submit_feedback(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=client,
         expected_access_key=salt,
         score_name="user-thumbs",
@@ -355,7 +358,7 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
     salt = "secret-salt"
     client = DummyClient()
     result = _submit_feedback(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=client,
         expected_access_key=salt,
         score_name="user-thumbs",
@@ -398,7 +401,7 @@ def test_submit_feedback_accepts_current_helper_signature(german_translations: d
 
     salt = "secret-salt"
     result = _submit_feedback(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=DummyClient(),
         expected_access_key=salt,
         score_name="user-thumbs",
@@ -430,7 +433,7 @@ def test_load_feedback_trace_uses_english_translations() -> None:
     translations = _load_translations("en")
     salt = "secret-salt"
     input_text, output_text, status = _load_feedback_trace(
-        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=DummyClient(),
         expected_access_key=salt,
         score_name="user-thumbs",
