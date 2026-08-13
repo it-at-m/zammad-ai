@@ -31,9 +31,9 @@ def german_translations() -> dict[str, str]:
 
 def test_resolve_feedback_request_uses_trace_id_query_param(german_translations: dict[str, str]) -> None:
     """Resolve the trace ID query parameter into feedback request context."""
-    request = _make_request({"trace_id": "trace-123"})
+    request = _make_request({"trace_id": "trace-123", "key": "expected-key"})
 
-    authorized, status, trace_id = _resolve_feedback_request(
+    authorized, status, query_params = _resolve_feedback_request(
         request=request,
         expected_access_key="secret-salt",
         translations=german_translations,
@@ -41,7 +41,24 @@ def test_resolve_feedback_request_uses_trace_id_query_param(german_translations:
 
     assert authorized is True
     assert status == ""
-    assert trace_id == "trace-123"
+    assert query_params is not None
+    assert query_params.trace_id == "trace-123"
+    assert query_params.access_key == "expected-key"
+
+
+def test_resolve_feedback_request_rejects_blank_query_values(german_translations: dict[str, str]) -> None:
+    """Reject blank query parameter values before loading trace data."""
+    request = _make_request({"trace_id": "   ", "key": "expected-key"})
+
+    authorized, status, query_params = _resolve_feedback_request(
+        request=request,
+        expected_access_key="secret-salt",
+        translations=german_translations,
+    )
+
+    assert authorized is False
+    assert status == "Ungültige Bewertung"
+    assert query_params is None
 
 
 def test_load_feedback_trace_validates_query_token(german_translations: dict[str, str]) -> None:
@@ -124,7 +141,7 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
         def get_trace_io(self, trace_id: str):
             raise LangfuseError("trace not found")
 
-    request = _make_request({"trace_id": "bad"})
+    request = _make_request({"trace_id": "bad", "key": "expected-key"})
 
     input_text, output_text, status = _load_feedback_trace(
         request=request,
@@ -198,6 +215,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
             comment: str | None = None,
             user: str | None = None,
             tags: list[str] | None = None,
+            score_name: str = "user-thumbs"
         ) -> None:
             self.tags = tags
 
@@ -254,6 +272,7 @@ def test_submit_feedback_rejects_invalid_submission(
             comment: str | None = None,
             user: str | None = None,
             tags: list[str] | None = None,
+            score_name: str = "thumbs",
         ) -> None:
             self.evaluation_attached = True
 

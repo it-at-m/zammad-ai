@@ -381,13 +381,13 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 gr.Markdown("### Beispiele")
                 with gr.Row():
                     for label, payload in EXAMPLE_PAYLOADS[:2]:
-                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)
+                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)  # ty: ignore[unresolved-attribute]
                 with gr.Row():
                     for label, payload in EXAMPLE_PAYLOADS[2:4]:
-                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)
+                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)  # ty: ignore[unresolved-attribute]
                 with gr.Row():
                     for label, payload in EXAMPLE_PAYLOADS[4:6]:
-                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)
+                        gr.Button(label, size="sm").click(lambda text=payload: text, outputs=input_text)  # ty: ignore[unresolved-attribute]
 
                 # System / configuration info (collapsible, interactive)
                 gr.Markdown("### System Info")
@@ -419,7 +419,7 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
         ]
 
         submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)  # ty: ignore[unresolved-attribute]
-        input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
+        input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)  # ty: ignore[unresolved-attribute]
         frontend.load(fn=_load_config_md, outputs=config_md)
 
     return frontend

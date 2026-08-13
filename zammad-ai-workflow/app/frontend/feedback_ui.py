@@ -1,15 +1,16 @@
 """Separate Gradio frontend for Sachbearbeiter feedback on Langfuse traces."""
 
 from collections.abc import Mapping
+from functools import partial
 from hashlib import sha256
 from json import load
 from logging import Logger
 from pathlib import Path
 from secrets import compare_digest
-from typing import Literal, Tuple
+from typing import Literal
 
 import gradio as gr
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 
 from app.observe.langfuse import LangfuseClient, LangfuseError
 from app.settings import FrontendSettings
@@ -33,6 +34,25 @@ class FeedbackSubmission(BaseModel):
     user_name: str | None = Field(default=None, max_length=100)
 
 
+class FeedbackRequestQueryParams(BaseModel):
+    """Validate query parameters required for feedback access."""
+
+    trace_id: str | None = Field(default=None, max_length=255)
+    access_key: str | None = Field(default=None, validation_alias=AliasChoices("key", "token"), max_length=255)
+
+    @field_validator("trace_id", "access_key")
+    @classmethod
+    def _validate_non_blank_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("query parameter must not be blank")
+
+        return normalized_value
+
+
 def _request_query_params(request: gr.Request | None) -> Mapping[str, str]:
     if request is None:
         return {}
@@ -52,15 +72,24 @@ def _resolve_feedback_request(
     request: gr.Request | None,
     expected_access_key: str | None,
     translations: Mapping[str, str],
-) -> tuple[bool, str, str]:
-    """Resolve basic request context (trace_id, score_name) and configuration."""
-    query_params = _request_query_params(request)
-    resolved_trace_id = query_params.get("trace_id", "")
+) -> tuple[bool, str, FeedbackRequestQueryParams | None]:
+    """Resolve validated request query parameters and configuration."""
+    try:
+        query_params = FeedbackRequestQueryParams.model_validate(_request_query_params(request))
+    except ValidationError:
+        logger.warning("Invalid feedback request query parameters", exc_info=True)
+        return False, translations["error.feedback_invalid"], None
 
     if expected_access_key is None:
-        return False, translations["error.access_key_not_configured"], resolved_trace_id
+        return False, translations["error.access_key_not_configured"], None
 
-    return True, "", resolved_trace_id
+    if query_params.trace_id is None:
+        return False, translations["error.trace_id_missing"], None
+
+    if query_params.access_key is None:
+        return False, translations["error.access_key_missing"], None
+
+    return True, "", query_params
 
 
 def _compute_feedback_token(inp: str, out: str, salt: str) -> str:
@@ -78,16 +107,20 @@ def _load_feedback_trace(
     expected_access_key: str | None,
     score_name: str,
     translations: Mapping[str, str],
-) -> Tuple[str, str, str]:
-    authorized, status, trace_id = _resolve_feedback_request(
+) -> tuple[str, str, str]:
+    authorized, status, query_params = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
         translations=translations,
     )
-    if not authorized:
+    if not authorized or query_params is None:
         return "", "", status
-    if not trace_id:
-        return "", "", translations["error.trace_id_missing"]
+
+    trace_id = query_params.trace_id
+    provided_key = query_params.access_key
+    assert trace_id is not None
+    assert provided_key is not None
+
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
         inp, out = lf.get_trace_io(trace_id=trace_id)
@@ -99,11 +132,6 @@ def _load_feedback_trace(
         return "", "", translations["error.trace_load_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    params = _request_query_params(request)
-    provided_key = params.get("key") or params.get("token")
-    if not provided_key:
-        return "", "", translations["error.access_key_missing"]
-
     expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
 
     if not compare_digest(provided_key, expected_token):
@@ -119,7 +147,6 @@ def _load_feedback_trace(
 
 
 def _submit_feedback(
-    request: gr.Request | None,
     lf: LangfuseClient,
     expected_access_key: str | None,
     score_name: str,
@@ -129,19 +156,25 @@ def _submit_feedback(
     tags: list[str] | None,
     allowed_tags: list[str],
     translations: Mapping[str, str],
+    request: gr.Request | None = None,
 ) -> str:
-    authorized, status, trace_id = _resolve_feedback_request(
+    authorized, status, query_params = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
         translations=translations,
     )
-    if not authorized:
+    if not authorized or query_params is None:
         return status
-    if not trace_id:
-        return translations["error.trace_id_missing"]
+
+    trace_id = query_params.trace_id
+    provided_key = query_params.access_key
+    assert trace_id is not None
+    assert provided_key is not None
 
     try:
-        submission: FeedbackSubmission = FeedbackSubmission.model_validate({"thumbs": thumbs, "comment": comment, "user_name": user_name})
+        submission: FeedbackSubmission = FeedbackSubmission.model_validate(
+            {"thumbs": thumbs, "comment": comment, "user_name": user_name}
+        )
     except ValidationError:
         logger.warning("Invalid feedback submission", exc_info=True)
         return translations["error.feedback_invalid"]
@@ -157,10 +190,6 @@ def _submit_feedback(
         return translations["error.feedback_save_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    params = _request_query_params(request)
-    provided_key = params.get("key") or params.get("token")
-    if not provided_key:
-        return translations["error.access_key_missing"]
     expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
     if not compare_digest(provided_key, expected_token):
         return translations["error.access_key_invalid"]
@@ -182,6 +211,7 @@ def _submit_feedback(
             comment=submission.comment,
             user=user_meta,
             tags=selected_tags,
+            score_name=score_name,
         )
         return translations["status.feedback_saved"]
     except LangfuseError:
@@ -211,42 +241,6 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         if result == translations["status.trace_loaded"]:
             return input_text, output_text, gr.update(visible=True), gr.update(visible=False), ""
         return "", "", gr.update(visible=False), gr.update(visible=True), result
-
-    def submit_feedback(
-        thumbs: str,
-        comment: str,
-        user_name: str | None,
-        tags: list[str] | None,
-        request: gr.Request | None = None,
-    ) -> str:
-        return _submit_feedback(
-            request=request,
-            lf=lf,
-            expected_access_key=expected_access_key,
-            score_name=score_name,
-            thumbs=thumbs,
-            comment=comment,
-            user_name=user_name,
-            tags=tags,
-            allowed_tags=allowed_tags,
-            translations=translations,
-        )
-
-    def submit_feedback_up(
-        comment: str,
-        user_name: str | None,
-        tags: list[str] | None,
-        request: gr.Request | None = None,
-    ) -> str:
-        return submit_feedback("up", comment, user_name, tags, request)
-
-    def submit_feedback_down(
-        comment: str,
-        user_name: str | None,
-        tags: list[str] | None,
-        request: gr.Request | None = None,
-    ) -> str:
-        return submit_feedback("down", comment, user_name, tags, request)
 
     def display_submission_result(result: str):
         if result == translations["status.feedback_saved"]:
@@ -308,8 +302,16 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs up submission
         (
-            thumbs_up.click(  # ty: ignore[unresolved-attribute]
-                fn=submit_feedback_up,
+            thumbs_up.click(
+                fn=partial(
+                    _submit_feedback,
+                    lf=lf,
+                    expected_access_key=expected_access_key,
+                    score_name=score_name,
+                    thumbs="up",
+                    allowed_tags=allowed_tags,
+                    translations=translations,
+                ),
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(
@@ -320,8 +322,16 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs down submission
         (
-            thumbs_down.click(  # ty: ignore[unresolved-attribute]
-                fn=submit_feedback_down,
+            thumbs_down.click(
+                fn=partial(
+                    _submit_feedback,
+                    lf=lf,
+                    expected_access_key=expected_access_key,
+                    score_name=score_name,
+                    thumbs="down",
+                    allowed_tags=allowed_tags,
+                    translations=translations,
+                ),
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(

@@ -94,6 +94,7 @@ class LangfuseClient:
         comment: str | None = None,
         user: str | None = None,
         tags: list[str] | None = None,
+        score_name: str = "thumbs",
     ) -> None:
         """Attach a simple thumbs-up/thumbs-down evaluation to an existing Langfuse trace.
 
@@ -112,7 +113,7 @@ class LangfuseClient:
             value = 1.0 if thumbs_up else 0.0
             metadata = {"user": user} if user is not None else None
             self.langfuse.create_score(
-                name="thumbs",
+                name=score_name,
                 value=value,
                 trace_id=trace_id,
                 data_type="BOOLEAN",
