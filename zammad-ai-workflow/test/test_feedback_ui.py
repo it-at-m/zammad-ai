@@ -12,8 +12,8 @@ from app.frontend.feedback_ui import (
     _resolve_feedback_request,
     _submit_feedback,
 )
-from app.utils.token import compute_feedback_token
 from app.observe.langfuse import LangfuseClient, LangfuseError
+from app.utils.token import compute_feedback_token
 
 
 def _make_request(query_params: dict[str, str], headers: dict[str, str] | None = None) -> gr.Request:
