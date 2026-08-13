@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.settings import ZammadAISettings
 from app.utils.logging import getLogger
 
+from .feedback_ui import build_feedback_frontend
 from .ui import build_frontend
 
 logger: Logger = getLogger("zammad-ai.frontend.integration")
@@ -42,3 +43,19 @@ def mount_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
         path="/",
         auth=auth,
     )
+
+
+def mount_feedback_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
+    """Mount the separate feedback Gradio app at `/feedback` when frontend is enabled.
+
+    This route does not use the main frontend basic auth; access is controlled
+    inside the feedback UI through the URL query-string secret key.
+    """
+    if not settings.frontend.enabled:
+        return app
+
+    logger.info("Mounting feedback frontend at /feedback/")
+
+    feedback = build_feedback_frontend(settings.frontend)
+
+    return gr.mount_gradio_app(app=app, blocks=feedback, path="/feedback")

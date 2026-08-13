@@ -302,6 +302,9 @@ frontend:
   request_timeout_seconds: 30.0 # API timeout for frontend requests
   auth_username: "demo" # Basic auth username for local development
   auth_password: "zammad-ai" # Basic auth password for local development
+  feedback:
+    language: "de" # Options: "de", "en"
+    tags: [] # Optional predefined feedback tags, e.g. ["outdated information"]
 
 # Logging configuration
 log:
@@ -352,6 +355,7 @@ preparser:
 # API Configuration for REST endpoints
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
+  shutdown_timeout_seconds: 10 # Maximum wait for open requests during graceful shutdown
 
 # ============================================================================
 # Guardrail Service Configuration

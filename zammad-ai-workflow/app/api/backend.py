@@ -15,7 +15,7 @@ from starlette.responses import Response
 
 from app.action.service import get_action_service
 from app.answer import get_answer_service
-from app.frontend import mount_frontend
+from app.frontend import mount_feedback_frontend, mount_frontend
 from app.models.api_v1 import HealthCheckResponse
 from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
@@ -249,6 +249,8 @@ async def health_check() -> HealthCheckResponse:
 
 
 if settings.frontend.enabled:
+    # Mount the feedback frontend first so it is not shadowed by the root frontend mount.
+    backend = mount_feedback_frontend(app=backend, settings=settings)
     backend = mount_frontend(app=backend, settings=settings)
 
 if not settings.frontend.enabled and settings.mode == "development":

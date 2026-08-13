@@ -11,6 +11,7 @@ from app.settings import ZammadAISettings, get_settings
 
 T = TypeVar("T")
 
+
 def with_recursion_limit(config: RunnableConfig, settings: ZammadAISettings | None = None) -> RunnableConfig:
     """Return a RunnableConfig with a bounded LangGraph recursion limit."""
     if settings is None:
@@ -23,21 +24,14 @@ def extract_structured_response(
     expected_type: type[T] | tuple[type[Any], ...],
 ) -> T:
     """Return LangChain's validated structured response from an agent result."""
-    types_to_try = (
-        expected_type
-        if isinstance(expected_type, tuple)
-        else (expected_type,)
-    )
+    types_to_try = expected_type if isinstance(expected_type, tuple) else (expected_type,)
 
     # Prefer LangChain's explicit structured response when available.
     structured_response = agent_result.get("structured_response")
 
     if structured_response is not None:
         if not isinstance(structured_response, expected_type):
-            raise TypeError(
-                "LangChain agent returned an unexpected "
-                "structured_response type."
-            )
+            raise TypeError("LangChain agent returned an unexpected structured_response type.")
 
         return cast(T, structured_response)
 
@@ -54,17 +48,9 @@ def extract_structured_response(
             continue
 
         if isinstance(message, dict):
-            role = (
-                message.get("role")
-                or message.get("author")
-                or message.get("sender")
-                or message.get("type")
-            )
+            role = message.get("role") or message.get("author") or message.get("sender") or message.get("type")
 
-            if not (
-                isinstance(role, str)
-                and role.lower() in ("assistant", "ai")
-            ):
+            if not (isinstance(role, str) and role.lower() in ("assistant", "ai")):
                 continue
 
             raw_content = message.get("content")
@@ -77,15 +63,9 @@ def extract_structured_response(
             if isinstance(message, HumanMessage):
                 continue
 
-            role = (
-                getattr(message, "role", None)
-                or getattr(message, "type", None)
-            )
+            role = getattr(message, "role", None) or getattr(message, "type", None)
 
-            if not (
-                isinstance(role, str)
-                and role.lower() in ("assistant", "ai")
-            ):
+            if not (isinstance(role, str) and role.lower() in ("assistant", "ai")):
                 continue
 
             raw_content = getattr(message, "content", None)
@@ -117,10 +97,7 @@ def extract_structured_response(
 
         for target_type in types_to_try:
             try:
-                if (
-                    isinstance(target_type, type)
-                    and issubclass(target_type, BaseModel)
-                ):
+                if isinstance(target_type, type) and issubclass(target_type, BaseModel):
                     value_to_validate = parsed
 
                     if isinstance(parsed, dict):
@@ -146,24 +123,15 @@ def extract_structured_response(
                     return cast(T, parsed)
 
             except ValidationError as exc:
-                validation_errors.append(
-                    f"{target_type.__name__}:\n{exc}"
-                )
+                validation_errors.append(f"{target_type.__name__}:\n{exc}")
 
-    expected_names = ", ".join(
-        getattr(target_type, "__name__", repr(target_type))
-        for target_type in types_to_try
-    )
+    expected_names = ", ".join(getattr(target_type, "__name__", repr(target_type)) for target_type in types_to_try)
 
     if validation_errors:
         details = "\n\n".join(validation_errors)
     else:
-        details = (
-            "No parseable JSON was found in an assistant message."
-        )
+        details = "No parseable JSON was found in an assistant message."
 
     raise ValueError(
-        "LangChain agent returned no valid structured response. "
-        f"Expected one of: {expected_names}.\n\n"
-        f"{details}"
+        f"LangChain agent returned no valid structured response. Expected one of: {expected_names}.\n\n{details}"
     )

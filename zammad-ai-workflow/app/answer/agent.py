@@ -144,7 +144,9 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
             # violating the tool's return type. Use one tiny document with a
             # short message so the agent sees an explanation but the token cost
             # is minimal.
-            short_msg = "This law has already been searched during this request. Use the previously retrieved documents."
+            short_msg = (
+                "This law has already been searched during this request. Use the previously retrieved documents."
+            )
             small_doc = Document(page_content=short_msg, metadata={})
             return RetrieveDocumentsKBOutput(documents_with_relevance_score=[(small_doc, 0.0)])
 

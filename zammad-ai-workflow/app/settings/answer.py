@@ -149,6 +149,7 @@ class QdrantSettings(BaseModel):
         default="sparse",
     )
 
+
 class LawToolSettings(BaseModel):
     """Settings for exposing one indexed law as an answer-agent tool."""
 
