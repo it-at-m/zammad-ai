@@ -148,6 +148,7 @@ def _load_feedback_trace(
 
 
 def _submit_feedback(
+    request: gr.Request | None,
     lf: LangfuseClient,
     expected_access_key: str | None,
     score_name: str,
@@ -157,7 +158,6 @@ def _submit_feedback(
     tags: list[str] | None,
     allowed_tags: list[str],
     translations: Mapping[str, str],
-    request: gr.Request | None = None,
 ) -> str:
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
@@ -244,6 +244,42 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
             return input_text, output_text, gr.update(visible=True), gr.update(visible=False), ""
         return "", "", gr.update(visible=False), gr.update(visible=True), result
 
+    def submit_feedback(
+        thumbs: str,
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
+        return _submit_feedback(
+            request=request,
+            lf=lf,
+            expected_access_key=expected_access_key,
+            score_name=score_name,
+            thumbs=thumbs,
+            comment=comment,
+            user_name=user_name,
+            tags=tags,
+            allowed_tags=allowed_tags,
+            translations=translations,
+        )
+
+    def submit_feedback_up(
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
+        return submit_feedback("up", comment, user_name, tags, request)
+
+    def submit_feedback_down(
+        comment: str,
+        user_name: str | None,
+        tags: list[str] | None,
+        request: gr.Request | None = None,
+    ) -> str:
+        return submit_feedback("down", comment, user_name, tags, request)
+
     def display_submission_result(result: str):
         if result == translations["status.feedback_saved"]:
             return gr.update(visible=False), gr.update(visible=False), "", gr.update(visible=True)
@@ -305,15 +341,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         # Thumbs up submission
         (
             thumbs_up.click(  # ty: ignore[unresolved-attribute]
-                fn=partial(
-                    _submit_feedback,
-                    lf=lf,
-                    expected_access_key=expected_access_key,
-                    score_name=score_name,
-                    thumbs="up",
-                    allowed_tags=allowed_tags,
-                    translations=translations,
-                ),
+                fn=submit_feedback_up,
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(
@@ -325,15 +353,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         # Thumbs down submission
         (
             thumbs_down.click(  # ty: ignore[unresolved-attribute]
-                fn=partial(
-                    _submit_feedback,
-                    lf=lf,
-                    expected_access_key=expected_access_key,
-                    score_name=score_name,
-                    thumbs="down",
-                    allowed_tags=allowed_tags,
-                    translations=translations,
-                ),
+                fn=submit_feedback_down,
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
             ).then(

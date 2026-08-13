@@ -371,6 +371,48 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
     assert client.evaluation_attached is False
 
 
+def test_submit_feedback_accepts_current_helper_signature(german_translations: dict[str, str]) -> None:
+    """Accept valid inputs using the current feedback helper signature."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            self.evaluation_attached = False
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+            score_name: str = "user-thumbs",
+        ) -> None:
+            self.evaluation_attached = True
+
+    salt = "secret-salt"
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=DummyClient(),
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs="up",
+        comment="valid comment",
+        user_name="AB",
+        tags=["outdated information"],
+        allowed_tags=["outdated information"],
+        translations=german_translations,
+    )
+
+    assert result == "Bewertung gespeichert"
+
+
 def test_load_feedback_trace_uses_english_translations() -> None:
     """Return status messages from the configured English translation catalog."""
 
