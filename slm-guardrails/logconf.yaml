@@ -1,13 +1,33 @@
 version: 1
 formatters:
   simple:
-    format: '%(levelname)s %(name)s %(message)s'
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  json:
+    class: guardrail_app.utils.logging.JsonFormatter
+filters:
+  health_filter:
+    (): guardrail_app.utils.logging.HealthFilter
 handlers:
   console:
     class: logging.StreamHandler
-    formatter: simple
+    level: DEBUG
+    formatter: json
+    filters:
+      - health_filter
     stream: ext://sys.stdout
+  httpx:
+    class: logging.StreamHandler
+    formatter: json
+    stream: ext://sys.stderr
 loggers:
+  uvicorn.access:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  uvicorn.error:
+    level: INFO
+    handlers: [console]
+    propagate: no
   slm-guardrails:
     level: INFO
     handlers: [console]

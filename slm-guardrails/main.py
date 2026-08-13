@@ -156,6 +156,7 @@ async def list_models(
 
 if __name__ == "__main__":
     import uvicorn
+    from guardrail_app.utils.logging import get_log_config
 
     s = get_settings()
     uvicorn.run(
@@ -164,4 +165,5 @@ if __name__ == "__main__":
         port=s.api.port,
         reload=False,
         log_level="info",
+        log_config=get_log_config(),
     )
