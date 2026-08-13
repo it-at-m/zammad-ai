@@ -1,7 +1,6 @@
 """Separate Gradio frontend for Sachbearbeiter feedback on Langfuse traces."""
 
 from collections.abc import Mapping
-from functools import partial
 from hashlib import sha256
 from json import load
 from logging import Logger
