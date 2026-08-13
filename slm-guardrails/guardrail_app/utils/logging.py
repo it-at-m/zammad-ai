@@ -108,3 +108,11 @@ def getLogger(name: str = "slm-guardrails") -> logging.Logger:
         logging.config.dictConfig(get_log_config())
         _configured = True
     return logging.getLogger(name)
+
+
+class HealthFilter(logging.Filter):
+    """Filter out health check endpoint access logs."""
+
+    def filter(self, record):
+        """Return True for non-health check records and False for /healthz requests."""
+        return record.getMessage().find("/healthz") == -1

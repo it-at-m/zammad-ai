@@ -7,9 +7,27 @@ formatters:
 handlers:
   console:
     class: logging.StreamHandler
+    level: DEBUG
     formatter: plain
+    filters:
+      - health_filter
     stream: ext://sys.stdout
+  httpx:
+    class: logging.StreamHandler
+    formatter: json
+    stream: ext://sys.stderr
+filters:
+  health_filter:
+    (): guardrail_app.utils.logging.HealthFilter
 loggers:
+  uvicorn.access:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  uvicorn.error:
+    level: INFO
+    handlers: [console]
+    propagate: no
   slm-guardrails:
     level: INFO
     handlers: [console]

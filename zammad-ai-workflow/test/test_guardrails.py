@@ -1,4 +1,5 @@
 """Tests for the HTTP-based guardrail client service."""
+
 import httpx
 import pytest
 from pydantic import HttpUrl
@@ -28,16 +29,13 @@ def guardrail_service(guardrail_settings: GuardrailSettings) -> GuardrailService
 
 @pytest.mark.asyncio
 async def test_guardrail_service_disabled() -> None:
-    """When disabled, guardrail client should always return safe without HTTP calls."""
+    """When disabled, guardrail client should return None."""
     settings = GuardrailSettings(enabled=False)
     service = GuardrailService(settings)
 
     result = await service.evaluate("any text")
 
-    assert isinstance(result, GuardrailResult)
-    assert result.prompt_safety == "safe"
-    assert len(result.prompt_toxicity) == 0
-    assert len(result.jailbreak_detection) == 0
+    assert result is None
 
 
 def test_guardrail_settings_defaults() -> None:
@@ -74,16 +72,13 @@ def test_guardrail_settings_block_on_high_risk() -> None:
 
 @pytest.mark.asyncio
 async def test_guardrail_response_disabled() -> None:
-    """When disabled, response guardrail should always return safe."""
+    """When disabled, response guardrail should return None."""
     settings = GuardrailSettings(enabled=False)
     service = GuardrailService(settings)
 
     result = await service.evaluate_response("prompt", "response")
 
-    assert isinstance(result, GuardrailResponseResult)
-    assert result.response_safety == "safe"
-    assert len(result.response_toxicity) == 0
-    assert len(result.response_refusal) == 0
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -143,7 +138,7 @@ async def test_guardrail_http_response_success(guardrail_settings: GuardrailSett
 
 @pytest.mark.asyncio
 async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSettings) -> None:
-    """Client fails open (safe) on HTTP errors."""
+    """Client fails with None on HTTP errors."""
     service = GuardrailService(guardrail_settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -155,5 +150,5 @@ async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSetti
     result_prompt = await service.evaluate("text")
     result_response = await service.evaluate_response("prompt", "response")
 
-    assert result_prompt.prompt_safety == "safe"
-    assert result_response.response_safety == "safe"
+    assert result_prompt is None
+    assert result_response is None
