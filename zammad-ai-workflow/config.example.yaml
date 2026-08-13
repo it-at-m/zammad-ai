@@ -310,8 +310,9 @@ frontend:
 log:
   format: "json" # Options: "json", "plain"
   # Default: "plain" for development mode, "json" for production mode
+  # Rendered via structlog's ProcessorFormatter for both app and stdlib logs
   # "json": Structured JSON logs for production/log aggregation
-  # "plain": Human-readable logs for development/debugging
+  # "plain": Human-readable console logs for development/debugging
 
   level: "INFO" # Options: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
   # Default: "DEBUG" for development mode, "INFO" for production mode
