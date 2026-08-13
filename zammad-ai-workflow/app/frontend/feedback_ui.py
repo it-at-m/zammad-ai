@@ -1,7 +1,6 @@
 """Separate Gradio frontend for Sachbearbeiter feedback on Langfuse traces."""
 
 from collections.abc import Mapping
-from hashlib import sha256
 from json import load
 from logging import Logger
 from pathlib import Path
@@ -14,6 +13,7 @@ from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_vali
 from app.observe.langfuse import LangfuseClient, LangfuseError
 from app.settings import FrontendSettings
 from app.utils.logging import getLogger
+from app.utils.token import compute_feedback_token
 
 logger: Logger = getLogger("zammad-ai.frontend.feedback")
 LOCALE_DIRECTORY = Path(__file__).with_name("locales")
@@ -91,15 +91,6 @@ def _resolve_feedback_request(
     return True, "", query_params
 
 
-def _compute_feedback_token(inp: str, out: str, salt: str) -> str:
-    """Compute a per-link token from input, output, and a secret salt.
-
-    The token is SHA256 over the UTF-8 bytes of "{inp}|{out}|{salt}".
-    """
-    base = f"{inp}|{out}|{salt}".encode("utf-8")
-    return sha256(base).hexdigest()
-
-
 def _load_feedback_trace(
     request: gr.Request | None,
     lf: LangfuseClient,
@@ -131,7 +122,7 @@ def _load_feedback_trace(
         return "", "", translations["error.trace_load_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", out or "", expected_access_key or "")
 
     if not compare_digest(provided_key, expected_token):
         return "", "", translations["error.access_key_invalid"]
@@ -190,7 +181,7 @@ def _submit_feedback(
         return translations["error.feedback_save_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = _compute_feedback_token(inp or "", out or "", expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", out or "", expected_access_key or "")
     if not compare_digest(provided_key, expected_token):
         return translations["error.access_key_invalid"]
 

@@ -1,6 +1,5 @@
 """Action service for executing post-triage ticket handling."""
 
-from hashlib import sha256
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
@@ -14,6 +13,7 @@ from app.settings.triage import ActionTypes
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from app.triage.triage import TriageResult
 from app.utils.logging import getLogger
+from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
 from app.zammad.eai import ZammadEAIClient
 
@@ -124,7 +124,7 @@ class ActionService:
                     if self.settings.frontend.feedback.salt
                     else ""
                 )
-                token = sha256(f"{input}|{output}|{salt}".encode("utf-8")).hexdigest()
+                token = compute_feedback_token(inp=input, out=output, salt=salt)
             except Exception:
                 token = ""
 
