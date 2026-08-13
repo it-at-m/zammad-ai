@@ -142,6 +142,7 @@ def _load_feedback_trace(
             return "", "", translations["status.feedback_exists"]
     except Exception:
         logger.warning("Failed to check existing score while loading feedback trace", exc_info=True)
+        return "", "", translations["error.trace_load_failed"]
 
     return inp or "", out or "", translations["status.trace_loaded"]
 
@@ -200,6 +201,7 @@ def _submit_feedback(
             return translations["status.feedback_exists"]
     except Exception:
         logger.warning("Failed to check existing score before storing feedback", exc_info=True)
+        return translations["error.feedback_save_failed"]
 
     try:
         # Use provided user name/initials if given, else default label
@@ -302,7 +304,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs up submission
         (
-            thumbs_up.click(
+            thumbs_up.click(  # ty: ignore[unresolved-attribute]
                 fn=partial(
                     _submit_feedback,
                     lf=lf,
@@ -322,7 +324,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs down submission
         (
-            thumbs_down.click(
+            thumbs_down.click(  # ty: ignore[unresolved-attribute]
                 fn=partial(
                     _submit_feedback,
                     lf=lf,

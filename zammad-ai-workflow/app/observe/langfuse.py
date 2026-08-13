@@ -154,9 +154,9 @@ class LangfuseClient:
                 except Exception:
                     continue
             return False
-        except Exception:
+        except Exception as e:
             logger.warning("Failed to check existing scores on trace.", exc_info=True)
-            return False
+            raise LangfuseError("Failed to check existing scores on trace.") from e
 
     def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None]:
         """Fetch a trace and try to extract a representative input/output pair.

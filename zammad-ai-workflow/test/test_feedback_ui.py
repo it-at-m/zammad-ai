@@ -156,6 +156,36 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
     assert status == "Ungültige Trace ID oder Trace nicht gefunden"
 
 
+def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Fail closed when duplicate-score lookup cannot be completed."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            raise LangfuseError("lookup failed")
+
+    salt = "secret-salt"
+    input_text, output_text, status = _load_feedback_trace(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=DummyClient(),
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        translations=german_translations,
+    )
+
+    assert input_text == ""
+    assert output_text == ""
+    assert status == "Fehler beim Laden des Traces"
+
+
 def test_attach_evaluation_to_trace_records_tags_as_categorical_scores(monkeypatch) -> None:
     """Store each feedback tag as an individual categorical score."""
     recorded_calls: list[dict[str, object]] = []
@@ -215,7 +245,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
             comment: str | None = None,
             user: str | None = None,
             tags: list[str] | None = None,
-            score_name: str = "user-thumbs"
+            score_name: str = "user-thumbs",
         ) -> None:
             self.tags = tags
 
@@ -292,6 +322,52 @@ def test_submit_feedback_rejects_invalid_submission(
     )
 
     assert result == "Ungültige Bewertung"
+    assert client.evaluation_attached is False
+
+
+def test_submit_feedback_returns_save_error_when_score_lookup_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Do not attach feedback when duplicate-score lookup fails."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            self.evaluation_attached = False
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "world"
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            raise LangfuseError("lookup failed")
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+            score_name: str = "user-thumbs",
+        ) -> None:
+            self.evaluation_attached = True
+
+    salt = "secret-salt"
+    client = DummyClient()
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": _compute_feedback_token("hello", "world", salt)}),
+        lf=client,
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs="up",
+        comment="valid comment",
+        user_name="AB",
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+    )
+
+    assert result == "Fehler beim Speichern der Bewertung"
     assert client.evaluation_attached is False
 
 
