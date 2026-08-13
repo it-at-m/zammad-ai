@@ -8,7 +8,7 @@ from typing import Any
 
 import structlog
 from structlog.dev import ConsoleRenderer
-from structlog.processors import JSONRenderer, StackInfoRenderer, TimeStamper, UnicodeDecoder, format_exc_info
+from structlog.processors import JSONRenderer, StackInfoRenderer, TimeStamper, UnicodeDecoder
 from structlog.stdlib import (
     BoundLogger,
     ExtraAdder,
@@ -76,7 +76,6 @@ def _shared_processors() -> list[Any]:
         PositionalArgumentsFormatter(),
         TimeStamper(fmt="iso", utc=True),
         StackInfoRenderer(),
-        format_exc_info,
         UnicodeDecoder(),
     ]
 
