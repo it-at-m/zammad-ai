@@ -1,12 +1,9 @@
 version: 1
 formatters:
-  simple:
-    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  http:
-    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    datefmt: "%Y-%m-%d %H:%M:%S"
+  plain:
+    (): app.utils.logging.build_plain_formatter
   json:
-    class: app.utils.logging.JsonFormatter
+    (): app.utils.logging.build_json_formatter
 filters:
   metrics_filter:
     (): app.utils.logging.MetricsFilter
@@ -61,6 +58,14 @@ loggers:
     handlers: [console]
     propagate: no
   python_multipart.multipart:
+    level: WARNING
+    handlers: [console]
+    propagate: no
+  openai:
+    level: WARNING
+    handlers: [console]
+    propagate: no
+  anthropic:
     level: WARNING
     handlers: [console]
     propagate: no

@@ -139,7 +139,7 @@ Key sections (see `config.example.yaml` for a full example):
 
 ## Modes
 
-- `development`: local-friendly logging and behavior
+- `development`: local-friendly structlog console output and behavior
 - `production`: production defaults
 - `unittest`: test mode
 

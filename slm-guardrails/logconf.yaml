@@ -1,11 +1,13 @@
 version: 1
 formatters:
-  simple:
-    format: '%(levelname)s %(name)s %(message)s'
+  plain:
+    (): guardrail_app.utils.logging.build_plain_formatter
+  json:
+    (): guardrail_app.utils.logging.build_json_formatter
 handlers:
   console:
     class: logging.StreamHandler
-    formatter: simple
+    formatter: plain
     stream: ext://sys.stdout
 loggers:
   slm-guardrails:
