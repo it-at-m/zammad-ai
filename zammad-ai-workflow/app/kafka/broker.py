@@ -33,7 +33,7 @@ def _safe_ticket_id(ticket: Any) -> int | None:
     """Return a ticket id when the value is safely coercible to an integer."""
     try:
         return int(ticket)
-    except TypeError, ValueError:
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -189,6 +189,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                 logger.info(
                     "Ticket no longer exists in Zammad",
                     extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
+                    exc_info=True,
                 )
                 raise KafkaPayloadError("Ticket was not found", retryable=False) from e
             except (ZammadRetryableError, ZammadConnectionError) as e:

@@ -333,6 +333,26 @@ async def test_event_handler_ack_on_invalid_ticket_id(
 
 
 @pytest.mark.asyncio
+async def test_event_handler_ack_on_non_finite_raw_ticket_id(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Non-finite raw ticket ids should be dropped instead of retried."""
+    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    _, event_handler = build_router(settings=settings)
+
+    raw_event: dict[str, object] = {**kafka_message_factory()}
+    raw_event["ticket"] = float("inf")
+
+    with pytest.raises(AckMessage):
+        await event_handler(event=raw_event)
+
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_event_handler_category_wrong_retries_below_threshold(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
