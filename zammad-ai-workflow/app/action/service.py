@@ -245,6 +245,7 @@ class ActionService:
         Attempts to close the Qdrant KB client and, if present, the DLF client. Always resets the module-level `_service` reference to `None` so the service can be recreated.
         """
         try:
+            await self.guardrail_service.close()
             await self.zammad_client.close()
         finally:
             global _service

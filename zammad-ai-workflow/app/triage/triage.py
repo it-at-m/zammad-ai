@@ -466,10 +466,13 @@ class TriageService:
 
         This closes the underlying Zammad client and resets the module-level service reference so a new instance can be created on next request.
         """
-        await self.zammad_client.close()
-        global _service
-        _service = None
-        logger.info("Triage resources cleaned up.")
+        try:
+            await self.guardrail_service.close()
+            await self.zammad_client.close()
+        finally:
+            global _service
+            _service = None
+            logger.info("Triage resources cleaned up.")
 
     def get_prompt_versions(self) -> dict[str, int | None]:
         """Return a dictionary mapping prompt names to their version numbers.
