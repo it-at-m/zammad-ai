@@ -4,7 +4,7 @@ from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
-from app.guardrails import GuardrailService, get_guardrail_service
+from app.guardrails import GuardrailService, get_guardrail_service, reset_guardrail_service
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
@@ -244,12 +244,27 @@ class ActionService:
 
         Attempts to close the Qdrant KB client and, if present, the DLF client. Always resets the module-level `_service` reference to `None` so the service can be recreated.
         """
+        first_error: Exception | None = None
         try:
-            await self.guardrail_service.close()
-            await self.zammad_client.close()
+            try:
+                await self.guardrail_service.close()
+            except Exception as e:
+                first_error = e
+                self.logger.error("Failed to close guardrail service during action cleanup", exc_info=True)
+
+            try:
+                await self.zammad_client.close()
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                self.logger.error("Failed to close Zammad client during action cleanup", exc_info=True)
         finally:
+            reset_guardrail_service()
             global _service
             _service = None
+
+        if first_error is not None:
+            raise first_error
 
 
 class _SafeFormatDict(dict[str, str]):

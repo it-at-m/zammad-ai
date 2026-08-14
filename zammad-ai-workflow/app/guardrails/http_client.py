@@ -120,3 +120,9 @@ def get_guardrail_service(settings: GuardrailSettings | None = None) -> Guardrai
             settings = get_settings().guardrails
         _service = GuardrailService(settings)
     return _service
+
+
+def reset_guardrail_service() -> None:
+    """Clear the shared GuardrailService singleton so it can be recreated."""
+    global _service
+    _service = None

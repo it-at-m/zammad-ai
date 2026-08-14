@@ -15,7 +15,7 @@ from app.errors import (
 from app.errors import (
     TriageError as AppTriageError,
 )
-from app.guardrails import GuardrailService, get_guardrail_service
+from app.guardrails import GuardrailService, get_guardrail_service, reset_guardrail_service
 from app.models.guardrails import GuardrailResult
 from app.models.triage import (
     CategorizationResult,
@@ -466,13 +466,29 @@ class TriageService:
 
         This closes the underlying Zammad client and resets the module-level service reference so a new instance can be created on next request.
         """
+        first_error: Exception | None = None
         try:
-            await self.guardrail_service.close()
-            await self.zammad_client.close()
+            try:
+                await self.guardrail_service.close()
+            except Exception as e:
+                first_error = e
+                logger.error("Failed to close guardrail service during triage cleanup", exc_info=True)
+
+            try:
+                await self.zammad_client.close()
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                logger.error("Failed to close Zammad client during triage cleanup", exc_info=True)
         finally:
+            reset_guardrail_service()
             global _service
             _service = None
+
+        if first_error is None:
             logger.info("Triage resources cleaned up.")
+        else:
+            raise first_error
 
     def get_prompt_versions(self) -> dict[str, int | None]:
         """Return a dictionary mapping prompt names to their version numbers.
