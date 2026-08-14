@@ -167,7 +167,7 @@ async def test_guardrail_service_close_is_idempotent(guardrail_settings: Guardra
             self.calls += 1
 
     dummy_client = DummyClient()
-    service._client = dummy_client  # type: ignore[assignment]
+    service._client = dummy_client  # ty: ignore[invalid-assignment]
 
     await service.close()
     await service.close()
