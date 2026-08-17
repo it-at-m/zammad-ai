@@ -99,13 +99,13 @@ def _build_answer_service(
             },
         }
     )
-    service.langfuse_client = FakeLangfuseClient()  # ty: ignore
-    service.user_message_template = FakePromptTemplate()  # ty: ignore
+    service.langfuse_client = FakeLangfuseClient()
+    service.user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()
     service.agent.ainvoke = ainvoke
-    service.agent_context = object()  # ty: ignore
+    service.agent_context = object()
     service.judge_handler = None
-    service.judge_settings = None  # ty: ignore
+    service.judge_settings = None
     return service
 
 
@@ -241,12 +241,12 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
 def test_judge_handler_builds_config_with_prompt_reference() -> None:
     """Judge traces should carry the Langfuse prompt reference when available."""
     handler = JudgeHandler.__new__(JudgeHandler)
-    handler.langfuse_client = FakeLangfuseClient()  # ty: ignore
-    handler.langfuse_prompt = object()  # ty: ignore
+    handler.langfuse_client = FakeLangfuseClient()
+    handler.langfuse_prompt = object()
 
     _, config = handler._build_runnable_config(session_id="session-id")
 
-    assert config["session_id"] == "session-id"  # ty: ignore
+    assert config["session_id"] == "session-id"
     assert getattr(handler.langfuse_client, "last_langfuse_prompt") is handler.langfuse_prompt
 
 
