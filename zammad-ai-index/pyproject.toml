@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings==2.14.2",
     "socksio==1.0.0",
     "stamina==26.1.0",
+    "structlog==26.1.0",
     "truststore==0.10.4",
 ]
 

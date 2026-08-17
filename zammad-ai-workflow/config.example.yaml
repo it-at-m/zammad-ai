@@ -302,13 +302,17 @@ frontend:
   request_timeout_seconds: 30.0 # API timeout for frontend requests
   auth_username: "demo" # Basic auth username for local development
   auth_password: "zammad-ai" # Basic auth password for local development
+  feedback:
+    language: "de" # Options: "de", "en"
+    tags: [] # Optional predefined feedback tags, e.g. ["outdated information"]
 
 # Logging configuration
 log:
   format: "json" # Options: "json", "plain"
   # Default: "plain" for development mode, "json" for production mode
+  # Rendered via structlog's ProcessorFormatter for both app and stdlib logs
   # "json": Structured JSON logs for production/log aggregation
-  # "plain": Human-readable logs for development/debugging
+  # "plain": Human-readable console logs for development/debugging
 
   level: "INFO" # Options: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
   # Default: "DEBUG" for development mode, "INFO" for production mode
@@ -352,6 +356,7 @@ preparser:
 # API Configuration for REST endpoints
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
+  shutdown_timeout_seconds: 10 # Maximum wait for open requests during graceful shutdown
 
 # ============================================================================
 # Guardrail Service Configuration

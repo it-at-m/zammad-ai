@@ -13,6 +13,7 @@ from app.settings.triage import ActionTypes
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from app.triage.triage import TriageResult
 from app.utils.logging import getLogger
+from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
 from app.zammad.eai import ZammadEAIClient
 
@@ -96,11 +97,44 @@ class ActionService:
                     text=response.response,
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
+                if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):
+                    await self._post_feedback_internal_note(
+                        ticket_id=ticket_id, user_text=triage.user_text[: self.max_user_text_length], response=response
+                    )
         except AppError:
             raise
         except Exception as e:
             self.logger.error("Action execution failed.", exc_info=True)
             raise ActionExecutionError("Action execution failed", retryable=True) from e
+
+    async def _post_feedback_internal_note(self, ticket_id: int, user_text: str, response: AnswerCandidate) -> None:
+        trace_id: str | None = (
+            self.answer_service.langfuse_client.langfuse_handler.last_trace_id
+            if self.answer_service.langfuse_client
+            else None
+        )
+        if trace_id and self.settings.frontend.base_url:
+            # Generate a per-link token using the trace IO and the configured salt
+            try:
+                input: str = user_text or ""
+                output: str = (response.subject or "") + "\n\n" + (response.response or "")
+                output: str = output.replace("<br>", "\n").strip()
+                salt: str = (
+                    self.settings.frontend.feedback.salt.get_secret_value()
+                    if self.settings.frontend.feedback.salt
+                    else ""
+                )
+                token = compute_feedback_token(inp=input, out=output, salt=salt)
+            except Exception:
+                token = ""
+
+            text = f"<a href='{self.settings.frontend.base_url}/feedback/?trace_id={trace_id}&key={token}' target='_blank'>Feedback zu Shared Draft geben</a> (öffnet ein neues Fenster)"
+            await self.zammad_client.post_answer(
+                ticket_id=ticket_id,
+                text=text,
+                subject="Feedback zum KI-Antwortvorschlag",
+                internal=True,  # Post an internal note to document that feedback can be given for the answer suggestion
+            )
 
     async def get_answer(
         self,
@@ -118,16 +152,25 @@ class ActionService:
             ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
         """
         # Evaluate guardrails before answer generation
-        guardrail_result: GuardrailResult = await self.guardrail_service.evaluate(user_text)
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(user_text)
         if self.settings.guardrails.enabled:
             self.logger.info(
-                f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety}, toxicity={guardrail_result.prompt_toxicity}, jailbreak={guardrail_result.jailbreak_detection}"
+                f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"
             )
 
-        if not guardrail_result.prompt_safety == "safe" and self.guardrail_service.settings.block_on_high_risk:
+        if (
+            (not guardrail_result or not guardrail_result.prompt_safety == "safe")
+            and self.guardrail_service.settings.block_on_high_risk
+            and self.guardrail_service.settings.enabled
+        ):
             self.logger.warning(
                 f"Answer generation blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
             )
+            if not guardrail_result:
+                raise ActionExecutionError(
+                    "Guardrail evaluation failed or returned no result; action execution blocked",
+                    retryable=True,
+                )
             raise ActionExecutionError(
                 f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
                 retryable=False,
@@ -172,17 +215,23 @@ class ActionService:
 
         # Evaluate guardrails on the generated response as well
         if isinstance(response, AnswerCandidate):
-            response_guardrail_result: GuardrailResponseResult = await self.guardrail_service.evaluate_response(
+            response_guardrail_result: GuardrailResponseResult | None = await self.guardrail_service.evaluate_response(
                 text=user_text, response=response.response
             )
             self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
             if (
-                not response_guardrail_result.response_safety == "safe"
+                (not response_guardrail_result or not response_guardrail_result.response_safety == "safe")
                 and self.guardrail_service.settings.block_on_high_risk
+                and self.guardrail_service.settings.enabled
             ):
                 self.logger.warning(
                     f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
                 )
+                if not response_guardrail_result:
+                    raise ActionExecutionError(
+                        "Guardrail evaluation for generated response failed or returned no result; action execution blocked",
+                        retryable=True,
+                    )
                 raise ActionExecutionError(
                     f"Generated response failed safety checks: {response_guardrail_result.response_toxicity}, {response_guardrail_result.response_refusal}",
                     retryable=False,

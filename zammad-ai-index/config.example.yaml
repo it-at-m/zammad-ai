@@ -21,7 +21,8 @@ index:
 # Logging configuration
 # ---------------------------------------------------------------------------
 log:
-  # Log format style. Options: "json" for structured logging, "plain" for human-readable logs.
+  # Log format style, rendered via structlog for both app and stdlib logs.
+  # Options: "json" for structured logging, "plain" for human-readable logs.
   format: plain
   # Log level for the application. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
   level: DEBUG

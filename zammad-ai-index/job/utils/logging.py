@@ -1,13 +1,24 @@
 """Logging configuration helpers for the index job."""
 
-import json
 import logging
 import logging.config
-from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import structlog
+from structlog.dev import ConsoleRenderer
+from structlog.processors import JSONRenderer, StackInfoRenderer, TimeStamper, UnicodeDecoder
+from structlog.stdlib import (
+    BoundLogger,
+    ExtraAdder,
+    LoggerFactory,
+    PositionalArgumentsFormatter,
+    ProcessorFormatter,
+    add_log_level,
+    add_logger_name,
+    filter_by_level,
+)
 from yaml import safe_load
 
 
@@ -15,7 +26,7 @@ from yaml import safe_load
 def get_log_config() -> dict[str, Any]:
     """Build a logging configuration dictionary from the template and current settings.
 
-    Selects the formatter to use ("simple" when settings.log.format == "plain" or settings.mode == "development", otherwise "json"), applies that formatter to all handlers that declare one, and sets the "zammad-ai" logger level from settings. This function is cached so the configuration is generated once per process.
+    Selects the formatter to use from `settings.log.format`, applies that formatter to all handlers that declare one, and sets the "zammad-ai-index" logger level from settings. This function is cached so the configuration is generated once per process.
 
     Returns:
         dict[str, Any]: A logging configuration dictionary suitable for logging.config.dictConfig.
@@ -29,18 +40,17 @@ def get_log_config() -> dict[str, Any]:
     with logconf_path.open("r", encoding="utf-8") as file:
         log_config = safe_load(file)
 
-    # Determine formatter based on settings
-    # "plain" format uses the "simple" formatter from logconf.yaml
-    formatter = "simple" if (settings.log.format == "plain" or settings.mode == "development") else "json"
+    # Determine formatter based on settings.
+    formatter = "plain" if settings.log.format == "plain" else "json"
 
     # Update all handlers to use the configured formatter
     for handler_config in log_config.get("handlers", {}).values():
         if "formatter" in handler_config:
             handler_config["formatter"] = formatter
 
-    # Set log level for zammad-ai logger
-    if "loggers" in log_config and "zammad-ai" in log_config["loggers"]:
-        log_config["loggers"]["zammad-ai"]["level"] = settings.log.level
+    # Set log level for zammad-ai-index logger.
+    if "loggers" in log_config and "zammad-ai-index" in log_config["loggers"]:
+        log_config["loggers"]["zammad-ai-index"]["level"] = settings.log.level
 
     return log_config
 
@@ -52,10 +62,61 @@ def reset_logging_state() -> None:
     """Resets the logging state by clearing the cache and resetting the configuration flag."""
     global _logging_configured
     get_log_config.cache_clear()
+    structlog.reset_defaults()
     _logging_configured = False
 
 
-def getLogger(name: str = "zammad-ai") -> logging.Logger:
+def _shared_processors() -> list[Any]:
+    """Return the processors shared by application and stdlib loggers."""
+    return [
+        structlog.contextvars.merge_contextvars,
+        add_logger_name,
+        add_log_level,
+        ExtraAdder(),
+        PositionalArgumentsFormatter(),
+        TimeStamper(fmt="iso", utc=True),
+        StackInfoRenderer(),
+        UnicodeDecoder(),
+    ]
+
+
+def _build_processor_formatter(*, render_json: bool) -> ProcessorFormatter:
+    """Build a structlog formatter for stdlib logging handlers."""
+    renderer = JSONRenderer() if render_json else ConsoleRenderer(colors=False)
+    return ProcessorFormatter(
+        foreign_pre_chain=_shared_processors(),
+        processors=[
+            ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
+    )
+
+
+def build_plain_formatter() -> ProcessorFormatter:
+    """Build the human-readable formatter used in development."""
+    return _build_processor_formatter(render_json=False)
+
+
+def build_json_formatter() -> ProcessorFormatter:
+    """Build the JSON formatter used outside development."""
+    return _build_processor_formatter(render_json=True)
+
+
+def _configure_structlog() -> None:
+    """Configure structlog so native structlog loggers integrate with stdlib handlers."""
+    structlog.configure(
+        processors=[
+            filter_by_level,
+            *_shared_processors(),
+            ProcessorFormatter.wrap_for_formatter,
+        ],
+        wrapper_class=BoundLogger,
+        logger_factory=LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+def getLogger(name: str = "zammad-ai-index") -> logging.Logger:
     """Configures logging and returns a logger with the specified name.
 
     Logging configuration is only performed once per process via cached log config.
@@ -69,65 +130,8 @@ def getLogger(name: str = "zammad-ai") -> logging.Logger:
     """
     global _logging_configured
     if not _logging_configured:
+        _configure_structlog()
         log_config = get_log_config()
         logging.config.dictConfig(log_config)
         _logging_configured = True
     return logging.getLogger(name)
-
-
-class JsonFormatter(logging.Formatter):
-    """A custom JSON formatter for logging."""
-
-    # Standard LogRecord attributes to exclude
-    STANDARD_ATTRIBUTES: set[str] = {
-        "name",
-        "msg",
-        "args",
-        "levelname",
-        "levelno",
-        "pathname",
-        "filename",
-        "module",
-        "exc_info",
-        "exc_text",
-        "stack_info",
-        "lineno",
-        "funcName",
-        "created",
-        "msecs",
-        "relativeCreated",
-        "thread",
-        "threadName",
-        "processName",
-        "process",
-        "getMessage",
-        "message",
-    }
-
-    def format(self, record: logging.LogRecord) -> str:
-        """Formats the log record as a JSON string.
-
-        Parameters:
-            record (logging.LogRecord): The log record to format.
-
-        Returns:
-            str: The log record as a JSON string.
-        """
-        #
-        log_data = {
-            "time": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "name": record.name,
-        }
-
-        # Add exception information if present
-        if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
-
-        # Add any extra fields that were passed via the extra parameter
-        for key, value in record.__dict__.items():
-            if key not in self.STANDARD_ATTRIBUTES and not key.startswith("_"):
-                log_data[key] = value
-
-        return json.dumps(log_data, ensure_ascii=False, default=str)
