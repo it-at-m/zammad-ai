@@ -8,7 +8,7 @@ import pytest
 from langchain.messages import HumanMessage
 
 from app.answer import service as answer_module
-from app.answer.judge import JudgeResult
+from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
 from app.models.answer import AnswerCandidate, DocumentDict
 from app.settings import ZammadAISettings
@@ -37,12 +37,17 @@ class FakePromptTemplate:
 class FakeLangfuseClient:
     """Minimal Langfuse client fake for session/config handling."""
 
+    def __init__(self) -> None:
+        """Initialize fake prompt tracking state."""
+        self.last_langfuse_prompt: object | None = None
+
     def generate_session_id(self) -> str:
         """Return a deterministic session id."""
         return "session-id"
 
-    def build_config(self, session_id: str | None = None) -> dict:
+    def build_config(self, session_id: str | None = None, langfuse_prompt: object | None = None) -> dict:
         """Return a deterministic config payload for LangChain invocation."""
+        self.last_langfuse_prompt = langfuse_prompt
         return {"session_id": session_id}
 
 
@@ -94,13 +99,13 @@ def _build_answer_service(
             },
         }
     )
-    service.langfuse_client = FakeLangfuseClient()
-    service.user_message_template = FakePromptTemplate()
+    service.langfuse_client = FakeLangfuseClient()  # ty: ignore
+    service.user_message_template = FakePromptTemplate()  # ty: ignore
     service.agent = AsyncMock()
     service.agent.ainvoke = ainvoke
-    service.agent_context = object()
+    service.agent_context = object()  # ty: ignore
     service.judge_handler = None
-    service.judge_settings = None
+    service.judge_settings = None  # ty: ignore
     return service
 
 
@@ -121,10 +126,12 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
         }
 
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
+    service.agent_langfuse_prompt = object()  # ty: ignore
 
     await service.generate_answer(user_text="hello", category="general")
 
     assert _get_answer_runs_in_progress_value() == baseline
+    assert getattr(service.langfuse_client, "last_langfuse_prompt") is service.agent_langfuse_prompt
 
 
 @pytest.mark.asyncio
@@ -229,6 +236,18 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
     assert isinstance(result, AnswerCandidate)
     assert result.response == REPAIRED_RESPONSE
     assert len(calls) == 2
+
+
+def test_judge_handler_builds_config_with_prompt_reference() -> None:
+    """Judge traces should carry the Langfuse prompt reference when available."""
+    handler = JudgeHandler.__new__(JudgeHandler)
+    handler.langfuse_client = FakeLangfuseClient()  # ty: ignore
+    handler.langfuse_prompt = object()  # ty: ignore
+
+    _, config = handler._build_runnable_config(session_id="session-id")
+
+    assert config["session_id"] == "session-id"  # ty: ignore
+    assert getattr(handler.langfuse_client, "last_langfuse_prompt") is handler.langfuse_prompt
 
 
 def test_extract_structured_response_ignores_human_json() -> None:

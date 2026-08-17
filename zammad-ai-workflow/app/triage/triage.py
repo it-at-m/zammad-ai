@@ -4,6 +4,7 @@ from datetime import datetime
 from time import perf_counter
 
 from dotenv import load_dotenv
+from langfuse.model import PromptClient
 from prometheus_client import Gauge, Histogram
 from truststore import inject_into_ssl
 
@@ -96,6 +97,7 @@ class TriageService:
 
         # Prompt setup based on the type of prompts provided in settings
         self.prompts: dict[TriagePrompt, tuple[str, int | None]]
+        categories_langfuse_prompt: PromptClient | None = None
         if isinstance(settings.triage.prompts, LangfuseTriagePrompts):
             from app.observe import LangfuseClient, LangfuseError
 
@@ -103,10 +105,19 @@ class TriageService:
             self.prompts = {}
             for name, prompt in settings.triage.prompts.prompt_map.items():
                 try:
-                    self.prompts[name] = langfuse_client.get_prompt(
-                        prompt_name=prompt.name,
-                        prompt_label=prompt.label,
-                    )
+                    if name == "categories":
+                        categories_prompt, version, categories_langfuse_prompt = (
+                            langfuse_client.get_prompt_with_reference(
+                                prompt_name=prompt.name,
+                                prompt_label=prompt.label,
+                            )
+                        )
+                        self.prompts[name] = (categories_prompt, version)
+                    else:
+                        self.prompts[name] = langfuse_client.get_prompt(
+                            prompt_name=prompt.name,
+                            prompt_label=prompt.label,
+                        )
                 except LangfuseError as e:
                     logger.error(
                         f"Failed to initialize triage prompts from Langfuse for '{prompt.name}'.",
@@ -151,6 +162,7 @@ class TriageService:
         self.genai_handler = GenAIHandler(
             genai_settings=settings.genai,
             prompts=genai_prompts,
+            categories_langfuse_prompt=categories_langfuse_prompt,
         )
 
         self.zammad_client: BaseZammadClient

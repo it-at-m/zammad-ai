@@ -9,6 +9,7 @@ from langchain.agents.structured_output import ToolStrategy
 from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langfuse import propagate_attributes
+from langfuse.model import PromptClient
 
 from app.errors import TriageJudgeError, classify_provider_error
 from app.models.answer import JudgeResult
@@ -25,10 +26,15 @@ class JudgeHandler:
     """Judge generated answers with a structured LLM response."""
 
     def __init__(
-        self, genai_settings: GenAIProviderSettings, prompt: str, langfuse_client: LangfuseClient | None = None
+        self,
+        genai_settings: GenAIProviderSettings,
+        prompt: str,
+        langfuse_client: LangfuseClient | None = None,
+        langfuse_prompt: PromptClient | None = None,
     ) -> None:
         """Initialize the judge chain for the configured GenAI backend."""
         self.langfuse_client: LangfuseClient | None = langfuse_client
+        self.langfuse_prompt: PromptClient | None = langfuse_prompt
 
         if not prompt.strip():
             raise ValueError("Judge prompt cannot be empty.")
@@ -85,5 +91,8 @@ class JudgeHandler:
         if self.langfuse_client is None:
             return resolved_session_id, RunnableConfig()
 
-        config: RunnableConfig = self.langfuse_client.build_config(session_id=resolved_session_id)
+        config: RunnableConfig = self.langfuse_client.build_config(
+            session_id=resolved_session_id,
+            langfuse_prompt=self.langfuse_prompt,
+        )
         return resolved_session_id, config
