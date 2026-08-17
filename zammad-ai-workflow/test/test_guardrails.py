@@ -152,3 +152,24 @@ async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSetti
 
     assert result_prompt is None
     assert result_response is None
+
+
+@pytest.mark.asyncio
+async def test_guardrail_service_close_is_idempotent(guardrail_settings: GuardrailSettings) -> None:
+    """Closing the guardrail service should close the client once and tolerate repeats."""
+    service = GuardrailService(guardrail_settings)
+
+    class DummyClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def aclose(self) -> None:
+            self.calls += 1
+
+    dummy_client = DummyClient()
+    service._client = dummy_client  # ty: ignore[invalid-assignment]
+
+    await service.close()
+    await service.close()
+
+    assert dummy_client.calls == 1

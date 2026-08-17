@@ -44,6 +44,7 @@ class GuardrailService:
             headers={"Content-Type": "application/json", **self._auth_header},
             follow_redirects=True,
         )
+        self._closed = False
 
     async def evaluate(self, text: str) -> GuardrailResult | None:
         """Evaluate user input text via remote guardrail service or skip when disabled."""
@@ -71,6 +72,14 @@ class GuardrailService:
             # Fail-open on any error
             logger.error("Remote guardrail evaluate failed.", exc_info=True)
             return None
+
+    async def close(self) -> None:
+        """Close the underlying HTTPX client."""
+        if self._closed:
+            return
+
+        await self._client.aclose()
+        self._closed = True
 
     async def evaluate_response(self, text: str, response: str) -> GuardrailResponseResult | None:
         """Evaluate generated response via remote guardrail service or skip when disabled."""
@@ -111,3 +120,9 @@ def get_guardrail_service(settings: GuardrailSettings | None = None) -> Guardrai
             settings = get_settings().guardrails
         _service = GuardrailService(settings)
     return _service
+
+
+def reset_guardrail_service() -> None:
+    """Clear the shared GuardrailService singleton so it can be recreated."""
+    global _service
+    _service = None
