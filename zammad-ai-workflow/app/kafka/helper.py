@@ -17,6 +17,8 @@ logger: Logger = getLogger(name="zammad-ai.kafka.helper")
 RETRY_AFTER_HEADER = "retry_after"
 RETRY_COUNT_HEADER = "retry_count"
 ORIGINAL_GROUP_ID_HEADER = "original_group_id"
+AIOKAFKA_MAX_POLL_INTERVAL_MS = 300_000
+MAX_RETRY_HANDLER_SLEEP_SECONDS = (AIOKAFKA_MAX_POLL_INTERVAL_MS - 1_000) / 1000
 
 
 def _safe_ticket_id(ticket: Any) -> int | None:
@@ -87,8 +89,12 @@ def _parse_retry_count(retry_count: object | None) -> int:
         return 0
 
 
-async def _sleep_until_retry_after(retry_after: object | None) -> None:
-    """Delay retry processing until the retry-after timestamp is reached."""
+async def _sleep_until_retry_after(retry_after: object | None) -> float | None:
+    """Delay retry processing until the retry-after timestamp is reached.
+
+    Returns the remaining delay when the handler should reschedule the event instead of
+    sleeping longer than the Kafka consumer poll interval budget.
+    """
     retry_after_ms = _parse_retry_after_ms(retry_after)
     if retry_after_ms is None:
         return
@@ -97,15 +103,49 @@ async def _sleep_until_retry_after(retry_after: object | None) -> None:
     if remaining_seconds <= 0:
         return
 
+    sleep_seconds = min(remaining_seconds, MAX_RETRY_HANDLER_SLEEP_SECONDS)
     logger.info(
         "Delaying retry event processing",
         extra={
             "handler_stage": "retry_delay",
             "retry_after_ms": retry_after_ms,
-            "sleep_seconds": remaining_seconds,
+            "sleep_seconds": sleep_seconds,
         },
     )
-    await asyncio.sleep(remaining_seconds)
+    await asyncio.sleep(sleep_seconds)
+
+    if remaining_seconds > sleep_seconds:
+        return remaining_seconds - sleep_seconds
+
+
+async def _reschedule_retry_event(
+    broker: Any,
+    settings: ZammadAISettings,
+    event: Event | dict[str, object],
+    original_group_id: int | None,
+    retry_count: int,
+    remaining_delay_seconds: float,
+) -> None:
+    """Requeue a retry event without advancing the retry count."""
+    retry_after_ms = int((time.time() + remaining_delay_seconds) * 1000)
+    retry_headers = _build_retry_headers(retry_after_ms, retry_count)
+    if original_group_id is not None:
+        retry_headers[ORIGINAL_GROUP_ID_HEADER] = str(original_group_id)
+
+    await broker.publish(
+        message=event.model_dump(mode="json") if isinstance(event, Event) else event,
+        topic=settings.kafka.retry_topic,
+        headers=retry_headers,
+    )
+    logger.info(
+        "Rescheduled Kafka event on retry topic",
+        extra={
+            "handler_stage": "retry_reschedule",
+            "retry_topic": settings.kafka.retry_topic,
+            "retry_after_ms": retry_after_ms,
+            "remaining_delay_seconds": remaining_delay_seconds,
+        },
+    )
 
 
 async def _republish_retry_event(

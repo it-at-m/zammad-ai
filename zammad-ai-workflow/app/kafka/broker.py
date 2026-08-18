@@ -18,6 +18,7 @@ from app.kafka.helper import (
     _handle_processing_exception,
     _parse_original_group_id,
     _parse_retry_count,
+    _reschedule_retry_event,
     _restore_ticket_group,
     _safe_ticket_id,
     _sleep_until_retry_after,
@@ -268,8 +269,19 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         """Process retryable Kafka events after waiting for their retry window."""
         async with track_activity():
             group_state: dict[str, int | None] = {}
-            await _sleep_until_retry_after(retry_after)
             parsed_retry_count = _parse_retry_count(retry_count)
+            parsed_original_group_id = _parse_original_group_id(original_group_id)
+            remaining_delay_seconds = await _sleep_until_retry_after(retry_after)
+            if remaining_delay_seconds is not None:
+                await _reschedule_retry_event(
+                    broker=broker,
+                    settings=settings,
+                    event=event,
+                    original_group_id=parsed_original_group_id,
+                    retry_count=parsed_retry_count,
+                    remaining_delay_seconds=remaining_delay_seconds,
+                )
+                raise AckMessage()
             try:
                 await _process_ticket_event(
                     settings=settings,
@@ -278,7 +290,6 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     event=event,
                     group_state=group_state,
                 )
-                parsed_original_group_id = _parse_original_group_id(original_group_id)
                 if parsed_original_group_id is None:
                     parsed_original_group_id = group_state.get("original_group_id")
                 if parsed_original_group_id is not None:
