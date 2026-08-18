@@ -26,7 +26,7 @@ class Event(BaseModel):
         examples=["1"],
     )
     request_type: str = Field(
-        validation_alias=AliasChoices("anliegenart", "requestType"),
+        validation_alias=AliasChoices("anliegenart", "requestType", "request_type"),
         description="Type of request",
         examples=["technischer Bürgersupport"],
     )
