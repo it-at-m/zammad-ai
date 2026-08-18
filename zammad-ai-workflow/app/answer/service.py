@@ -9,6 +9,7 @@ from langchain.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
 from langfuse import observe, propagate_attributes
+from langfuse.model import PromptClient
 from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
@@ -79,7 +80,7 @@ class AnswerService:
         if settings.langfuse_enabled:
             self.langfuse_client = LangfuseClient()
 
-        self.agent_prompt, self.agent_prompt_version = self._resolve_prompt(
+        self.agent_prompt, self.agent_prompt_version, self.agent_langfuse_prompt = self._resolve_prompt(
             prompt_config=settings.answer.agent_prompt,
             prompt_source_name="agent system prompt",
         )
@@ -87,12 +88,15 @@ class AnswerService:
         self.judge_settings: JudgeSettings = settings.answer.judge
         self.judge_handler: JudgeHandler | None = None
         if self.judge_settings.enabled:
-            self.judge_prompt, self.judge_prompt_version = self._resolve_prompt(
+            self.judge_prompt, self.judge_prompt_version, self.judge_langfuse_prompt = self._resolve_prompt(
                 prompt_config=self.judge_settings.prompt,
                 prompt_source_name="judge prompt",
             )
             self.judge_handler = JudgeHandler(
-                genai_settings=settings.genai, prompt=self.judge_prompt, langfuse_client=self.langfuse_client
+                genai_settings=settings.genai,
+                prompt=self.judge_prompt,
+                langfuse_client=self.langfuse_client,
+                langfuse_prompt=self.judge_langfuse_prompt,
             )
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
@@ -152,6 +156,7 @@ class AnswerService:
         try:
             if session_id is None and self.langfuse_client is not None:
                 session_id = self.langfuse_client.generate_session_id()
+            agent_langfuse_prompt = getattr(self, "agent_langfuse_prompt", None)
             user_message = HumanMessage(
                 content=self.user_message_template.format(
                     user_text=user_text,
@@ -159,7 +164,10 @@ class AnswerService:
                 )
             )
             config: RunnableConfig = (
-                self.langfuse_client.build_config(session_id=session_id)
+                self.langfuse_client.build_config(
+                    session_id=session_id,
+                    langfuse_prompt=agent_langfuse_prompt,
+                )
                 if self.langfuse_client is not None
                 else RunnableConfig()
             )
@@ -256,7 +264,7 @@ class AnswerService:
         structured_response.auto_publish = True
         if self.judge_handler is None:
             return structured_response
-        repair_prompt, _ = self._resolve_prompt(
+        repair_prompt, _, repair_langfuse_prompt = self._resolve_prompt(
             prompt_config=self.judge_settings.repair_prompt,
             prompt_source_name="judge repair prompt",
         )
@@ -291,7 +299,14 @@ class AnswerService:
             with propagate_attributes(session_id=session_id):
                 agent_result: dict = await self.agent.ainvoke(
                     input={"messages": messages + [repair_message]},
-                    config=config,
+                    config=(
+                        self.langfuse_client.build_config(
+                            session_id=session_id,
+                            langfuse_prompt=repair_langfuse_prompt,
+                        )
+                        if self.langfuse_client is not None
+                        else config
+                    ),
                     context=context,
                 )
 
@@ -320,9 +335,10 @@ class AnswerService:
         self,
         prompt_config: StringPromptConfig | FilePromptConfig | LangfusePromptConfig,
         prompt_source_name: str,
-    ) -> tuple[str, int | None]:
+    ) -> tuple[str, int | None, PromptClient | None]:
         """Resolve a prompt from settings, a file, or Langfuse."""
         version: int | None = None
+        langfuse_prompt: PromptClient | None = None
         match prompt_config:
             case LangfusePromptConfig():
                 if self.langfuse_client is None:
@@ -330,10 +346,12 @@ class AnswerService:
                         f"Langfuse must be enabled in settings to use it as a {prompt_source_name} source."
                     )
                 try:
-                    template_content, version = self.langfuse_client.get_prompt(
-                        prompt_name=prompt_config.prompt.name,
-                        prompt_label=prompt_config.prompt.label,
+                    langfuse_prompt_info = prompt_config.prompt
+                    template_content, version, langfuse_prompt_ref = self.langfuse_client.get_prompt_with_reference(
+                        prompt_name=langfuse_prompt_info.name,
+                        prompt_label=langfuse_prompt_info.label,
                     )
+                    return template_content, version, langfuse_prompt_ref
                 except LangfuseError as e:
                     logger.error(f"Failed to fetch {prompt_source_name} from Langfuse.", exc_info=True)
                     raise AnswerServiceError(
@@ -354,9 +372,9 @@ class AnswerService:
             answer_ctx = build_answer_context(self.settings.answer)
             judge_ctx = build_judge_context(self.settings)
             context = merge_contexts(answer_ctx, judge_ctx)
-            return renderer.render_template(template_content, context), version
+            return renderer.render_template(template_content, context), version, langfuse_prompt
         else:
-            return template_content, version
+            return template_content, version, langfuse_prompt
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.

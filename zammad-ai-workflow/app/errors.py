@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from logging import Logger
 
 from app.utils.logging import getLogger
 
-logger = getLogger("zammad-ai.errors")
+logger: Logger = getLogger("zammad-ai.errors")
 
 
 @dataclass(slots=True, frozen=True)
