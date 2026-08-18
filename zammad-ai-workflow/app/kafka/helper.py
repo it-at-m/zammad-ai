@@ -46,6 +46,7 @@ def _parse_original_group_id(original_group_id: object | None) -> int | None:
         logger.warning(
             "Ignoring invalid original_group_id header",
             extra={"handler_stage": "retry_header_parse_failed", "header_name": ORIGINAL_GROUP_ID_HEADER},
+            exc_info=True,
         )
         return None
 
@@ -63,6 +64,7 @@ def _parse_retry_after_ms(retry_after: object | None) -> int | None:
         logger.warning(
             "Ignoring invalid retry_after header",
             extra={"handler_stage": "retry_header_parse_failed", "header_name": RETRY_AFTER_HEADER},
+            exc_info=True,
         )
         return None
 
@@ -80,6 +82,7 @@ def _parse_retry_count(retry_count: object | None) -> int:
         logger.warning(
             "Ignoring invalid retry_count header",
             extra={"handler_stage": "retry_header_parse_failed", "header_name": RETRY_COUNT_HEADER},
+            exc_info=True,
         )
         return 0
 

@@ -121,7 +121,6 @@ async def _process_ticket_event(
         raise KafkaPayloadError("Failed due to Zammad connection error", retryable=True) from e
 
     original_group_id: int | None = ticket.group_id
-    group_state["original_group_id"] = original_group_id
 
     if (
         settings.zammad.type == "eai"
@@ -131,6 +130,7 @@ async def _process_ticket_event(
     ):
         try:
             await zammad_client.update_ticket_group(ticket_id=ticket_id, group_id=settings.zammad.ai_ticket_group_id)
+            group_state["original_group_id"] = original_group_id
             logger.info(
                 "Moved ticket to AI group",
                 extra={
@@ -279,6 +279,8 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     group_state=group_state,
                 )
                 parsed_original_group_id = _parse_original_group_id(original_group_id)
+                if parsed_original_group_id is None:
+                    parsed_original_group_id = group_state.get("original_group_id")
                 if parsed_original_group_id is not None:
                     ticket_id = (
                         _safe_ticket_id(event.ticket)
@@ -296,6 +298,9 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             except AckMessage:
                 raise
             except Exception as e:
+                parsed_original_group_id = _parse_original_group_id(original_group_id)
+                if parsed_original_group_id is None:
+                    parsed_original_group_id = group_state.get("original_group_id")
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)
@@ -306,7 +311,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     settings=settings,
                     zammad_client=triage_service.zammad_client,
                     event=Event.model_validate(event) if not isinstance(event, Event) else event,
-                    original_group_id=_parse_original_group_id(original_group_id),
+                    original_group_id=parsed_original_group_id,
                     retry_count=parsed_retry_count,
                 )
             raise AckMessage()
