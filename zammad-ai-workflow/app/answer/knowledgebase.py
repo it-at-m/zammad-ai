@@ -227,7 +227,7 @@ class QdrantKBClient:
         # only via dedicated law tools.
         if search_filter is None:
             search_filter = Filter(
-                must=[FieldCondition(key="metadata.law_id", is_null=True)]
+                must=[FieldCondition(key="metadata.law_id", is_empty=True)]
             )
 
         return await self.vectorstore.asimilarity_search_with_relevance_scores(
