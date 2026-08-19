@@ -1,6 +1,7 @@
 [project]
 name = "zammad-ai-workflow"
 license = "MIT"
+
 version = "0.3.3"
 
 description = "GenAI-powered agent for Zammad"
@@ -15,7 +16,7 @@ maintainers = [
 ]
 
 dependencies = [
-    "cryptography==49.0.0",
+    "cryptography==50.0.0",
     "fastapi==0.138.1",
     "faststream[cli,kafka,prometheus]==0.7.1",
     "feedparser==6.0.12",
