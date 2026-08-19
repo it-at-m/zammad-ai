@@ -6,7 +6,7 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
-from langfuse.model import TextPromptClient
+from langfuse.model import PromptClient, TextPromptClient
 
 from app.utils.logging import getLogger
 
@@ -60,24 +60,70 @@ class LangfuseClient:
             logger.error(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'", exc_info=True)
             raise LangfuseError(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'.") from e
 
-    def build_config(self, session_id: str | None = None) -> RunnableConfig:
-        """Builds a RunnableConfig that attaches the Langfuse callback handler and embeds a session identifier in metadata.
+    def get_prompt_reference(self, prompt_name: str, prompt_label: str = "production") -> PromptClient:
+        """Retrieve a Langfuse prompt object for trace linkage."""
+        try:
+            return self.langfuse.get_prompt(
+                name=prompt_name,
+                label=prompt_label,
+                type="text",
+            )
+        except Exception as e:
+            if isinstance(e, LangfuseError):
+                raise e
+            logger.error(
+                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}'",
+                exc_info=True,
+            )
+            raise LangfuseError(
+                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}'."
+            ) from e
+
+    def get_prompt_with_reference(
+        self, prompt_name: str, prompt_label: str = "production"
+    ) -> tuple[str, int, PromptClient]:
+        """Retrieve both the prompt text and the Langfuse prompt object."""
+        try:
+            res: TextPromptClient = self.langfuse.get_prompt(
+                name=prompt_name,
+                label=prompt_label,
+                type="text",
+            )
+            return res.prompt, res.version, res
+        except Exception as e:
+            if isinstance(e, LangfuseError):
+                raise e
+            logger.error(
+                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'",
+                exc_info=True,
+            )
+            raise LangfuseError(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'.") from e
+
+    def build_config(
+        self, session_id: str | None = None, langfuse_prompt: PromptClient | None = None
+    ) -> RunnableConfig:
+        """Build a RunnableConfig with Langfuse callbacks and trace metadata.
 
         Parameters:
             session_id (str | None): Session ID to include in metadata; if None a new UUID4-based session ID is generated.
+            langfuse_prompt (PromptClient | None): Optional Langfuse prompt reference.
+                With the custom callback handler, nested LangChain generations can
+                link this prompt to the current trace.
 
         Returns:
-            RunnableConfig: Config with `callbacks` containing the Langfuse callback handler and `metadata` containing `"langfuse_session_id"` set to the session ID.
+            RunnableConfig: Config with `callbacks` containing the Langfuse callback handler and `metadata`
+                containing `"langfuse_session_id"` set to the session ID.
         """
         if session_id is None:
             session_id = self.generate_session_id()
 
-        return RunnableConfig(
-            callbacks=[self.langfuse_handler],
-            metadata={
-                "langfuse_session_id": session_id,
-            },
-        )
+        metadata: dict[str, object] = {
+            "langfuse_session_id": session_id,
+        }
+        if langfuse_prompt is not None:
+            metadata["langfuse_prompt"] = langfuse_prompt
+
+        return RunnableConfig(callbacks=[self.langfuse_handler], metadata=metadata)
 
     def generate_session_id(self) -> str:
         """Generate a unique session ID for Langfuse tracing.

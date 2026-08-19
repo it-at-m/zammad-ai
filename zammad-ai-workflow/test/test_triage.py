@@ -8,7 +8,6 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from app.errors import TriageCategoryWrongError
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.models.zammad import ArticleAttachment, ZammadArticle, ZammadTicket
 from app.settings.triage import (
@@ -163,7 +162,12 @@ def patched_triage(
     Returns:
         Generator[TriageService, None, None]: Yields a TriageService instance constructed with the test settings and wired to use the provided fakes.
     """
-    monkeypatch.setattr(triage_module, "GenAIHandler", lambda *args, **kwargs: fake_genai_handler)
+
+    def _fake_genai_handler(*args, **kwargs):
+        fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        return fake_genai_handler
+
+    monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
     monkeypatch.setattr(triage_module, "ZammadAPIClient", lambda *args, **kwargs: fake_zammad_client)
     monkeypatch.setattr(triage_module, "ZammadConnectionError", FakeZammadConnectionError)
     settings = settings_factory()
@@ -183,7 +187,12 @@ def triage_factory(
     Returns:
         factory (Callable[[list[ActionRule] | None], TriageService]): A callable that accepts an optional list of ActionRule and returns a TriageService built using the provided settings_factory and the patched fake GenAI and Zammad clients.
     """
-    monkeypatch.setattr(triage_module, "GenAIHandler", lambda *args, **kwargs: fake_genai_handler)
+
+    def _fake_genai_handler(*args, **kwargs):
+        fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        return fake_genai_handler
+
+    monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
     monkeypatch.setattr(triage_module, "ZammadAPIClient", lambda *args, **kwargs: fake_zammad_client)
     monkeypatch.setattr(triage_module, "ZammadConnectionError", FakeZammadConnectionError)
 
@@ -215,6 +224,8 @@ async def test_perform_triage_returns_defaults_when_no_articles(patched_triage: 
 @pytest.mark.asyncio
 async def test_predict_category_raises_on_invalid_category(patched_triage: TriageService) -> None:
     """Invalid category predictions should raise TriageCategoryWrongError."""
+    from app.errors import TriageCategoryWrongError
+
     patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
         category=Category(name="Unknown-Invalid"),
         reasoning="mismatch",
@@ -425,6 +436,7 @@ async def test_predict_category_normalizes_string_category(patched_triage: Triag
     result = await patched_triage.predict_category(message="some text", session_id="session-id")
 
     assert result.category is patched_triage.categories_by_name["General"]
+    assert result.category is not None
     assert result.category.name == "General"
 
 
@@ -597,6 +609,67 @@ def test_langfuse_prompt_map_values_are_typed() -> None:
     assert isinstance(prompts.prompt_map["categories"], LangfusePrompt)
     assert isinstance(prompts.prompt_map["examples"], LangfusePrompt)
     assert isinstance(prompts.prompt_map["role"], LangfusePrompt)
+
+
+@pytest.mark.asyncio
+async def test_triage_links_categories_prompt_reference(
+    monkeypatch: pytest.MonkeyPatch,
+    settings_factory,
+    fake_genai_handler: FakeGenAIHandler,
+    fake_zammad_client: FakeZammadClient,
+) -> None:
+    """Triage should pass the categories prompt reference into GenAI tracing."""
+
+    class _FakeLangfuseClient:
+        def __init__(self) -> None:
+            self.categories_prompt = object()
+
+        def get_prompt(self, *, prompt_name: str, prompt_label: str = "production") -> tuple[str, int]:
+            del prompt_name, prompt_label
+            return "role prompt", 1
+
+        def get_prompt_with_reference(
+            self, *, prompt_name: str, prompt_label: str = "production"
+        ) -> tuple[str, int, object]:
+            del prompt_name, prompt_label
+            return "categories prompt", 2, self.categories_prompt
+
+    def _fake_genai_handler(*args, **kwargs):
+        fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        return fake_genai_handler
+
+    monkeypatch.setattr("app.observe.LangfuseClient", _FakeLangfuseClient)
+    monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
+    monkeypatch.setattr(triage_module, "ZammadAPIClient", lambda *args, **kwargs: fake_zammad_client)
+    monkeypatch.setattr(triage_module, "ZammadConnectionError", FakeZammadConnectionError)
+
+    settings = settings_factory(
+        overrides={
+            "triage": {
+                "prompts": {
+                    "type": "langfuse",
+                    "prompt_map": {
+                        "categories": {"name": "triage/categories", "label": "production"},
+                        "examples": {"name": "triage/examples", "label": "production"},
+                        "role": {"name": "triage/role", "label": "production"},
+                    },
+                },
+            },
+        }
+    )
+    fake_genai_handler.categorization_result = CategorizationResult(
+        category=Category(name="General"),
+        reasoning="ok",
+        confidence=1.0,
+    )
+    triage = TriageService(settings=settings)
+
+    await triage.predict_category(message="hello", session_id="session-id")
+
+    assert (
+        getattr(fake_genai_handler.langfuse_client, "last_langfuse_prompt")
+        is fake_genai_handler.categories_langfuse_prompt
+    )
 
 
 # ---------------------------------------------------------------------------

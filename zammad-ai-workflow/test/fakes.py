@@ -23,10 +23,12 @@ class FakeLangfuseClient:
     def __init__(self) -> None:
         """Initialize the fake Langfuse client."""
         self.langfuse = self._FakeLangfuse()
+        self.last_langfuse_prompt: object | None = None
 
-    def build_config(self, *, session_id: str) -> dict:
+    def build_config(self, *, session_id: str, langfuse_prompt: object | None = None) -> dict:
         """Return a minimal runnable config for tests."""
         del session_id
+        self.last_langfuse_prompt = langfuse_prompt
         return {}
 
     def generate_session_id(self) -> str:
@@ -67,6 +69,7 @@ class FakeGenAIHandler:
 
         self.prompts = prompts
         self.langfuse_client = FakeLangfuseClient()
+        self.categories_langfuse_prompt: object | None = None
         self._categorization_chain = self._build_chain(prompt_key="categorization", schema=CategorizationResult)
         self._days_since_request_chain = self._build_chain(
             prompt_key="days_since_request", schema=DaysSinceRequestResponse
@@ -107,7 +110,10 @@ class FakeGenAIHandler:
             resolved_session_id = self.langfuse_client.generate_session_id()
 
         self.langfuse_client.langfuse.update_current_trace(session_id=resolved_session_id)
-        config = self.langfuse_client.build_config(session_id=resolved_session_id)
+        config = self.langfuse_client.build_config(
+            session_id=resolved_session_id,
+            langfuse_prompt=self.categories_langfuse_prompt,
+        )
         return resolved_session_id, config
 
     async def categorize_ticket(

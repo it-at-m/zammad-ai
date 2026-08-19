@@ -11,8 +11,9 @@ from typing import Any, TypeVar
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langfuse import observe, propagate_attributes
+from langfuse.model import PromptClient
 
 from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
@@ -26,7 +27,7 @@ logger: Logger = getLogger("zammad-ai.genai_handler")
 
 T = TypeVar("T")
 
-StructuredAgent = tuple[ChatPromptTemplate, Any]
+StructuredAgent = Any
 
 
 class GenAIHandler:
@@ -39,13 +40,20 @@ class GenAIHandler:
 
     REQUIRED_PROMPT_KEYS = {"triage", "days_since_request", "processing_id"}
 
-    def __init__(self, genai_settings: GenAIProviderSettings, prompts: dict[str, str]) -> None:
+    def __init__(
+        self,
+        genai_settings: GenAIProviderSettings,
+        prompts: dict[str, str],
+        categories_langfuse_prompt: PromptClient | None = None,
+    ) -> None:
         """Initialize model configuration and durable operation chains.
 
         Args:
             genai_settings: GenAI settings containing SDK, model, retry, and
                 reasoning configuration.
             prompts: Mapping of prompt keys to prompt template strings.
+            categories_langfuse_prompt: Optional Langfuse prompt reference used to
+                link the categorization generation to a prompt version in Langfuse.
 
         Raises:
             ValueError: If prompts are missing/empty or the configured SDK is
@@ -53,6 +61,7 @@ class GenAIHandler:
         """
         # TODO: Refactor langfuse client as optional argument, if not passed there is no tracing and no handler is passed to the chains
         self.langfuse_client = LangfuseClient()
+        self.categories_langfuse_prompt = categories_langfuse_prompt
 
         # Validate that prompts are properly configured
         if not prompts:
@@ -84,7 +93,11 @@ class GenAIHandler:
         self.chat_model = get_chat_model(genai_settings, "triage")
 
         # Build durable chains once so each operation reuses the same chain instance.
-        self._categorization_chain = self._build_chain(prompt=prompts["triage"], output_schema=CategorizationResult)
+        self._categorization_chain = self._build_chain(
+            prompt=prompts["triage"],
+            output_schema=CategorizationResult,
+            langfuse_prompt=self.categories_langfuse_prompt,
+        )
         self._days_since_request_chain = self._build_chain(
             prompt=prompts["days_since_request"], output_schema=DaysSinceRequestResponse
         )
@@ -208,12 +221,18 @@ class GenAIHandler:
             classified = classify_provider_error(e)
             raise classified from e
 
-    def _build_chain(self, prompt: str, output_schema: type[T]) -> StructuredAgent:
+    def _build_chain(
+        self,
+        prompt: str,
+        output_schema: type[T],
+        langfuse_prompt: PromptClient | None = None,
+    ) -> StructuredAgent:
         """Create a reusable ToolStrategy agent for one structured prompt.
 
         Args:
             prompt: The prompt to use.
             output_schema: Pydantic model used for strict structured output parsing.
+            langfuse_prompt: Optional Langfuse prompt reference to attach to the prompt runnable.
 
         Returns:
             A prompt template and agent that return a validated structured response.
@@ -231,6 +250,9 @@ class GenAIHandler:
             ]
         )
 
+        if langfuse_prompt is not None:
+            prompt_template = prompt_template.with_config(metadata={"langfuse_prompt": langfuse_prompt})
+
         agent = create_agent(
             model=self.chat_model,
             tools=[],
@@ -243,7 +265,7 @@ class GenAIHandler:
                 tool_message_content="Structured triage response has been generated.",
             ),
         )
-        return prompt_template, agent
+        return prompt_template | RunnableLambda(lambda prompt_value: {"messages": prompt_value.to_messages()}) | agent
 
     async def _ainvoke_structured_agent(
         self,
@@ -254,10 +276,8 @@ class GenAIHandler:
         expected_type: type[T],
     ) -> T:
         """Render a prompt, invoke a ToolStrategy agent, and return its structured response."""
-        prompt_template, agent = structured_agent
-        messages = prompt_template.format_messages(**input)
-        agent_result: dict[str, Any] = await agent.ainvoke(
-            input={"messages": messages},
+        agent_result: dict[str, Any] = await structured_agent.ainvoke(
+            input=input,
             config=with_recursion_limit(config),
         )
         return extract_structured_response(agent_result, expected_type)
