@@ -109,7 +109,8 @@ uv run python main.py
 
 Notes:
 
-- Documents are chunked and written with metadata including `source=law`, `law_id`, `document_type`, `law_name`, `paragraph`, `chunk`, and a `pagecontent_hash`.
+- Documents are chunked and written with metadata including `source=law`, `law_id`, `document_type`, `law_name`, `paragraph`, `chunk`, `pagecontent_hash`, and `law_url` (the configured source URL).
+- The `law_url` metadata stores the canonical URL that was used to fetch the law; this helps traceability and auditing of indexed legal text.
 - Deterministic IDs are generated per paragraph chunk to upsert documents on subsequent runs.
 - A snapshot is created before writing; snapshot failure aborts the run.
 - `document_type` is either law or annex.
