@@ -225,10 +225,14 @@ def ingest_law(law: LawConfig, qdrant: QdrantKBClient) -> None:
         docs_annex = _chunk_annexes(annexes, law.chunk_size, law.chunk_overlap) if annexes else []
         docs = [*docs_para, *docs_annex]
 
-        # enrich with law-level metadata
+        # enrich with law-level metadata (include the configured source URL)
         for d in docs:
             d.metadata["law_id"] = law.id
             d.metadata["law_name"] = law.name
+            # Preserve the canonical URL from which this law was fetched so
+            # downstream consumers (or audits) can trace back the original
+            # source. Stored as a string to keep metadata JSON-serializable.
+            d.metadata["law_url"] = str(law.url)
 
         if not docs:
             logger.info("No chunks generated for law %s, nothing to index.", law.id)
