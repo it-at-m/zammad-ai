@@ -217,6 +217,19 @@ class QdrantKBClient:
         """
         if k is None:
             k = self.qdrant_settings.retrieval_num_documents
+
+        # By default, restrict general knowledge-base searches to points that
+        # are NOT law-indexed. Laws are stored in the same collection and are
+        # identified by the presence of the metadata key `law_id`. When no
+        # explicit search_filter is provided, add a filter that requires
+        # metadata.law_id to be null (i.e., the key does not exist), so law
+        # chunks are excluded from general KB searches and remain accessible
+        # only via dedicated law tools.
+        if search_filter is None:
+            search_filter = Filter(
+                must=[FieldCondition(key="metadata.law_id", is_null=True)]
+            )
+
         return await self.vectorstore.asimilarity_search_with_relevance_scores(
             query=query,
             k=k,
