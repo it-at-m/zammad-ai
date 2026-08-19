@@ -89,7 +89,7 @@ def _parse_retry_count(retry_count: object | None) -> int:
         return 0
 
 
-async def _sleep_until_retry_after(retry_after: object | None) -> float | None:
+async def _sleep_until_retry_after(retry_after: object | None, *, retry_delay_seconds: float) -> float | None:
     """Delay retry processing until the retry-after timestamp is reached.
 
     Returns the remaining delay when the handler should reschedule the event instead of
@@ -103,7 +103,7 @@ async def _sleep_until_retry_after(retry_after: object | None) -> float | None:
     if remaining_seconds <= 0:
         return
 
-    sleep_seconds = min(remaining_seconds, MAX_RETRY_HANDLER_SLEEP_SECONDS)
+    sleep_seconds = min(remaining_seconds, retry_delay_seconds / 2, MAX_RETRY_HANDLER_SLEEP_SECONDS)
     logger.info(
         "Delaying retry event processing",
         extra={

@@ -375,22 +375,75 @@ async def test_event_handler_stops_retrying_after_max_attempts(
 
 @pytest.mark.asyncio
 async def test_retry_sleep_chunks_delays_above_poll_interval(
+    settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Retry sleeps longer than the poll interval should be chunked instead of blocking."""
+    """Retry sleeps should be bounded to half the configured retry delay."""
+    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
     fixed_now = 1_000.0
     retry_after_ms = int((fixed_now + 600.0) * 1000)
     sleep_mock = AsyncMock()
-    time_mock = MagicMock(side_effect=[fixed_now, fixed_now + 299.0])
+    time_mock = MagicMock(side_effect=[fixed_now, fixed_now + 150.0])
     monkeypatch.setattr("app.kafka.helper.time.time", time_mock)
     monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
 
-    remaining_delay_seconds = await _sleep_until_retry_after(str(retry_after_ms))
+    remaining_delay_seconds = await _sleep_until_retry_after(
+        str(retry_after_ms),
+        retry_delay_seconds=settings.kafka.retry_delay_seconds,
+    )
 
     sleep_mock.assert_awaited_once()
     assert sleep_mock.await_args is not None
-    assert sleep_mock.await_args.args[0] == pytest.approx(299.0)
-    assert remaining_delay_seconds == pytest.approx(301.0)
+    assert sleep_mock.await_args.args[0] == pytest.approx(150.0)
+    assert remaining_delay_seconds == pytest.approx(450.0)
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_reschedules_long_waits_after_half_retry_window(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry consumer should bound long waits and requeue the remainder."""
+    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    settings.kafka.retry_delay_seconds = 60
+    router, _ = build_router(settings=settings)
+    retry_handler = next(
+        call.handler._original_call
+        for subscriber in router.broker.subscribers
+        for call in subscriber.calls
+        if getattr(call.handler._original_call, "__name__", "") == "retry_event_handler"
+    )
+
+    fixed_now = 1_000.0
+    retry_after_ms = int((fixed_now + 120.0) * 1000)
+    sleep_mock = AsyncMock()
+    reschedule_mock = AsyncMock()
+    time_mock = MagicMock(side_effect=[fixed_now, fixed_now + 30.0])
+    monkeypatch.setattr("app.kafka.helper.time.time", time_mock)
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("app.kafka.broker._reschedule_retry_event", reschedule_mock)
+
+    with pytest.raises(AckMessage):
+        await retry_handler(
+            event=Event.model_validate(kafka_message_factory()),
+            retry_after=str(retry_after_ms),
+            original_group_id=None,
+            retry_count="1",
+        )
+
+    sleep_mock.assert_awaited_once()
+    assert sleep_mock.await_args is not None
+    assert sleep_mock.await_args.args[0] == pytest.approx(30.0)
+    reschedule_mock.assert_awaited_once()
+    assert reschedule_mock.await_args is not None
+    assert reschedule_mock.await_args.kwargs["broker"] is router.broker
+    assert reschedule_mock.await_args.kwargs["settings"] is settings
+    assert reschedule_mock.await_args.kwargs["retry_count"] == 1
+    assert reschedule_mock.await_args.kwargs["remaining_delay_seconds"] == pytest.approx(90.0)
+    mock_triage.perform_triage.assert_not_called()
 
 
 @pytest.mark.asyncio

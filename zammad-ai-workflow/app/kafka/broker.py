@@ -271,7 +271,10 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             group_state: dict[str, int | None] = {}
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
-            remaining_delay_seconds = await _sleep_until_retry_after(retry_after)
+            remaining_delay_seconds = await _sleep_until_retry_after(
+                retry_after,
+                retry_delay_seconds=settings.kafka.retry_delay_seconds,
+            )
             if remaining_delay_seconds is not None:
                 await _reschedule_retry_event(
                     broker=broker,
