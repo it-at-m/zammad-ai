@@ -28,10 +28,9 @@ class KafkaSettings(BaseModel):
         default="ticket-events-retry",
     )
 
-    retry_delay_seconds: int = Field(
+    retry_delay_seconds: NonNegativeInt = Field(
         description="Base delay before retrying a failed event.",
         default=300,
-        ge=1,
     )
 
     max_retry_attempts: NonNegativeInt = Field(
