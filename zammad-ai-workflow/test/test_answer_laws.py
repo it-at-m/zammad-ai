@@ -87,10 +87,13 @@ async def test_asearch_documents_excludes_law_points_by_default() -> None:
     assert captured_kwargs["k"] == 4
     assert captured_kwargs["offset"] == 1
     search_filter = captured_kwargs["filter"]
-    # Expect a must clause checking metadata.law_id is null
-    assert [condition.key for condition in search_filter.must] == ["metadata.law_id"]
-    # The FieldCondition for existence uses is_null=True for missing keys
-    assert getattr(search_filter.must[0], "is_null", None) is True
+    # Expect a must clause checking metadata.law_id is empty (key does not exist)
+    must = getattr(search_filter, "must", None)
+    assert must is not None and len(must) == 1
+    cond = must[0]
+    # Using Qdrant's IsEmptyCondition which stores the inspected key on `is_empty.key`
+    assert getattr(cond, "is_empty", None) is not None
+    assert getattr(cond.is_empty, "key", None) == "metadata.law_id"
 
 
 @pytest.mark.asyncio
@@ -127,7 +130,10 @@ async def test_asearch_documents_returns_only_kb_article_from_vectorstore() -> N
             must = getattr(f, "must", None)
             if must:
                 for cond in must:
+                    # Accept both FieldCondition (used elsewhere) and IsEmptyCondition
                     if getattr(cond, "key", None) == "metadata.law_id" and getattr(cond, "is_null", None) is True:
+                        return [(self.kb_doc, 0.9)]
+                    if getattr(cond, "is_empty", None) is not None and getattr(cond.is_empty, "key", None) == "metadata.law_id":
                         return [(self.kb_doc, 0.9)]
             # Otherwise return both documents
             return [(self.kb_doc, 0.9), (self.law_doc, 0.5)]
