@@ -87,10 +87,8 @@ async def test_asearch_documents_excludes_law_points_by_default() -> None:
     assert captured_kwargs["k"] == 4
     assert captured_kwargs["offset"] == 1
     search_filter = captured_kwargs["filter"]
-    # Expect a must clause checking metadata.law_id is null
-    assert [condition.key for condition in search_filter.must] == ["metadata.law_id"]
-    # The FieldCondition for existence uses is_null=True for missing keys
-    assert getattr(search_filter.must[0], "is_null", None) is True
+    # Expect a must clause checking metadata.law_id is empty
+    assert [condition.is_empty.key for condition in search_filter.must] == ["metadata.law_id"]
 
 
 @pytest.mark.asyncio
@@ -114,6 +112,7 @@ async def test_asearch_documents_respects_explicit_filter() -> None:
 @pytest.mark.asyncio
 async def test_asearch_documents_returns_only_kb_article_from_vectorstore() -> None:
     """When the underlying vectorstore contains both a KB article and a law chunk, asearch_documents (with its default filter) should return only the KB article."""
+
     class FakeVectorStoreWithDocs:
         def __init__(self) -> None:
             self.kb_doc = Document(page_content="KB: How to reset password", metadata={"title": "Reset password"})
@@ -122,12 +121,12 @@ async def test_asearch_documents_returns_only_kb_article_from_vectorstore() -> N
         async def asimilarity_search_with_relevance_scores(self, **kwargs: Any) -> list:
             # Inspect provided filter to decide which documents to return.
             f = kwargs.get("filter")
-            # If the filter explicitly requires metadata.law_id to be null,
+            # If the filter explicitly requires metadata.law_id to be empty,
             # emulate Qdrant by returning only the KB document.
             must = getattr(f, "must", None)
             if must:
                 for cond in must:
-                    if getattr(cond, "key", None) == "metadata.law_id" and getattr(cond, "is_null", None) is True:
+                    if getattr(getattr(cond, "is_empty", None), "key", None) == "metadata.law_id":
                         return [(self.kb_doc, 0.9)]
             # Otherwise return both documents
             return [(self.kb_doc, 0.9), (self.law_doc, 0.5)]
