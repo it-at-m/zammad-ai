@@ -12,6 +12,7 @@ from job.models.zammad import KnowledgeBaseAnswer
 from job.qdrant.qdrant import ZAMMAD_AI_NAMESPACE
 from job.settings.settings import ZammadAIIndexSettings, get_settings
 from job.utils.hash import hash_content, normalize_content
+from job.utils.keywords import format_keywords_content, generate_keywords
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
@@ -38,11 +39,16 @@ def prepare_qdrant_data(
     for answer_id, answer in answers.items():
         try:
             # Build the main page content
-            page_content = _build_page_content(answer)
+            page_content = _build_page_content(answer).rstrip()
+            keywords_content = format_keywords_content(generate_keywords(answer.answerBody))
+            if keywords_content:
+                page_content += f"\n\n{keywords_content}"
 
             # Fetch and append attachment content
             attachment_data: dict[int, tuple[str, str | None]] = fetch_attachments_for_answer(answer, client)
-            page_content += _format_attachments_content(attachment_data)
+            attachments_content = _format_attachments_content(attachment_data).rstrip()
+            if attachments_content:
+                page_content += f"\n\n{attachments_content}"
 
             # Create metadata
             metadata: QdrantVectorMetadata = _create_vector_metadata(answer, page_content)
