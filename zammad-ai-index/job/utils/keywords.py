@@ -44,40 +44,46 @@ def generate_keywords(body_text: str) -> list[str]:
     if not body_text.strip():
         return []
 
-    keyword_model = _get_keyword_chat_model().with_structured_output(KeywordGenerationResult)
-    result = keyword_model.invoke(
-        [
-            (
-                "system",
-                "Generate exactly five very short keywords for search indexing. "
-                "Use the same language as the provided body text and only concepts present in it. "
-                "Prefer single words. Use short two-word terms only when the combination has a specific meaning.",
-            ),
-            (
-                "human",
-                "Body text:\n\n"
-                f"{body_text}\n\n"
-                "Return exactly five keywords. Keep each keyword very short. "
-                "Avoid long phrases, full sentences, numbering, and explanations.",
-            ),
-        ]
-    )
+    chat_model = _get_keyword_chat_model()
+    try:
+        keyword_model = chat_model.with_structured_output(KeywordGenerationResult)
+        result = keyword_model.invoke(
+            [
+                (
+                    "system",
+                    "Generate exactly five very short keywords for search indexing. "
+                    "Use the same language as the provided body text and only concepts present in it. "
+                    "Prefer single words. Use short two-word terms only when the combination has a specific meaning.",
+                ),
+                (
+                    "human",
+                    "Body text:\n\n"
+                    f"{body_text}\n\n"
+                    "Return exactly five keywords. Keep each keyword very short. "
+                    "Avoid long phrases, full sentences, numbering, and explanations.",
+                ),
+            ]
+        )
 
-    if isinstance(result, KeywordGenerationResult):
-        keywords = result.keywords
-    else:
-        keywords = KeywordGenerationResult.model_validate(result).keywords
+        if isinstance(result, KeywordGenerationResult):
+            keywords = result.keywords
+        else:
+            keywords = KeywordGenerationResult.model_validate(result).keywords
 
-    normalized_keywords: list[str] = []
-    for keyword in keywords:
-        normalized_keyword = " ".join(keyword.strip().split())
-        if normalized_keyword and normalized_keyword not in normalized_keywords:
-            normalized_keywords.append(normalized_keyword)
+        normalized_keywords: list[str] = []
+        for keyword in keywords:
+            normalized_keyword = " ".join(keyword.strip().split())
+            if normalized_keyword and normalized_keyword not in normalized_keywords:
+                normalized_keywords.append(normalized_keyword)
 
-    if len(normalized_keywords) != 5:
-        raise ValueError("Keyword generation did not produce five unique keywords")
+        if len(normalized_keywords) != 5:
+            raise ValueError("Keyword generation did not produce five unique keywords")
 
-    return normalized_keywords
+        return normalized_keywords
+    except Exception as e:
+        del e
+        logger.warning("Failed to generate keywords; continuing without keyword enrichment.", exc_info=True)
+        return []
 
 
 def format_keywords_content(keywords: list[str]) -> str:
