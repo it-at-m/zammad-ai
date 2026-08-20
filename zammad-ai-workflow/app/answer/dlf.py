@@ -115,7 +115,11 @@ class DLFClient:
                     response.raise_for_status()
                     # Parse response
                     dlf_response: DLFAPIResponse = DLFAPIResponse.model_validate(response.json())
-                    return dlf_response.documents
+                    documents: list[DLFDocument] = dlf_response.documents
+                    for doc in documents:
+                        doc.title = doc.title.strip()
+                        doc.content = doc.content.replace("\n", " ").strip()
+                    return documents
         except (ConnectError, TimeoutException, ReadTimeout) as e:
             self.logger.error(
                 msg="Failed to retrieve documents from DLF.",
