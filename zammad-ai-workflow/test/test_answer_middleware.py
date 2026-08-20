@@ -14,20 +14,21 @@ from app.answer.middleware import KnowledgebaseQuery, build_knowledgebase_middle
 class FakeQueryModel:
     """Minimal chat model fake that records structured-output usage."""
 
-    def __init__(self) -> None:
+    def __init__(self, result: object | None = None) -> None:
         """Initialize the fake query model."""
         self.schema: type[KnowledgebaseQuery] | None = None
         self.calls: list[list[object]] = []
+        self.result: object = {"query": "Personalausweis beantragen"} if result is None else result
 
     def with_structured_output(self, schema: type[KnowledgebaseQuery]) -> "FakeQueryModel":
         """Record the requested schema and return the fake model."""
         self.schema = schema
         return self
 
-    async def ainvoke(self, messages: list[object]) -> dict[str, str]:
+    async def ainvoke(self, messages: list[object]) -> object:
         """Record the prompt messages and return a fixed query."""
         self.calls.append(messages)
-        return {"query": "Personalausweis beantragen"}
+        return self.result
 
 
 class FakeQdrantClient:
@@ -76,8 +77,34 @@ async def test_knowledgebase_middleware_injects_context_once() -> None:
     assert "Personalausweis" in message.content
     assert "https://example.com/ausweis" in message.content
     assert runtime.context.knowledgebase_context == message.content
+    assert "Der Antrag ist online moglich." in message.content
 
     second_result = await middleware.abefore_agent(state, runtime)
 
     assert second_result is None
     assert len(qdrant_client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledgebase_middleware_rejects_invalid_fallback_query() -> None:
+    """Invalid structured output should not reach Qdrant and should yield empty context."""
+    query_model = FakeQueryModel(result={"query": "x" * 201})
+    middleware: Any = build_knowledgebase_middleware(cast(BaseChatModel, query_model))
+    qdrant_client = FakeQdrantClient()
+    runtime = SimpleNamespace(
+        context=SimpleNamespace(qdrant_kb_client=qdrant_client, knowledgebase_context=None),
+    )
+    state: dict[str, Any] = {"messages": []}
+
+    result = await middleware.abefore_agent(state, runtime)
+
+    assert query_model.schema is KnowledgebaseQuery
+    assert len(query_model.calls) == 1
+    assert qdrant_client.calls == []
+    assert result is not None
+    message = result["messages"][0]
+    assert isinstance(message, SystemMessage)
+    assert (
+        message.content == "Knowledge-base context\n\nNo relevant knowledge-base documents were found for this request."
+    )
+    assert runtime.context.knowledgebase_context == message.content

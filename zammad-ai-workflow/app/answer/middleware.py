@@ -9,7 +9,7 @@ from typing import Any
 from langchain.agents.middleware import before_agent
 from langchain.messages import HumanMessage, SystemMessage
 from langchain_core.language_models.chat_models import BaseChatModel
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.utils.logging import getLogger
 
@@ -47,10 +47,8 @@ async def _generate_query(query_model: BaseChatModel, messages: Sequence[Any]) -
             )
         ),
         HumanMessage(
-            content=(
-                "Generate a search query for the knowledge base from this user request:\n"
-                f"{_latest_user_message(messages)}"
-            )
+            content="Generate a search query for the knowledge base from this user request:\n"
+            + _latest_user_message(messages)
         ),
     ]
 
@@ -63,13 +61,19 @@ async def _generate_query(query_model: BaseChatModel, messages: Sequence[Any]) -
     if isinstance(result, dict):
         query = result.get("query", "")
         if isinstance(query, str):
-            return query.strip()
+            try:
+                return KnowledgebaseQuery.model_validate({"query": query}).query.strip()
+            except ValidationError:
+                return ""
 
     query = getattr(result, "query", "")
     if isinstance(query, str):
-        return query.strip()
+        try:
+            return KnowledgebaseQuery.model_validate({"query": query}).query.strip()
+        except ValidationError:
+            return ""
 
-    return str(result).strip()
+    return ""
 
 
 async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: Sequence[Any]) -> str:
@@ -77,23 +81,38 @@ async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: 
     if not query:
         query = _latest_user_message(messages)
 
+    if not query:
+        return KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
+
+    try:
+        query = KnowledgebaseQuery.model_validate({"query": query}).query.strip()
+    except ValidationError:
+        return KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
+
     qdrant_client = runtime.context.qdrant_kb_client
     documents_with_scores = await qdrant_client.asearch_documents(query=query)
 
     if not documents_with_scores:
-        return f"{KB_CONTEXT_HEADER}\n\n{KB_CONTEXT_EMPTY}"
+        return KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
 
-    sections: list[str] = [KB_CONTEXT_HEADER, f"Search query: {query}", ""]
+    sections: list[str] = [KB_CONTEXT_HEADER, "Search query: " + query, ""]
     for index, (document, score) in enumerate(documents_with_scores, start=1):
         metadata = getattr(document, "metadata", {}) or {}
         title = str(metadata.get("title") or metadata.get("answer_title") or "Untitled").strip()
-        body = str(metadata.get("answer_body") or "").replace("\n", " ").strip()
+        body = (
+            str(metadata.get("answer_body") or getattr(document, "page_content", "") or "")
+            .replace(
+                "\n",
+                " ",
+            )
+            .strip()
+        )
         url = str(metadata.get("url") or metadata.get("answer_url") or "").strip()
-        sections.append(f"{index}. {title} (score: {score:.3f})")
+        sections.append("{}. {} (score: {:.3f})".format(index, title, score))
         if body:
-            sections.append(f"   {body}")
+            sections.append("   " + body)
         if url:
-            sections.append(f"   {url}")
+            sections.append("   " + url)
 
     return "\n".join(sections).strip()
 

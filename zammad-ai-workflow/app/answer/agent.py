@@ -196,7 +196,6 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
                         score,
                     )
                 )
-            logger.info(filtered_documents)
             return RetrieveDocumentsKBOutput(documents_with_relevance_score=filtered_documents)
         except QdrantKBError as e:
             logger.error("Error retrieving law documents from Qdrant", exc_info=True)
