@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
 from app.settings import QdrantSettings
@@ -47,9 +47,26 @@ class SearchQdrantKBInput(BaseModel):
 class RetrieveDocumentsKBOutput(BaseModel):
     """Knowledge-base search results with relevance scores."""
 
-    documents_with_relevance_score: list[tuple[Document, float]] = Field(
-        description="A list of tuples containing retrieved documents and their corresponding relevance scores between 0 and 1; the list is ordered by relevance score in descending order.",
+    documents_with_relevance_score: list[tuple[KBDocument | Document | LawDocument, float]] = Field(
+        description="A list of tuples containing retrieved documents and their corresponding relevance scores between 0 and 1",
     )
+
+
+class KBDocument(BaseModel):
+    """A document retrieved from the knowledge-base."""
+
+    title: str = Field(description="The title of the document")
+    body: str = Field(description="The body content of the document")
+    url: str = Field(description="The URL of the document")
+
+
+class LawDocument(BaseModel):
+    """A document retrieved from the knowledge-base that is specifically related to a law."""
+
+    title: str = Field(description="The title of the document")
+    body: str = Field(description="The body content of the document")
+    url: str = Field(description="The URL of the document")
+    document_type: str = Field(description="The type of the document, e.g., 'paragraph', 'annex', etc.")
 
 
 class QdrantKBError(QdrantPermanentError):
@@ -226,9 +243,7 @@ class QdrantKBClient:
         # chunks are excluded from general KB searches and remain accessible
         # only via dedicated law tools.
         if search_filter is None:
-            search_filter = Filter(
-                must=[FieldCondition(key="metadata.law_id", is_empty=True)]
-            )
+            search_filter = Filter(must=[IsEmptyCondition(is_empty=PayloadField(key="metadata.law_id"))])
 
         return await self.vectorstore.asimilarity_search_with_relevance_scores(
             query=query,
