@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, PositiveInt
 from job.qdrant.qdrant import QdrantKBClient
 from job.settings.law import LawConfig
 from job.utils.hash import hash_content, normalize_content
+from job.utils.keywords import format_keywords_content, generate_keywords
 from job.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai-index.law")
@@ -41,6 +42,7 @@ class Paragraph(BaseModel):
     Keep fields small: full text and any references. Also preserve paragraph
     identifier and title for metadata convenience.
     """
+
     paragraph: str
     title: str = ""
     full: str
@@ -79,6 +81,7 @@ class Annex(BaseModel):
 
     Contains the full annex text and the list of references it mentions.
     """
+
     annex: str
     title: str = ""
     full: str
@@ -112,7 +115,9 @@ def _extract_annexes_from_markdown(markdown_text: str) -> list[Annex]:
     return annexes
 
 
-def _chunk_paragraphs(paragraphs: list[Paragraph], chunk_size: PositiveInt, chunk_overlap: PositiveInt) -> list[Document]:
+def _chunk_paragraphs(
+    paragraphs: list[Paragraph], chunk_size: PositiveInt, chunk_overlap: PositiveInt
+) -> list[Document]:
     """Split full paragraph text into smaller chunks for better retrieval."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -130,6 +135,10 @@ def _chunk_paragraphs(paragraphs: list[Paragraph], chunk_size: PositiveInt, chun
         chunks = splitter.split_text(text) if p.full else []
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
+            page_content = chunk.rstrip()
+            keywords_content = format_keywords_content(generate_keywords(chunk))
+            if keywords_content:
+                page_content += f"\n\n{keywords_content}"
             meta = {
                 "document_type": "paragraph",
                 "source": "law",
@@ -138,9 +147,9 @@ def _chunk_paragraphs(paragraphs: list[Paragraph], chunk_size: PositiveInt, chun
                 "vector_updatedAt": now,
                 "chunk": idx,
                 "chunk_count": count,
-                "pagecontent_hash": hash_content(normalize_content(chunk)),
+                "pagecontent_hash": hash_content(normalize_content(page_content)),
             }
-            docs.append(Document(page_content=chunk, metadata=meta))
+            docs.append(Document(page_content=page_content, metadata=meta))
     return docs
 
 
@@ -166,6 +175,10 @@ def _chunk_annexes(annexes: list[Annex], chunk_size: PositiveInt, chunk_overlap:
 
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
+            page_content = chunk.rstrip()
+            keywords_content = format_keywords_content(generate_keywords(chunk))
+            if keywords_content:
+                page_content += f"\n\n{keywords_content}"
             meta = {
                 "document_type": "annex",
                 "source": "law",
@@ -175,9 +188,9 @@ def _chunk_annexes(annexes: list[Annex], chunk_size: PositiveInt, chunk_overlap:
                 "vector_updatedAt": now,
                 "chunk": idx,
                 "chunk_count": count,
-                "pagecontent_hash": hash_content(normalize_content(chunk)),
+                "pagecontent_hash": hash_content(normalize_content(page_content)),
             }
-            docs.append(Document(page_content=chunk, metadata=meta))
+            docs.append(Document(page_content=page_content, metadata=meta))
     return docs
 
 
