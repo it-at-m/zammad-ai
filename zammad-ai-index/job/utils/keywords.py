@@ -16,7 +16,7 @@ class KeywordGenerationResult(BaseModel):
     """Structured response for generated index keywords."""
 
     keywords: list[str] = Field(
-        description="Exactly five concise keywords or short keyphrases extracted from the body text.",
+        description="Exactly five very short keywords extracted from the body text.",
         min_length=5,
         max_length=5,
     )
@@ -49,14 +49,16 @@ def generate_keywords(body_text: str) -> list[str]:
         [
             (
                 "system",
-                "Generate exactly five concise keywords or short keyphrases for search indexing. "
-                "Use the same language as the provided body text and only concepts present in it.",
+                "Generate exactly five very short keywords for search indexing. "
+                "Use the same language as the provided body text and only concepts present in it. "
+                "Prefer single words. Use short two-word terms only when the combination has a specific meaning.",
             ),
             (
                 "human",
                 "Body text:\n\n"
                 f"{body_text}\n\n"
-                "Return exactly five keywords. Avoid full sentences, numbering, and explanations.",
+                "Return exactly five keywords. Keep each keyword very short. "
+                "Avoid long phrases, full sentences, numbering, and explanations.",
             ),
         ]
     )
