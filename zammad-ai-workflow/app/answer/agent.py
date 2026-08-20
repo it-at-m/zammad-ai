@@ -16,8 +16,16 @@ from app.utils.genai_provider import get_chat_model
 from app.utils.logging import getLogger
 
 from .dlf import DLFClient, DLFDocument, DLFError, SearchDLFInput
-from .knowledgebase import QdrantKBClient, QdrantKBError, RetrieveDocumentsKBOutput, SearchQdrantKBInput
+from .knowledgebase import (
+    KBDocument,
+    LawDocument,
+    QdrantKBClient,
+    QdrantKBError,
+    RetrieveDocumentsKBOutput,
+    SearchQdrantKBInput,
+)
 from .laws import build_law_tool_name
+from .middleware import build_knowledgebase_middleware
 
 logger: Logger = getLogger("zammad-ai.answer.agent")
 
@@ -27,6 +35,7 @@ class AgentContext(BaseModel):
 
     qdrant_kb_client: QdrantKBClient
     dlf_client: DLFClient | None
+    knowledgebase_context: str | None = None
     searched_laws: set[str] = Field(default_factory=set)
 
     model_config = {
@@ -107,7 +116,19 @@ async def search_knowledgebase(
             k=num_documents,
             offset=offset,
         )
-        return RetrieveDocumentsKBOutput(documents_with_relevance_score=relevant_documents_with_scores)
+        filtered_documents: list[tuple[KBDocument | Document | LawDocument, float]] = []
+        for doc, score in relevant_documents_with_scores:
+            filtered_documents.append(
+                (
+                    KBDocument(
+                        title=doc.metadata.get("answer_title", "").strip(),
+                        body=doc.metadata.get("answer_body", "").replace("\n", " ").strip(),
+                        url=doc.metadata.get("answer_url", ""),
+                    ),
+                    score,
+                )
+            )
+        return RetrieveDocumentsKBOutput(documents_with_relevance_score=filtered_documents)
     except QdrantKBError as e:
         logger.error("Error retrieving documents from Qdrant", exc_info=True)
         raise ToolException("Failed to retrieve documents from Knowledge Base") from e
@@ -162,7 +183,20 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
             # retrieval succeeded so that transient Qdrant errors do not prevent
             # retries later in the same request.
             runtime.context.searched_laws.add(law_id)
-            return RetrieveDocumentsKBOutput(documents_with_relevance_score=relevant_documents_with_scores)
+            filtered_documents: list[tuple[KBDocument | Document | LawDocument, float]] = []
+            for doc, score in relevant_documents_with_scores:
+                filtered_documents.append(
+                    (
+                        LawDocument(
+                            title=doc.metadata.get("title", "").strip(),
+                            body=doc.page_content.replace("\n", " ").strip(),
+                            url=doc.metadata.get("law_url", ""),
+                            document_type=doc.metadata.get("document_type", ""),
+                        ),
+                        score,
+                    )
+                )
+            return RetrieveDocumentsKBOutput(documents_with_relevance_score=filtered_documents)
         except QdrantKBError as e:
             logger.error("Error retrieving law documents from Qdrant", exc_info=True)
             raise ToolException(f"Failed to retrieve documents from {law_name}") from e
@@ -210,6 +244,7 @@ def build_agent(
             tool_message_content="Response candidate has been generated!",
         ),
         context_schema=AgentContext,
+        middleware=[build_knowledgebase_middleware(chat_model)],
     )
 
     return agent
