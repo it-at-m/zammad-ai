@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
-from qdrant_client.models import FieldCondition, Filter, MatchValue, IsEmptyCondition, PayloadField
+from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
 from app.settings import QdrantSettings
