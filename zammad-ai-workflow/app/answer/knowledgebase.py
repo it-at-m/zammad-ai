@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt
 from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http.exceptions import ApiException
 from qdrant_client.http.models import CollectionInfo
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
 from app.settings import QdrantSettings
@@ -227,7 +227,7 @@ class QdrantKBClient:
         # only via dedicated law tools.
         if search_filter is None:
             search_filter = Filter(
-                must=[FieldCondition(key="metadata.law_id", is_empty=True)]
+                must=[IsEmptyCondition(is_empty=PayloadField(key="metadata.law_id"))]
             )
 
         return await self.vectorstore.asimilarity_search_with_relevance_scores(
