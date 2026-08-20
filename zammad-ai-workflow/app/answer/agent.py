@@ -25,6 +25,7 @@ from .knowledgebase import (
     SearchQdrantKBInput,
 )
 from .laws import build_law_tool_name
+from .middleware import build_knowledgebase_middleware
 
 logger: Logger = getLogger("zammad-ai.answer.agent")
 
@@ -34,6 +35,7 @@ class AgentContext(BaseModel):
 
     qdrant_kb_client: QdrantKBClient
     dlf_client: DLFClient | None
+    knowledgebase_context: str | None = None
     searched_laws: set[str] = Field(default_factory=set)
 
     model_config = {
@@ -243,6 +245,7 @@ def build_agent(
             tool_message_content="Response candidate has been generated!",
         ),
         context_schema=AgentContext,
+        middleware=[build_knowledgebase_middleware(chat_model)],
     )
 
     return agent
