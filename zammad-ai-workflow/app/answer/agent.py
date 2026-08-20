@@ -114,7 +114,7 @@ async def search_knowledgebase(
             k=num_documents,
             offset=offset,
         )
-        filtered_documents: list[tuple[KBDocument, float]] = []
+        filtered_documents: list[tuple[KBDocument | Document | LawDocument, float]] = []
         for doc, score in relevant_documents_with_scores:
             filtered_documents.append(
                 (
@@ -181,7 +181,7 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
             # retrieval succeeded so that transient Qdrant errors do not prevent
             # retries later in the same request.
             runtime.context.searched_laws.add(law_id)
-            filtered_documents: list[tuple[LawDocument, float]] = []
+            filtered_documents: list[tuple[KBDocument | Document | LawDocument, float]] = []
             for doc, score in relevant_documents_with_scores:
                 filtered_documents.append(
                     (
