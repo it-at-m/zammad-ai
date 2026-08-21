@@ -93,7 +93,13 @@ async def evaluate_prompt(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Input text length exceeds maximum allowed ({max_len} characters)",
         )
-    return await service.evaluate(payload.text, threshold=thr, model_id=model_id)
+    return await service.evaluate(
+        payload.text,
+        threshold=thr,
+        model_id=model_id,
+        toxicity_labels=payload.toxicity_labels,
+        jailbreak_labels=payload.jailbreak_labels,
+    )
 
 
 @app.post("/api/v1/guardrails/response", response_model=GuardrailResponseResult)
@@ -124,7 +130,13 @@ async def evaluate_response(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Input text length exceeds maximum allowed ({max_len} characters)",
         )
-    return await service.evaluate_response(payload.text, payload.response, threshold=thr, model_id=model_id)
+    return await service.evaluate_response(
+        payload.text,
+        payload.response,
+        threshold=thr,
+        model_id=model_id,
+        toxicity_labels=payload.toxicity_labels,
+    )
 
 
 @app.get("/ready")

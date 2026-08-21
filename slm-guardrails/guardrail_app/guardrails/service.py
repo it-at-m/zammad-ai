@@ -12,7 +12,12 @@ from guardrail_app.settings.settings import GuardrailSettings, ModelConfig
 from guardrail_app.utils.logging import getLogger
 from prometheus_client import Counter, Histogram
 
-from .labels import JAILBREAK_TASK, PROMPT_TOXICITY_TASK, REFUSAL_LABELS, RESPONSE_TOXICITY_TASK, SAFETY_LABELS
+from .labels import (
+    REFUSAL_LABELS,
+    SAFETY_LABELS,
+    get_jailbreak_task,
+    get_toxicity_task,
+)
 
 logger = getLogger("slm-guardrails")
 
@@ -222,7 +227,14 @@ class GuardrailService:
             self._executors[model_key] = executor
         return executor
 
-    async def evaluate(self, text: str, threshold: float | None, model_id: str | None = None) -> GuardrailResult:
+    async def evaluate(
+        self,
+        text: str,
+        threshold: float | None,
+        model_id: str | None = None,
+        toxicity_labels: list[str] | None = None,
+        jailbreak_labels: list[str] | None = None,
+    ) -> GuardrailResult:
         """Classify input text for safety, toxicity, and jailbreak indicators."""
         model_key = model_id or self.settings.default_model
         if model_key not in self._models:
@@ -245,8 +257,8 @@ class GuardrailService:
                     text,
                     {
                         "prompt_safety": SAFETY_LABELS,
-                        "prompt_toxicity": PROMPT_TOXICITY_TASK,
-                        "jailbreak_detection": JAILBREAK_TASK,
+                        "prompt_toxicity": get_toxicity_task(toxicity_labels),
+                        "jailbreak_detection": get_jailbreak_task(jailbreak_labels),
                     },
                     threshold if threshold is not None else self.settings.confidence_threshold,
                 )
@@ -268,7 +280,12 @@ class GuardrailService:
                 raise
 
     async def evaluate_response(
-        self, text: str, response: str, threshold: float | None, model_id: str | None = None
+        self,
+        text: str,
+        response: str,
+        threshold: float | None,
+        model_id: str | None = None,
+        toxicity_labels: list[str] | None = None,
     ) -> GuardrailResponseResult:
         """Classify a generated response (with prompt context) for safety and refusal."""
         model_key = model_id or self.settings.default_model
@@ -293,7 +310,7 @@ class GuardrailService:
                     combined_text,
                     {
                         "response_safety": SAFETY_LABELS,
-                        "response_toxicity": RESPONSE_TOXICITY_TASK,
+                        "response_toxicity": get_toxicity_task(toxicity_labels),
                         "response_refusal": REFUSAL_LABELS,
                     },
                     threshold if threshold is not None else self.settings.confidence_threshold,
