@@ -9,6 +9,7 @@ from langchain_core.documents import Document
 from app.answer.knowledgebase import QdrantKBClient
 from app.answer.laws import build_law_tool_name
 from app.settings import ZammadAISettings
+from app.settings.answer import MultiQuerySettings
 
 
 class FakeVectorStore:
@@ -22,6 +23,18 @@ class FakeVectorStore:
         """Capture async search arguments and return no results."""
         self.kwargs = kwargs
         return []
+
+
+class FakeMultiQueryRetriever:
+    """Minimal multi-query retriever fake returning a fixed query set."""
+
+    def __init__(self, queries: list[str]) -> None:
+        self.queries = queries
+        self.calls: list[tuple[str, Any]] = []
+
+    async def agenerate_queries(self, question: str, run_manager: Any) -> list[str]:
+        self.calls.append((question, run_manager))
+        return self.queries
 
 
 def test_build_law_tool_name_sanitizes_configured_law_id() -> None:
@@ -50,7 +63,7 @@ def test_answer_context_contains_configured_law_tool(
 @pytest.mark.asyncio
 async def test_asearch_law_documents_filters_by_law_metadata() -> None:
     """Law retrieval should be scoped to law source and law_id metadata."""
-    client = QdrantKBClient.__new__(QdrantKBClient)
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
     client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()
     client.vectorstore = FakeVectorStore()
 
@@ -74,8 +87,8 @@ async def test_asearch_documents_excludes_law_points_by_default() -> None:
     The default filter should require metadata.law_id to be null (i.e. the key
     does not exist) so that law chunks are not returned by general KB searches.
     """
-    client = QdrantKBClient.__new__(QdrantKBClient)
-    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
+    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()  # type: ignore[assignment]
     client.vectorstore = FakeVectorStore()
 
     result = await client.asearch_documents(query="Test", k=4, offset=1)
@@ -99,8 +112,8 @@ async def test_asearch_documents_excludes_law_points_by_default() -> None:
 @pytest.mark.asyncio
 async def test_asearch_documents_respects_explicit_filter() -> None:
     """If an explicit filter is provided, it should be used instead of the default."""
-    client = QdrantKBClient.__new__(QdrantKBClient)
-    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
+    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()  # type: ignore[assignment]
     client.vectorstore = FakeVectorStore()
 
     # Build a simple explicit filter object (we don't need real qdrant types here)
@@ -142,8 +155,8 @@ async def test_asearch_documents_returns_only_kb_article_from_vectorstore() -> N
             # Otherwise return both documents
             return [(self.kb_doc, 0.9), (self.law_doc, 0.5)]
 
-    client = QdrantKBClient.__new__(QdrantKBClient)
-    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
+    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 5})()  # type: ignore[assignment]
     client.vectorstore = FakeVectorStoreWithDocs()
 
     result = await client.asearch_documents(query="reset", k=5, offset=0)
@@ -153,3 +166,40 @@ async def test_asearch_documents_returns_only_kb_article_from_vectorstore() -> N
     assert len(result) == 1
     doc, score = result[0]
     assert "KB:" in doc.page_content
+
+
+@pytest.mark.asyncio
+async def test_asearch_documents_expands_queries_when_multi_query_is_enabled() -> None:
+    """Multi-query retrieval should fan out search queries and keep the best score per document."""
+
+    class FakeVectorStoreMulti:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+            self.doc_a = Document(page_content="A", metadata={"id": "a"})
+            self.doc_b = Document(page_content="B", metadata={"id": "b"})
+            self.doc_c = Document(page_content="C", metadata={"id": "c"})
+            self.results = {
+                "erste frage": [(self.doc_a, 0.4), (self.doc_b, 0.6)],
+                "zweite frage": [(self.doc_a, 0.9), (self.doc_c, 0.5)],
+                "originalfrage": [(self.doc_c, 0.7)],
+            }
+
+        async def asimilarity_search_with_relevance_scores(self, **kwargs: Any) -> list[tuple[Document, float]]:
+            self.calls.append(kwargs)
+            return self.results[kwargs["query"]]
+
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
+    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 2})()  # type: ignore[assignment]
+    client.multi_query_settings = MultiQuerySettings(enabled=True, include_original=True)  # type: ignore[assignment]
+    client.multi_query_retriever = FakeMultiQueryRetriever(["erste frage", "zweite frage"])
+    client.vectorstore = FakeVectorStoreMulti()
+
+    result = await client.asearch_documents(query="originalfrage", k=2, offset=0, search_filter=object())
+
+    assert [call["query"] for call in client.vectorstore.calls] == ["erste frage", "zweite frage", "originalfrage"]
+    assert all(call["offset"] == 0 for call in client.vectorstore.calls)
+    assert len(result) == 2
+    assert result[0][0].page_content == "A"
+    assert result[0][1] == 0.9
+    assert result[1][0].page_content == "C"
+    assert result[1][1] == 0.7
