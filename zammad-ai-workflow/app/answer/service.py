@@ -233,7 +233,8 @@ class AnswerService:
                         self.format_langfuse_prompt,
                         session_id=session_id,
                     )
-                    structured_response: AnswerCandidate = formatted_response
+                    structured_response.response = formatted_response.response
+                    structured_response.subject = formatted_response.subject
                 except Exception:
                     logger.error("Failed to format final answer.", exc_info=True)
 
@@ -418,16 +419,16 @@ class AnswerService:
         Returns:
             dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
         """
+        prompts: dict[str, int | None] = {}
         if self.settings.answer.agent_prompt.type == "langfuse":
-            prompts: dict[str, int | None] = {
-                "answer": self.agent_prompt_version,
-                "format": self.format_prompt_version,
-            }
-        else:
-            prompts: dict[str, int | None] = {}
+            prompts["agent"] = self.agent_prompt_version
+
+        if self.settings.answer.format_prompt.type == "langfuse":
+            prompts["format"] = self.format_prompt_version
 
         if self.judge_handler is not None and self.settings.answer.judge.prompt.type == "langfuse":
             prompts["judge"] = self.judge_prompt_version
+
         return prompts
 
 

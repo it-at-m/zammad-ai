@@ -215,7 +215,6 @@ def build_agent(
     Parameters:
         genai_settings (GenAIProviderSettings): Model and generation parameters used to create the chat model.
         agent_prompt (str): Agent prompt supplied to the agent.
-        format_prompt (str): Prompt for formatting the agent's responses.
         dlf_enabled (bool): If True, include the DLF website search tool in the agent's toolset.
         laws (list[LawToolSettings] | None): Indexed laws to expose as dedicated retrieval tools.
 
