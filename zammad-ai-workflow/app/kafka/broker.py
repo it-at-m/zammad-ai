@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from app.action.service import ActionService, get_action_service
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import AckDecision, ExceptionDecision, KafkaPayloadError, classify_exception
+from app.guardrails.http_client import GuardrailService, get_guardrail_service
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
@@ -33,7 +34,7 @@ def _safe_ticket_id(ticket: Any) -> int | None:
     """Return a ticket id when the value is safely coercible to an integer."""
     try:
         return int(ticket)
-    except (TypeError, ValueError, OverflowError):
+    except TypeError, ValueError, OverflowError:
         return None
 
 
@@ -92,10 +93,12 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             ),
         ),
     )
-
+    guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
     triage_service: TriageService = get_triage_service(settings=settings)
-    answer_service: AnswerService = get_answer_service(settings=settings)
-    action_service: ActionService = get_action_service(settings=settings, answer_service=answer_service)
+    answer_service: AnswerService = get_answer_service(guardrail_service=guardrail_service, settings=settings)
+    action_service: ActionService = get_action_service(
+        guardrail_service=guardrail_service, settings=settings, answer_service=answer_service
+    )
 
     @router.subscriber(
         settings.kafka.topic,

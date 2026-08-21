@@ -297,11 +297,14 @@ _service: ActionService | None = None
 
 
 def get_action_service(
-    settings: ZammadAISettings | None = None, answer_service: AnswerService | None = None
+    guardrail_service: GuardrailService,
+    settings: ZammadAISettings | None = None,
+    answer_service: AnswerService | None = None,
 ) -> ActionService:
     """Get or create the shared ActionService instance.
 
     Args:
+        guardrail_service: The guardrail service to initialize the ActionService instance.
         settings: Optional settings to initialize the ActionService instance.
                  If not provided, uses get_settings().
         answer_service: Optional AnswerService instance to use.
@@ -317,6 +320,6 @@ def get_action_service(
 
             settings = get_settings()
         if answer_service is None:
-            answer_service = get_answer_service(settings)
+            answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
         _service = ActionService(settings=settings, answer_service=answer_service)
     return _service
