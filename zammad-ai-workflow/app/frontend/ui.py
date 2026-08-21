@@ -264,6 +264,7 @@ def _render_config_md(
     triage_prompts_md = _prompt_links(settings.triage.prompts, "triage")
     answer_prompt_md = _prompt_links(settings.answer.agent_prompt, "answer")
     judge_prompt_md = _prompt_links(settings.answer.judge.prompt, "judge")
+    format_prompt_md = _prompt_links(settings.answer.format_prompt, "format")
 
     qdrant = settings.answer.qdrant
     qdrant_url = getattr(qdrant, "url", None)
@@ -288,6 +289,7 @@ def _render_config_md(
                 settings.triage.prompts.type == "langfuse",
                 settings.answer.agent_prompt.type == "langfuse",
                 settings.answer.judge.prompt.type == "langfuse",
+                settings.answer.format_prompt.type == "langfuse",
             ]
         )
         and langfuse_base
@@ -295,6 +297,7 @@ def _render_config_md(
         triage_prompts_md,
         answer_prompt_md,
         judge_prompt_md,
+        format_prompt_md,
         "",
         "**Index / Knowledgebase**",
         f"- Qdrant: {qdrant_link}",

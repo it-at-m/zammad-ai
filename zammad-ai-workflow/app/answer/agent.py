@@ -206,7 +206,7 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
 
 def build_agent(
     genai_settings: GenAIProviderSettings,
-    system_prompt: str,
+    agent_prompt: str,
     dlf_enabled: bool = True,
     laws: list[LawToolSettings] | None = None,
 ) -> Any:
@@ -214,7 +214,8 @@ def build_agent(
 
     Parameters:
         genai_settings (GenAIProviderSettings): Model and generation parameters used to create the chat model.
-        system_prompt (str): System prompt supplied to the agent.
+        agent_prompt (str): Agent prompt supplied to the agent.
+        format_prompt (str): Prompt for formatting the agent's responses.
         dlf_enabled (bool): If True, include the DLF website search tool in the agent's toolset.
         laws (list[LawToolSettings] | None): Indexed laws to expose as dedicated retrieval tools.
 
@@ -237,7 +238,7 @@ def build_agent(
     # Create the agent via the factory method
     agent: Any = create_agent(
         model=chat_model,
-        system_prompt=system_prompt,
+        system_prompt=agent_prompt,
         tools=available_tools,
         response_format=ToolStrategy(
             schema=AnswerCandidate | NoAnswerPossible,
