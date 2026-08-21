@@ -16,6 +16,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from markdownify import markdownify as md
 from pydantic import BaseModel, Field, PositiveInt
+from qdrant_client.models import Record
 
 from job.qdrant.qdrant import QdrantKBClient
 from job.settings.law import LawConfig
@@ -136,9 +137,6 @@ def _chunk_paragraphs(
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
             page_content = chunk.rstrip()
-            keywords_content = format_keywords_content(generate_keywords(chunk))
-            if keywords_content:
-                page_content += f"\n\n{keywords_content}"
             meta = {
                 "document_type": "paragraph",
                 "source": "law",
@@ -176,9 +174,6 @@ def _chunk_annexes(annexes: list[Annex], chunk_size: PositiveInt, chunk_overlap:
         count = len(chunks)
         for idx, chunk in enumerate(chunks):
             page_content = chunk.rstrip()
-            keywords_content = format_keywords_content(generate_keywords(chunk))
-            if keywords_content:
-                page_content += f"\n\n{keywords_content}"
             meta = {
                 "document_type": "annex",
                 "source": "law",
@@ -212,6 +207,53 @@ def _build_ids_for_documents(law_id: str, docs: list[Document]) -> list[str]:
         vid: UUID = uuid5(NAMESPACE_DNS, name)
         ids.append(str(vid))
     return ids
+
+
+def _get_existing_law_points(law_id: str, all_points: list[Record]) -> dict[str, Record]:
+    """Return existing Qdrant points for a law keyed by vector ID."""
+    existing_points: dict[str, Record] = {}
+    for point in all_points:
+        payload = point.payload or {}
+        metadata = payload.get("metadata") or {}
+        if metadata.get("source") == "law" and metadata.get("law_id") == law_id:
+            existing_points[str(point.id)] = point
+    return existing_points
+
+
+def _filter_changed_documents(
+    docs: list[Document], ids: list[str], existing_points: dict[str, Record]
+) -> tuple[list[Document], list[str]]:
+    """Keep only new or changed law chunks based on the raw-content hash."""
+    docs_to_index: list[Document] = []
+    ids_to_index: list[str] = []
+
+    for doc, vector_id in zip(docs, ids, strict=True):
+        current_point = existing_points.get(vector_id)
+        if not current_point:
+            docs_to_index.append(doc)
+            ids_to_index.append(vector_id)
+            continue
+
+        payload = current_point.payload or {}
+        current_metadata = payload.get("metadata") or {}
+        current_hash = current_metadata.get("pagecontent_hash")
+        new_hash = doc.metadata.get("pagecontent_hash")
+
+        if current_hash != new_hash:
+            docs_to_index.append(doc)
+            ids_to_index.append(vector_id)
+
+    logger.info("Filtered law chunks to %d/%d changed or new chunks for indexing.", len(docs_to_index), len(docs))
+    return docs_to_index, ids_to_index
+
+
+def _add_keywords_to_documents(docs: list[Document]) -> None:
+    """Generate and append keywords only for chunks that will be indexed."""
+    for doc in docs:
+        page_content = doc.page_content.rstrip()
+        keywords_content = format_keywords_content(generate_keywords(page_content))
+        if keywords_content:
+            doc.page_content = f"{page_content}\n\n{keywords_content}"
 
 
 def ingest_law(law: LawConfig, qdrant: QdrantKBClient) -> None:
@@ -256,22 +298,21 @@ def ingest_law(law: LawConfig, qdrant: QdrantKBClient) -> None:
         # when ingesting multiple laws in sequence.
 
         ids = _build_ids_for_documents(law.id, docs)
-        qdrant.add_raw_documents(docs, ids)
-        logger.info("Indexed %d chunks for law %s", len(docs), law.id)
+        all_points = qdrant.get_all_points()
+        existing_law_points = _get_existing_law_points(law.id, all_points)
+
+        docs_to_index, ids_to_index = _filter_changed_documents(docs, ids, existing_law_points)
+        _add_keywords_to_documents(docs_to_index)
+        qdrant.add_raw_documents(docs_to_index, ids_to_index)
+        logger.info("Indexed %d changed chunks for law %s", len(docs_to_index), law.id)
         # Reconcile Qdrant: remove stale points belonging to this law that are
         # not present in the newly generated ids. This ensures removed
         # paragraphs/annexes cannot be retrieved after re-ingestion.
         try:
-            all_points = qdrant.get_all_points()
             stale_ids: list[str] = []
-            for p in all_points:
-                # payload is expected to contain metadata dict
-                payload = p.payload or {}
-                metadata = payload.get("metadata") or {}
-                if metadata.get("source") == "law" and metadata.get("law_id") == law.id:
-                    pid = str(p.id) if isinstance(p.id, str) else str(p.id)
-                    if pid not in ids:
-                        stale_ids.append(pid)
+            for point_id in existing_law_points:
+                if point_id not in ids:
+                    stale_ids.append(point_id)
             if stale_ids:
                 logger.info("Removing %d stale Qdrant points for law %s", len(stale_ids), law.id)
                 qdrant.delete_points_by_ids(stale_ids)

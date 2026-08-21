@@ -13,7 +13,7 @@ from uuid import UUID
 
 from qdrant_client.models import Record
 
-from job.data.processing import filter_for_changed_data, prepare_qdrant_data
+from job.data.processing import add_keywords_to_changed_data, filter_for_changed_data, prepare_qdrant_data
 from job.data.retrieval import get_answers_data, retrieve_answer_ids, retrieve_deleted_answer_ids
 from job.law.ingest import ingest_law
 from job.models.qdrant import QdrantDocumentItem
@@ -30,7 +30,9 @@ logger: Logger = getLogger("zammad-ai-index")
 
 
 def run_indexing(
-    qdrant_client: QdrantKBClient, zammad_client: ZammadAPIClient | ZammadEAIClient, snapshot_already_created: bool = False
+    qdrant_client: QdrantKBClient,
+    zammad_client: ZammadAPIClient | ZammadEAIClient,
+    snapshot_already_created: bool = False,
 ) -> None:
     """Execute the complete indexing workflow.
 
@@ -164,6 +166,7 @@ def _prepare_and_filter_data(
         new_qdrant_data=qdrant_data,
         all_points=all_points,
     )
+    add_keywords_to_changed_data(filtered_items)
 
     return filtered_items
 
