@@ -148,7 +148,9 @@ class ZammadEAIClient(BaseZammadClient):
         except ZammadConnectionError as e:
             cause: BaseException | None = e.__cause__
             if isinstance(cause, HTTPStatusError) and (cause.response.status_code in {400, 404, 410}):
-                logger.info(f"Knowledge base answer {answer_id} not found ({cause.response.status_code}).")
+                logger.info(
+                    f"Knowledge base answer {answer_id} not found ({cause.response.status_code}).", exc_info=True
+                )
                 return None
             # Auth failures, 5xx, timeouts — re-raise so callers and check_if_answer_exists
             # don't silently treat them as "answer deleted"
