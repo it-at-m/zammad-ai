@@ -152,7 +152,24 @@ class ActionService:
             ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
         """
         # Evaluate guardrails before answer generation
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(user_text)
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+            user_text,
+            toxicity_labels=[
+                "violence_and_weapons",
+                "sexual_content",
+                "hate_and_discrimination",
+                "self_harm_and_suicide",
+                "misinformation",
+                "copyright_violation",
+                "child_safety",
+                "political_manipulation",
+                "unethical_conduct",
+                "regulated_advice",
+                "other",
+                "benign",
+            ],
+            jailbreak_labels=None,
+        )
         if self.settings.guardrails.enabled:
             self.logger.info(
                 f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"

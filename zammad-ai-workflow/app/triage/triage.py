@@ -320,7 +320,24 @@ class TriageService:
             )
 
         # Evaluate guardrails before categorization
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(message)
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+            message,
+            toxicity_labels=[
+                "violence_and_weapons",
+                "sexual_content",
+                "hate_and_discrimination",
+                "self_harm_and_suicide",
+                "misinformation",
+                "copyright_violation",
+                "child_safety",
+                "political_manipulation",
+                "unethical_conduct",
+                "regulated_advice",
+                "other",
+                "benign",
+            ],
+            jailbreak_labels=None,
+        )
         if self.settings.guardrails.enabled:
             logger.info(
                 f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"

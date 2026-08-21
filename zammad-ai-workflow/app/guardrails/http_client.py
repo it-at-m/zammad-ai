@@ -46,7 +46,9 @@ class GuardrailService:
         )
         self._closed = False
 
-    async def evaluate(self, text: str) -> GuardrailResult | None:
+    async def evaluate(
+        self, text: str, toxicity_labels: list[str] | None = None, jailbreak_labels: list[str] | None = None
+    ) -> GuardrailResult | None:
         """Evaluate user input text via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
             return None
@@ -61,6 +63,8 @@ class GuardrailService:
             "text": text,
             "threshold": self.settings.confidence_threshold,
             "model": self.settings.model,
+            "toxicity_labels": toxicity_labels,
+            "jailbreak_labels": jailbreak_labels,
         }
         try:
             resp: Response = await self._client.post(url, json=payload)
@@ -81,7 +85,9 @@ class GuardrailService:
         await self._client.aclose()
         self._closed = True
 
-    async def evaluate_response(self, text: str, response: str) -> GuardrailResponseResult | None:
+    async def evaluate_response(
+        self, text: str, response: str, toxicity_labels: list[str] | None = None
+    ) -> GuardrailResponseResult | None:
         """Evaluate generated response via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
             return None
@@ -96,6 +102,7 @@ class GuardrailService:
             "response": response,
             "threshold": self.settings.confidence_threshold,
             "model": self.settings.model,
+            "toxicity_labels": toxicity_labels,
         }
         try:
             resp: Response = await self._client.post(url, json=payload)
