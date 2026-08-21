@@ -259,7 +259,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
         expected_access_key=salt,
         score_name="configured-thumbs",
         thumbs="down",
-        comment="",
+        comment="Feedback comment",
         user_name=None,
         tags=["outdated information", "unconfigured"],
         allowed_tags=["outdated information"],

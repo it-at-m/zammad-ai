@@ -164,11 +164,14 @@ def _submit_feedback(
 
     try:
         submission: FeedbackSubmission = FeedbackSubmission.model_validate(
-            {"thumbs": thumbs, "comment": comment, "user_name": user_name}
+            {"thumbs": thumbs, "comment": comment.strip(), "user_name": user_name}
         )
     except ValidationError:
         logger.warning("Invalid feedback submission", exc_info=True)
         return translations["error.feedback_invalid"]
+
+    if not submission.comment:
+        raise gr.Error(translations["error.feedback_comment_required"])
 
     # Load IO to compute expected token
     try:
