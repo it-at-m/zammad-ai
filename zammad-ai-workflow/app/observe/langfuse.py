@@ -8,6 +8,7 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 from langfuse.model import PromptClient, TextPromptClient
 
+from app.models.answer import AnswerCandidate, DocumentDict
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger(name="zammad-ai.observe.observer")
@@ -229,12 +230,15 @@ class LangfuseClient:
             inp_str = _nested_get(input_data, "kwargs", "user_text") if input_data is not None else ""
 
             output_data = trace_dict.get("output") if isinstance(trace_dict, dict) else None
-            subject = _nested_get(output_data, "subject") if output_data is not None else ""
-            response = _nested_get(output_data, "response") if output_data is not None else ""
-            documents_data = _nested_get(output_data, "documents") if output_data is not None else {}
+            output_data: AnswerCandidate | None = (
+                AnswerCandidate.model_validate(output_data) if output_data is not None else None
+            )
+            subject: str | None = output_data.subject if output_data is not None else ""
+            response: str = output_data.response if output_data is not None else ""
+            documents_data: list[DocumentDict] = output_data.documents if output_data is not None else []
             used_documents = ""
             for doc in documents_data:
-                used_documents += "- [" + doc.get("title", "") + "](" + doc.get("url", "") + ")\n"
+                used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
             out_str = (subject + "\n\n" + response) if subject and response else (subject or response or "")
             out_str = out_str.replace("<br>", "\n").strip()
 
