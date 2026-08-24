@@ -307,33 +307,6 @@ class QdrantKBClient:
             search_filter=law_filter,
         )
 
-    def search_documents(
-        self,
-        query: str,
-        k: int | None = None,
-        offset: int = 0,
-        search_filter: Filter | None = None,
-    ) -> list[tuple[Document, float]]:
-        """Search for relevant documents in the Qdrant collection based on a query string.
-
-        Args:
-            query (str): The query string to search for relevant documents.
-            k (int, optional): The number of top relevant documents to return.
-            offset (int, optional): The number of top relevant documents to skip for pagination. Defaults to 0.
-            search_filter (Filter, optional): Optional Qdrant metadata filter to scope retrieval.
-
-        Returns:
-            list[tuple[Document, float]]: A list of tuples containing relevant documents and their corresponding relevance scores between 0 and 1.
-        """
-        if k is None:
-            k = self.qdrant_settings.retrieval_num_documents
-        return self.vectorstore.similarity_search_with_relevance_scores(
-            query=query,
-            k=k,
-            offset=offset,
-            filter=search_filter,
-        )
-
     async def close(self) -> None:
         """Close the Qdrant client connections."""
         await self.aclient.close()
