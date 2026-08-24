@@ -195,9 +195,6 @@ class QdrantKBClient:
                     continue
             else:
                 timestamp = datetime.fromisoformat(snapshot.creation_time.replace("Z", "+00:00"))
-            self.logger.info(
-                f"Checking snapshot '{snapshot.name}' created at {timestamp} for collection '{self.collection_name}' against cutoff date {cutoff_date}, boolean: {timestamp < cutoff_date}"
-            )
             if timestamp < cutoff_date:
                 self.logger.debug(
                     f"Deleting old snapshot '{snapshot.name}' created at {snapshot.creation_time} for collection '{self.collection_name}'"
