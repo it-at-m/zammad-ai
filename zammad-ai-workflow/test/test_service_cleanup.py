@@ -40,7 +40,7 @@ async def test_action_service_cleanup_closes_zammad_and_resets_guardrail_singlet
     guardrail_module._service = failing_guardrail  # ty: ignore
     monkeypatch.setattr("app.action.service.ZammadAPIClient", _DummyClient)
 
-    service = ActionService(settings=settings, answer_service=answer_service)
+    service = ActionService(settings=settings, answer_service=answer_service, guardrail_service=failing_guardrail)  # ty: ignore
 
     with pytest.raises(RuntimeError, match="guardrail close failed"):
         await service.cleanup()
