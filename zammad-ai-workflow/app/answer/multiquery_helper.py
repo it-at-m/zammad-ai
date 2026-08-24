@@ -60,7 +60,7 @@ async def _build_queries(
         queries: list[str] = await multi_query_retriever.agenerate_queries(query, run_manager)
         if multi_query_settings.include_original:
             queries.append(query)
-        return _deduplicate_queries(queries)
+        return _deduplicate_queries(queries) or [query]
     except Exception:
         logger.warning("Falling back to single-query retrieval after multi-query generation failed.", exc_info=True)
         return [query]
