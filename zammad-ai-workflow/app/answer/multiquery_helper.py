@@ -76,7 +76,6 @@ async def _search_documents_across_queries(
 ) -> list[tuple[Document, float]]:
     best_matches: dict[str, tuple[Document, float, int]] = {}
     per_query_k = max(k + offset, retrieval_num_documents)
-    logger.info(queries)
     for query_index, current_query in enumerate(queries):
         documents_with_scores = await vectorstore.asimilarity_search_with_relevance_scores(
             query=current_query,
