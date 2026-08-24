@@ -52,7 +52,11 @@ class SearchDLFInput(BaseModel):
     """Validated input for DLF search queries."""
 
     query: str = Field(
-        description=f"The search query string; maximum length is {QUERY_MAX_LENGTH} characters (~ {QUERY_MAX_LENGTH // 10} words). Do not include personal information in the query.",
+        description="The search query string; maximum length is"
+        + str(QUERY_MAX_LENGTH)
+        + " characters (~ "
+        + str(QUERY_MAX_LENGTH // 10)
+        + " words). Do not include personal information in the query.",
         max_length=QUERY_MAX_LENGTH,
     )
 

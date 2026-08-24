@@ -4,7 +4,7 @@ from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
-from app.guardrails import GuardrailService, get_guardrail_service, reset_guardrail_service
+from app.guardrails import GuardrailService, reset_guardrail_service
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
@@ -23,11 +23,13 @@ class ActionService:
 
     logger: Logger = getLogger("zammad-ai.action.service")
 
-    def __init__(self, settings: ZammadAISettings, answer_service: AnswerService):
+    def __init__(
+        self, settings: ZammadAISettings, answer_service: AnswerService, guardrail_service: GuardrailService
+    ) -> None:
         """Initialize action execution with settings, answer service, guardrail service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
-        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        self.guardrail_service: GuardrailService = guardrail_service
         self.max_user_text_length: int = settings.max_user_text_length
         # Zammad client setup
         if isinstance(self.settings.zammad, ZammadAPISettings):
@@ -321,5 +323,5 @@ def get_action_service(
             settings = get_settings()
         if answer_service is None:
             answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
-        _service = ActionService(settings=settings, answer_service=answer_service)
+        _service = ActionService(settings=settings, answer_service=answer_service, guardrail_service=guardrail_service)
     return _service

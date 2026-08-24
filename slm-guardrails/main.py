@@ -99,6 +99,7 @@ async def evaluate_prompt(
         model_id=model_id,
         toxicity_labels=payload.toxicity_labels,
         jailbreak_labels=payload.jailbreak_labels,
+        safety_labels=payload.safety_labels,
     )
 
 
@@ -136,6 +137,8 @@ async def evaluate_response(
         threshold=thr,
         model_id=model_id,
         toxicity_labels=payload.toxicity_labels,
+        safety_labels=payload.safety_labels,
+        refusal_labels=payload.refusal_labels,
     )
 
 

@@ -232,6 +232,7 @@ class GuardrailService:
         text: str,
         threshold: float | None,
         model_id: str | None = None,
+        safety_labels: list[str] | None = None,
         toxicity_labels: list[str] | None = None,
         jailbreak_labels: list[str] | None = None,
     ) -> GuardrailResult:
@@ -256,7 +257,7 @@ class GuardrailService:
                     model.classify_text,
                     text,
                     {
-                        "prompt_safety": SAFETY_LABELS,
+                        "prompt_safety": safety_labels if safety_labels is not None else SAFETY_LABELS,
                         "prompt_toxicity": get_toxicity_task(toxicity_labels),
                         "jailbreak_detection": get_jailbreak_task(jailbreak_labels),
                     },
@@ -286,6 +287,8 @@ class GuardrailService:
         threshold: float | None,
         model_id: str | None = None,
         toxicity_labels: list[str] | None = None,
+        safety_labels: list[str] | None = None,
+        refusal_labels: list[str] | None = None,
     ) -> GuardrailResponseResult:
         """Classify a generated response (with prompt context) for safety and refusal."""
         model_key = model_id or self.settings.default_model
@@ -309,9 +312,9 @@ class GuardrailService:
                     model.classify_text,
                     combined_text,
                     {
-                        "response_safety": SAFETY_LABELS,
+                        "response_safety": safety_labels if safety_labels is not None else SAFETY_LABELS,
                         "response_toxicity": get_toxicity_task(toxicity_labels),
-                        "response_refusal": REFUSAL_LABELS,
+                        "response_refusal": refusal_labels if refusal_labels is not None else REFUSAL_LABELS,
                     },
                     threshold if threshold is not None else self.settings.confidence_threshold,
                 )

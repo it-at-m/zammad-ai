@@ -64,7 +64,6 @@ class PromptRequest(BaseModel):
     model: str | None = None
     threshold: float | None = None
     safety_labels: list[str] | None = Field(default=SAFETY_LABELS, description="List of safety labels to evaluate")
-    refusal_labels: list[str] | None = Field(default=REFUSAL_LABELS, description="List of refusal labels to evaluate")
     toxicity_labels: list[str] | None = Field(
         default=TOXICITY_LABELS,
         description="List of toxicity labels to evaluate",
@@ -73,6 +72,27 @@ class PromptRequest(BaseModel):
         default=JAILBREAK_LABELS,
         description="List of jailbreak labels to evaluate",
     )
+
+    @field_validator("safety_labels", mode="before", check_fields=False)
+    @classmethod
+    def _validate_safety_labels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return SAFETY_LABELS
+        return value
+
+    @field_validator("toxicity_labels", mode="before", check_fields=False)
+    @classmethod
+    def _validate_toxicity_labels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return TOXICITY_LABELS
+        return value
+
+    @field_validator("jailbreak_labels", mode="before", check_fields=False)
+    @classmethod
+    def _validate_jailbreak_labels(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return JAILBREAK_LABELS
+        return value
 
     @field_validator("threshold", mode="before", check_fields=False)
     @classmethod
@@ -97,34 +117,27 @@ class ResponseRequest(BaseModel):
         default=TOXICITY_LABELS,
         description="List of toxicity labels to evaluate",
     )
-    jailbreak_labels: list[str] | None = Field(
-        default=JAILBREAK_LABELS,
-        description="List of jailbreak labels to evaluate",
-    )
 
     @field_validator("safety_labels", mode="before", check_fields=False)
     @classmethod
     def _validate_safety_labels(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return SAFETY_LABELS
+        return value
 
     @field_validator("refusal_labels", mode="before", check_fields=False)
     @classmethod
     def _validate_refusal_labels(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return REFUSAL_LABELS
+        return value
 
     @field_validator("toxicity_labels", mode="before", check_fields=False)
     @classmethod
     def _validate_toxicity_labels(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
             return TOXICITY_LABELS
-
-    @field_validator("jailbreak_labels", mode="before", check_fields=False)
-    @classmethod
-    def _validate_jailbreak_labels(cls, value: list[str] | None) -> list[str] | None:
-        if value is None:
-            return JAILBREAK_LABELS
+        return value
 
     @field_validator("threshold", mode="before", check_fields=False)
     @classmethod
