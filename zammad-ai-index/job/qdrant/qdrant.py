@@ -1,6 +1,6 @@
 """Qdrant access helpers used by the index job."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from logging import Logger
 from re import search
 from typing import Any
@@ -177,24 +177,23 @@ class QdrantKBClient:
             self.logger.error(f"Failed to create snapshot for collection '{self.collection_name}'")
             return False
 
-        cutoff_date: datetime = datetime.now() - timedelta(days=self.qdrant_settings.snapshot_delete_days)
+        cutoff_date: datetime = datetime.now(UTC) - timedelta(days=self.qdrant_settings.snapshot_delete_days)
         snapshots_list: list[SnapshotDescription] = self.client.list_snapshots(collection_name=self.collection_name)
         deleted_count = 0
         pattern = r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.snapshot)"
 
         for snapshot in snapshots_list:
-            timestamp: datetime | None = None
             if not snapshot.creation_time:
                 match = search(pattern, snapshot.name)
                 if match:
-                    timestamp = datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S")
+                    timestamp: datetime = datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S")
                 else:
                     self.logger.warning(
                         f"Could not extract timestamp from snapshot name '{snapshot.name}' for collection '{self.collection_name}'"
                     )
                     continue
             else:
-                timestamp = datetime.fromisoformat(snapshot.creation_time.replace("Z", "+00:00"))
+                timestamp: datetime = datetime.fromisoformat(snapshot.creation_time.replace("Z", "+00:00"))
             if timestamp < cutoff_date:
                 self.logger.debug(
                     f"Deleting old snapshot '{snapshot.name}' created at {snapshot.creation_time} for collection '{self.collection_name}'"
