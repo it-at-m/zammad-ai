@@ -134,4 +134,4 @@ class ZammadEAISharedDraft(BaseModel):
     """Shared draft payload for the Zammad EAI transport."""
 
     body: str = Field(description="The body of the shared draft")
-    type: str = Field(default="email", description="The type of the shared draft")
+    type: str = Field(default="note", description="The type of the shared draft")

@@ -57,7 +57,10 @@ Event streaming configuration.
 
 - `broker_url`: Kafka bootstrap server.
 - `topic`: Topic to listen for new ticket events.
+- `retry_topic`: Topic used for delayed retry processing.
 - `group_id`: Consumer group identifier.
+- `retry_delay_seconds`: Base delay in seconds used for exponential backoff.
+- `max_retry_attempts`: Maximum number of retry attempts after the initial processing attempt.
 - `security`: mTLS security settings (optional).
 
 ### Limits
