@@ -29,10 +29,12 @@ class FakeMultiQueryRetriever:
     """Minimal multi-query retriever fake returning a fixed query set."""
 
     def __init__(self, queries: list[str]) -> None:
+        """Store generated queries and recorded calls."""
         self.queries = queries
         self.calls: list[tuple[str, Any]] = []
 
     async def agenerate_queries(self, question: str, run_manager: Any) -> list[str]:
+        """Record the generation request and return configured queries."""
         self.calls.append((question, run_manager))
         return self.queries
 
