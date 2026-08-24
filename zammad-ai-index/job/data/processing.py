@@ -12,6 +12,7 @@ from job.models.zammad import KnowledgeBaseAnswer
 from job.qdrant.qdrant import ZAMMAD_AI_NAMESPACE
 from job.settings.settings import ZammadAIIndexSettings, get_settings
 from job.utils.hash import hash_content, normalize_content
+from job.utils.keywords import format_keywords_content, generate_keywords
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
@@ -38,11 +39,13 @@ def prepare_qdrant_data(
     for answer_id, answer in answers.items():
         try:
             # Build the main page content
-            page_content = _build_page_content(answer)
+            page_content = _build_page_content(answer).rstrip()
 
             # Fetch and append attachment content
             attachment_data: dict[int, tuple[str, str | None]] = fetch_attachments_for_answer(answer, client)
-            page_content += _format_attachments_content(attachment_data)
+            attachments_content = _format_attachments_content(attachment_data).rstrip()
+            if attachments_content:
+                page_content += f"\n\n{attachments_content}"
 
             # Create metadata
             metadata: QdrantVectorMetadata = _create_vector_metadata(answer, page_content)
@@ -59,6 +62,14 @@ def prepare_qdrant_data(
 
     logger.info("Successfully prepared %d items for Qdrant indexing.", len(qdrant_data))
     return qdrant_data
+
+
+def add_keywords_to_changed_data(qdrant_data: list[QdrantDocumentItem]) -> None:
+    """Generate and append keywords only for items that will be indexed."""
+    for item in qdrant_data:
+        keywords_content = format_keywords_content(generate_keywords(item.metadata.answer_body))
+        if keywords_content:
+            item.page_content = f"{item.page_content.rstrip()}\n\n{keywords_content}"
 
 
 def _build_page_content(answer: KnowledgeBaseAnswer) -> str:
