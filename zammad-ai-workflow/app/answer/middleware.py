@@ -41,19 +41,6 @@ def _latest_user_message(messages: Sequence[Any]) -> str:
     return content.strip() if isinstance(content, str) else str(content).strip()
 
 
-def _latest_agent_message(messages: Sequence[Any]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, SystemMessage):
-            content = message.content
-            if isinstance(content, str) and content.strip():
-                return content.strip()
-    if not messages:
-        return ""
-    message = messages[-1]
-    content = getattr(message, "content", "")
-    return content.strip() if isinstance(content, str) else str(content).strip()
-
-
 async def _generate_query(query_model: BaseChatModel, messages: Sequence[Any]) -> str:
     prompt = [
         SystemMessage(
@@ -167,8 +154,6 @@ async def _format_answer(
         SystemMessage(content=format_prompt),
         HumanMessage(content=str(structured_response.model_dump_json(indent=2))),
     ]
-    logger.info(f"Using format prompt: {format_langfuse_prompt is not None}")
-    logger.info(f"Langfuse client is not None: {langfuse_client is not None}")
     config: RunnableConfig = (
         langfuse_client.build_config(langfuse_prompt=format_langfuse_prompt, session_id=session_id)
         if langfuse_client is not None
