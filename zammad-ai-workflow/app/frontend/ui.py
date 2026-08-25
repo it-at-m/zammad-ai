@@ -262,7 +262,7 @@ def _render_config_md(
         return f"- {key}: {prompt_cfg}"
 
     triage_prompts_md = _prompt_links(settings.triage.prompts, "triage")
-    answer_prompt_md = _prompt_links(settings.answer.agent_prompt, "answer")
+    answer_prompt_md = _prompt_links(settings.answer.agent_prompt, "agent")
     judge_prompt_md = _prompt_links(settings.answer.judge.prompt, "judge")
     format_prompt_md = _prompt_links(settings.answer.format_prompt, "format")
 
