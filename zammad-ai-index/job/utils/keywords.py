@@ -33,6 +33,7 @@ def _get_keyword_chat_model() -> Any:
                 model=settings.genai.chat_model,
                 temperature=settings.genai.temperature,
                 max_retries=settings.genai.max_retries,
+                http_socket_options=[],
             )
         case _:
             logger.error(f"Unsupported GenAI SDK '{settings.genai.sdk}' for keyword generation")
