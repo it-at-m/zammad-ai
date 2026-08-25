@@ -22,6 +22,7 @@
   "ui.comment_label": "Comment",
   "ui.comment_placeholder": "Briefly explain why the response was helpful or not.",
   "ui.user_label": "Name/initials (optional)",
+  "ui.used_documents_label": "**Used documents**",
   "ui.user_placeholder": "e.g. AB",
   "ui.tags_label": "Tags (optional)",
   "ui.thumbs_up": "Good",

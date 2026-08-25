@@ -97,14 +97,14 @@ def _load_feedback_trace(
     expected_access_key: str | None,
     score_name: str,
     translations: Mapping[str, str],
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
         translations=translations,
     )
     if not authorized or query_params is None:
-        return "", "", status
+        return "", "", "", status
 
     trace_id = query_params.trace_id
     provided_key = query_params.access_key
@@ -113,28 +113,28 @@ def _load_feedback_trace(
 
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
-        inp, out = lf.get_trace_io(trace_id=trace_id)
+        inp, out, used_documents = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while loading feedback trace", exc_info=True)
-        return "", "", translations["error.trace_not_found"]
+        return "", "", "", translations["error.trace_not_found"]
     except Exception:
         logger.warning("Failed to load trace", exc_info=True)
-        return "", "", translations["error.trace_load_failed"]
+        return "", "", "", translations["error.trace_load_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
     expected_token = compute_feedback_token(inp or "", out or "", expected_access_key or "")
 
     if not compare_digest(provided_key, expected_token):
-        return "", "", translations["error.access_key_invalid"]
+        return "", "", "", translations["error.access_key_invalid"]
 
     try:
         if lf.has_score(trace_id=trace_id, score_name=score_name):
-            return "", "", translations["status.feedback_exists"]
+            return "", "", "", translations["status.feedback_exists"]
     except Exception:
         logger.warning("Failed to check existing score while loading feedback trace", exc_info=True)
-        return "", "", translations["error.trace_load_failed"]
+        return "", "", "", translations["error.trace_load_failed"]
 
-    return inp or "", out or "", translations["status.trace_loaded"]
+    return inp or "", out or "", used_documents or "", translations["status.trace_loaded"]
 
 
 def _submit_feedback(
@@ -175,7 +175,7 @@ def _submit_feedback(
 
     # Load IO to compute expected token
     try:
-        inp, out = lf.get_trace_io(trace_id=trace_id)
+        inp, out, _ = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
         return translations["error.trace_not_found"]
@@ -226,7 +226,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
     translations = _load_translations(settings.feedback.language)
 
     def load_feedback(request: gr.Request | None = None):
-        input_text, output_text, result = _load_feedback_trace(
+        input_text, output_text, used_documents, result = _load_feedback_trace(
             request=request,
             lf=lf,
             expected_access_key=expected_access_key,
@@ -234,8 +234,8 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
             translations=translations,
         )
         if result == translations["status.trace_loaded"]:
-            return input_text, output_text, gr.update(visible=True), gr.update(visible=False), ""
-        return "", "", gr.update(visible=False), gr.update(visible=True), result
+            return input_text, output_text, used_documents, gr.update(visible=True), gr.update(visible=False), ""
+        return "", "", "", gr.update(visible=False), gr.update(visible=True), result
 
     def submit_feedback(
         thumbs: str,
@@ -301,7 +301,10 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
                     output_box = gr.Textbox(
                         label="", interactive=False, lines=20, placeholder=translations["ui.output_placeholder"]
                     )
-
+                    gr.Markdown(translations["ui.used_documents_label"])
+                    used_documents = gr.Markdown(
+                        value="",
+                    )
             with gr.Row():
                 feedback_comment = gr.Textbox(
                     label=translations["ui.comment_label"],
@@ -329,7 +332,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
 
         feedback_app.load(
             fn=load_feedback,
-            outputs=[input_box, output_box, feedback_page, error_page, error_message],
+            outputs=[input_box, output_box, used_documents, feedback_page, error_page, error_message],
         )
         # Thumbs up submission
         (
