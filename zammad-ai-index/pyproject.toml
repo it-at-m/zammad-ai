@@ -19,6 +19,7 @@ dependencies = [
     "stamina==26.1.0",
     "structlog==26.1.0",
     "truststore==0.10.4",
+    "qdrant-client==1.19.0",
 ]
 
 [dependency-groups]
