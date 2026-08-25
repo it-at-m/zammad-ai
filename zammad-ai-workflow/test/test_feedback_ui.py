@@ -70,7 +70,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", "!!!"
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             assert trace_id == "trace-123"
@@ -81,7 +81,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
     expected = compute_feedback_token("hello", "world", salt)
     request = _make_request({"trace_id": "trace-123", "key": expected})
 
-    input_text, output_text, status = _load_feedback_trace(
+    input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf=DummyClient(),
         expected_access_key=salt,
@@ -91,6 +91,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
 
     assert input_text == "hello"
     assert output_text == "world"
+    assert used_documents == "!!!"
     assert status == "Trace geladen"
 
 
@@ -103,7 +104,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", "!!!"
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             assert trace_id == "trace-123"
@@ -118,7 +119,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
         }
     )
 
-    input_text, output_text, status = _load_feedback_trace(
+    input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf=DummyClient(),
         expected_access_key=salt,
@@ -128,6 +129,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
 
     assert input_text == ""
     assert output_text == ""
+    assert used_documents == ""
     assert status == "Bewertung bereits vorhanden"
 
 
@@ -143,7 +145,7 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
 
     request = _make_request({"trace_id": "bad", "key": "expected-key"})
 
-    input_text, output_text, status = _load_feedback_trace(
+    input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf=DummyClient(),
         expected_access_key="secret-salt",
@@ -153,6 +155,7 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
 
     assert input_text == ""
     assert output_text == ""
+    assert used_documents == ""
     assert status == "Ungültige Trace ID oder Trace nicht gefunden"
 
 
@@ -173,7 +176,7 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
             raise LangfuseError("lookup failed")
 
     salt = "secret-salt"
-    input_text, output_text, status = _load_feedback_trace(
+    input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=DummyClient(),
         expected_access_key=salt,
@@ -234,7 +237,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", "!!!"
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -383,7 +386,7 @@ def test_submit_feedback_accepts_current_helper_signature(german_translations: d
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", "!!!"
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -425,14 +428,14 @@ def test_load_feedback_trace_uses_english_translations() -> None:
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", "!!!"
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
 
     translations = _load_translations("en")
     salt = "secret-salt"
-    input_text, output_text, status = _load_feedback_trace(
+    input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf=DummyClient(),
         expected_access_key=salt,
@@ -442,4 +445,5 @@ def test_load_feedback_trace_uses_english_translations() -> None:
 
     assert input_text == "hello"
     assert output_text == "world"
+    assert used_documents == "!!!"
     assert status == "Trace loaded"

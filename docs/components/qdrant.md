@@ -15,6 +15,8 @@ The Qdrant integration is configured via `app.settings.answer.QdrantSettings` (n
 - `vector_name`: The name of the vector configuration in the Qdrant collection (defaults to `dense`)
 - `retrieval_mode`: One of `dense`, `sparse` or `hybrid`. When selecting `sparse` or `hybrid` the QdrantVectorStore requires a compatible sparse embedding implementation and a collection configured with sparse vectors, such as FastEmbedSparse.
 - `sparse_vector_name`: Name of the sparse vector configuration in the Qdrant collection (defaults to `sparse`).
+- `multi_query.enabled`: Enables `MultiQueryRetriever`-style query expansion before Qdrant retrieval.
+- `multi_query.include_original`: Keeps the original user query in the merged retrieval set.
 
 ## Data Models
 

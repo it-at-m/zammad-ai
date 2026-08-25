@@ -36,6 +36,7 @@ Kafka settings are nested under the `kafka` key in `config.yaml` and support env
 kafka:
   broker_url: "localhost:9092"
   topic: "ticket-events"
+  retry_topic: "ticket-events-retry"
   group_id: "zammad-ai"
   # event_processing holds filtering and processing-related options
   event_processing:
@@ -44,6 +45,9 @@ kafka:
     valid_action_types:
       - "created"
       - "updated"
+
+  retry_delay_seconds: 300
+  max_retry_attempts: 3
 
   # Security: choose one schema and set the discriminator `type` to `env` or `file`.
   security:
@@ -67,6 +71,9 @@ kafka:
 Use double underscores for nesting. Important keys include:
 
 - `ZAMMAD_AI_KAFKA__BROKER_URL`
+- `ZAMMAD_AI_KAFKA__RETRY_TOPIC`
+- `ZAMMAD_AI_KAFKA__RETRY_DELAY_SECONDS`
+- `ZAMMAD_AI_KAFKA__MAX_RETRY_ATTEMPTS`
 - `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_REQUEST_TYPES`
 - `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_ACTION_TYPES`
 - `ZAMMAD_AI_KAFKA__SECURITY__CA_FILE_BASE64`
@@ -90,3 +97,13 @@ Kafka connections can be secured either via classic PEM files or via PKCS#12 blo
 - `client_key_path`: Path to client private key file (PEM)
 
 When using PKCS#12, the broker security layer decodes the secret in-memory, converts it to PEM, and feeds it into aiokafka's SSL context. The CA material is taken from the configured file or environment variable.
+
+## Retry Flow
+
+- Retryable failures are republished to `kafka.retry_topic`.
+- Retry messages carry `retry_after` and `retry_count` headers.
+- `retry_after` uses exponential backoff based on `retry_delay_seconds`:
+  - first retry: base delay
+  - second retry: base delay times 2
+  - third retry: base delay times 4
+- Retrying stops after `kafka.max_retry_attempts` completed retries, at which point the event is acknowledged and dropped.

@@ -50,6 +50,8 @@ Vector database settings for knowledge retrieval used by the answer generation p
 - `vector_dimension`: Must match the embedding model output (e.g., 1024 or 1536).
 - `timeout`: Timeout in seconds for Qdrant client operations.
 - `retrieval_num_documents`: Number of documents to retrieve for context.
+- `multi_query.enabled`: Expand each search into multiple generated queries.
+- `multi_query.include_original`: Also search with the original query.
 
 ### Kafka
 
@@ -57,7 +59,10 @@ Event streaming configuration.
 
 - `broker_url`: Kafka bootstrap server.
 - `topic`: Topic to listen for new ticket events.
+- `retry_topic`: Topic used for delayed retry processing.
 - `group_id`: Consumer group identifier.
+- `retry_delay_seconds`: Base delay in seconds used for exponential backoff.
+- `max_retry_attempts`: Maximum number of retry attempts after the initial processing attempt.
 - `security`: mTLS security settings (optional).
 
 ### Limits

@@ -6,9 +6,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from faststream.exceptions import AckMessage, NackMessage
 from faststream.kafka import TestKafkaBroker
+from pydantic import HttpUrl, SecretStr
 
 from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import build_router
+from app.kafka.helper import (
+    _handle_processing_exception,
+    _republish_retry_event,
+    _reschedule_retry_event,
+    _sleep_until_retry_after,
+)
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
@@ -42,13 +49,13 @@ def create_mock_settings() -> ZammadAISettings:
         return ZammadAISettings(
             mode="unittest",
             zammad=ZammadAPISettings(
-                base_url="https://example.com",  # type: ignore
-                auth_token="test-token",  # type: ignore
+                base_url=HttpUrl("https://example.com"),
+                auth_token=SecretStr("test-token"),
             ),
             answer=AnswerSettings(
                 qdrant=QdrantSettings(
-                    host="https://qdrant.example.com",  # type: ignore
-                    api_key="test-key",  # type: ignore
+                    url=HttpUrl("https://qdrant.example.com"),
+                    api_key=SecretStr("test-key"),
                     collection_name="test_collection",
                 ),
             ),
@@ -281,20 +288,251 @@ async def test_event_handler_case_sensitive_request_type(
 
 
 @pytest.mark.asyncio
-async def test_event_handler_nack_on_retryable_typed_error(
+async def test_event_handler_ack_on_retryable_typed_error_after_republish(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
     mock_get_triage: None,
     settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Retryable typed triage errors must produce NACK to trigger broker retry."""
+    """Retryable typed triage errors must be republished and then acknowledged."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
     router, event_handler = build_router(settings=settings)
     mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
+    publish_mock = AsyncMock()
+    fixed_now = 1_000.0
+    expected_retry_after = str(int((fixed_now + settings.kafka.retry_delay_seconds) * 1000))
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
 
     event = Event.model_validate(kafka_message_factory())
-    with pytest.raises(NackMessage):
+    with pytest.raises(AckMessage):
         await event_handler(event=event)
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args is not None
+    assert publish_mock.await_args.kwargs["topic"] == settings.kafka.retry_topic
+    assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
+    assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
+    assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_event_handler_republishes_retryable_error_to_configured_retry_topic(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retryable failures from the main topic must be republished to the configured retry topic."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.retry_topic = "custom-retry-topic"
+    settings.kafka.retry_delay_seconds = 30
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
+    publish_mock = AsyncMock()
+    fixed_now = 1_000.0
+    expected_retry_after = str(int((fixed_now + settings.kafka.retry_delay_seconds) * 1000))
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args is not None
+    assert publish_mock.await_args.kwargs["topic"] == "custom-retry-topic"
+    assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
+    assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
+    assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_event_handler_stops_retrying_after_max_attempts(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retryable failures must be dropped once the retry limit is reached."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.max_retry_attempts = 0
+    router, event_handler = build_router(settings=settings)
+    mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
+
+    publish_mock = AsyncMock()
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    publish_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_sleep_chunks_delays_above_poll_interval(
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry sleeps should be bounded to half the configured retry delay."""
+    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    fixed_now = 1_000.0
+    retry_after_ms = int((fixed_now + 600.0) * 1000)
+    sleep_mock = AsyncMock()
+    time_mock = MagicMock(side_effect=[fixed_now, fixed_now + 150.0])
+    monkeypatch.setattr("app.kafka.helper.time.time", time_mock)
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+
+    remaining_delay_seconds = await _sleep_until_retry_after(
+        str(retry_after_ms),
+        retry_delay_seconds=settings.kafka.retry_delay_seconds,
+    )
+
+    sleep_mock.assert_awaited_once()
+    assert sleep_mock.await_args is not None
+    assert sleep_mock.await_args.args[0] == pytest.approx(150.0)
+    assert remaining_delay_seconds == pytest.approx(450.0)
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_reschedules_long_waits_after_half_retry_window(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry consumer should bound long waits and requeue the remainder."""
+    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    settings.kafka.retry_delay_seconds = 60
+    router, _ = build_router(settings=settings)
+    retry_handler = next(
+        call.handler._original_call
+        for subscriber in router.broker.subscribers
+        for call in subscriber.calls
+        if getattr(call.handler._original_call, "__name__", "") == "retry_event_handler"
+    )
+
+    fixed_now = 1_000.0
+    retry_after_ms = int((fixed_now + 120.0) * 1000)
+    sleep_mock = AsyncMock()
+    reschedule_mock = AsyncMock()
+    time_mock = MagicMock(side_effect=[fixed_now, fixed_now + 30.0])
+    monkeypatch.setattr("app.kafka.helper.time.time", time_mock)
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+    monkeypatch.setattr("app.kafka.broker._reschedule_retry_event", reschedule_mock)
+
+    with pytest.raises(AckMessage):
+        await retry_handler(
+            event=Event.model_validate(kafka_message_factory()),
+            retry_after=str(retry_after_ms),
+            original_group_id=None,
+            retry_count="1",
+        )
+
+    sleep_mock.assert_awaited_once()
+    assert sleep_mock.await_args is not None
+    assert sleep_mock.await_args.args[0] == pytest.approx(30.0)
+    reschedule_mock.assert_awaited_once()
+    assert reschedule_mock.await_args is not None
+    assert reschedule_mock.await_args.kwargs["broker"] is router.broker
+    assert reschedule_mock.await_args.kwargs["settings"] is settings
+    assert reschedule_mock.await_args.kwargs["retry_count"] == 1
+    assert reschedule_mock.await_args.kwargs["remaining_delay_seconds"] == pytest.approx(90.0)
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reschedule_retry_event_keeps_retry_count(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rescheduling a retry event should preserve the retry count and target the retry topic."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    broker = AsyncMock()
+    fixed_now = 1_000.0
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    event = Event.model_validate(kafka_message_factory())
+
+    await _reschedule_retry_event(
+        broker=broker,
+        settings=settings,
+        event=event,
+        original_group_id=17,
+        retry_count=2,
+        remaining_delay_seconds=301.0,
+    )
+
+    broker.publish.assert_awaited_once()
+    assert broker.publish.await_args is not None
+    assert broker.publish.await_args.kwargs["topic"] == settings.kafka.retry_topic
+    assert broker.publish.await_args.kwargs["headers"]["retry_after"] == str(int((fixed_now + 301.0) * 1000))
+    assert broker.publish.await_args.kwargs["headers"]["retry_count"] == "2"
+    assert broker.publish.await_args.kwargs["headers"]["original_group_id"] == "17"
+
+
+@pytest.mark.asyncio
+async def test_retry_limit_restores_original_group(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """When the retry limit is reached, the ticket should be moved back to its original group."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.max_retry_attempts = 1
+    broker = AsyncMock()
+    zammad_client = AsyncMock()
+    event = Event.model_validate(kafka_message_factory())
+
+    with pytest.raises(AckMessage):
+        await _handle_processing_exception(
+            TriageError("retryable triage", retryable=True),
+            ticket_id=3720,
+            category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+            broker=broker,
+            settings=settings,
+            zammad_client=zammad_client,
+            event=event,
+            original_group_id=17,
+            retry_count=1,
+        )
+
+    zammad_client.update_ticket_group.assert_awaited_once_with(ticket_id=3720, group_id=17)
+    broker.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_uses_exponential_backoff(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry republishing should increase the delay for each completed retry."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.retry_delay_seconds = 30
+    settings.kafka.max_retry_attempts = 5
+    fixed_now = 1_000.0
+    expected_retry_after = str(int((fixed_now + settings.kafka.retry_delay_seconds * 4) * 1000))
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    broker = AsyncMock()
+    event = Event.model_validate(kafka_message_factory())
+
+    await _republish_retry_event(
+        broker=broker,
+        settings=settings,
+        event=event,
+        original_group_id=None,
+        retry_count=2,
+    )
+
+    broker.publish.assert_awaited_once()
+    assert broker.publish.await_args is not None
+    assert broker.publish.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
+    assert broker.publish.await_args.kwargs["headers"]["retry_count"] == "3"
 
 
 @pytest.mark.asyncio
@@ -392,6 +630,39 @@ async def test_event_handler_category_wrong_drops_above_threshold(
     event = Event.model_validate(kafka_message_factory())
     with pytest.raises(AckMessage):
         await event_handler(event=event)
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_waits_for_retry_after_before_processing(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retry consumer should delay processing until the retry_after timestamp expires."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.retry_delay_seconds = 30
+    router, _ = build_router(settings=settings)
+
+    fixed_now = 1_000.0
+    retry_after_ms = int((fixed_now + 5.0) * 1000)
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        message = kafka_message_factory()
+        await test_broker.publish(
+            topic=settings.kafka.retry_topic,
+            message=message,
+            headers={"retry_after": str(retry_after_ms), "retry_count": "1"},
+        )
+
+    sleep_mock.assert_awaited_once()
+    assert sleep_mock.await_args is not None
+    assert sleep_mock.await_args.args[0] == pytest.approx(5.0)
+    assert mock_triage.perform_triage.call_count == 1
 
 
 @pytest.mark.asyncio

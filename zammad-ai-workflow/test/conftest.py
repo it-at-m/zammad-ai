@@ -118,6 +118,9 @@ def base_settings() -> ZammadAISettings:
             broker_url="localhost:9092",
             group_id="test-group",
             topic="test-topic",
+            retry_topic="test-retry-topic",
+            retry_delay_seconds=300,
+            max_retry_attempts=3,
             event_processing=EventProcessingSettings.model_construct(
                 valid_request_types=["support", "technischer Bürgersupport"],
                 valid_action_types=["created", "updated"],
