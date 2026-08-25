@@ -40,9 +40,6 @@ def prepare_qdrant_data(
         try:
             # Build the main page content
             page_content = _build_page_content(answer).rstrip()
-            keywords_content = format_keywords_content(generate_keywords(answer.answerBody))
-            if keywords_content:
-                page_content += f"\n\n{keywords_content}"
 
             # Fetch and append attachment content
             attachment_data: dict[int, tuple[str, str | None]] = fetch_attachments_for_answer(answer, client)
@@ -65,6 +62,14 @@ def prepare_qdrant_data(
 
     logger.info("Successfully prepared %d items for Qdrant indexing.", len(qdrant_data))
     return qdrant_data
+
+
+def add_keywords_to_changed_data(qdrant_data: list[QdrantDocumentItem]) -> None:
+    """Generate and append keywords only for items that will be indexed."""
+    for item in qdrant_data:
+        keywords_content = format_keywords_content(generate_keywords(item.metadata.answer_body))
+        if keywords_content:
+            item.page_content = f"{item.page_content.rstrip()}\n\n{keywords_content}"
 
 
 def _build_page_content(answer: KnowledgeBaseAnswer) -> str:

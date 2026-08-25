@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, FilePath
+from pydantic import BaseModel, Field, FilePath, NonNegativeInt
 
 
 class KafkaSettings(BaseModel):
@@ -21,6 +21,21 @@ class KafkaSettings(BaseModel):
     topic: str = Field(
         description="Kafka topic for ticket events",
         default="ticket-events",
+    )
+
+    retry_topic: str = Field(
+        description="Kafka topic for retryable ticket events",
+        default="ticket-events-retry",
+    )
+
+    retry_delay_seconds: NonNegativeInt = Field(
+        description="Base delay before retrying a failed event.",
+        default=300,
+    )
+
+    max_retry_attempts: NonNegativeInt = Field(
+        description="Maximum number of retry attempts after the initial processing attempt.",
+        default=3,
     )
 
     client_id: str = Field(

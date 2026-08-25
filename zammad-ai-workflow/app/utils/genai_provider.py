@@ -65,6 +65,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: Literal["triage"
                     temperature=temperature,
                     max_retries=max_retries,
                     reasoning=reasoning,
+                    http_socket_options=[],
                 )
                 return chat
             except ImportError:

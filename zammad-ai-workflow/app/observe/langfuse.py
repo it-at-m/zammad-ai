@@ -8,6 +8,7 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 from langfuse.model import PromptClient, TextPromptClient
 
+from app.models.answer import AnswerCandidate, DocumentDict
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger(name="zammad-ai.observe.observer")
@@ -204,10 +205,10 @@ class LangfuseClient:
             logger.warning("Failed to check existing scores on trace.", exc_info=True)
             raise LangfuseError("Failed to check existing scores on trace.") from e
 
-    def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None]:
+    def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None, str | None]:
         """Fetch a trace and try to extract a representative input/output pair.
 
-        Returns a tuple (input, output) where values may be None if not found.
+        Returns a tuple (input, output, used_documents) where values may be None if not found.
         """
         try:
             trace = self.langfuse.api.trace.get(trace_id=trace_id, fields="core,io")
@@ -216,7 +217,7 @@ class LangfuseClient:
             except Exception:
                 trace_dict = {}
 
-            def _nested_get(d, *keys, default="") -> str:
+            def _nested_get(d, *keys, default=""):
                 if not isinstance(d, dict):
                     return default
                 for k in keys:
@@ -229,8 +230,15 @@ class LangfuseClient:
             inp_str = _nested_get(input_data, "kwargs", "user_text") if input_data is not None else ""
 
             output_data = trace_dict.get("output") if isinstance(trace_dict, dict) else None
-            subject = _nested_get(output_data, "subject") if output_data is not None else ""
-            response = _nested_get(output_data, "response") if output_data is not None else ""
+            output_data: AnswerCandidate | None = (
+                AnswerCandidate.model_validate(output_data) if output_data is not None else None
+            )
+            subject: str | None = output_data.subject if output_data is not None else ""
+            response: str = output_data.response if output_data is not None else ""
+            documents_data: list[DocumentDict] = output_data.documents if output_data is not None else []
+            used_documents = ""
+            for doc in documents_data:
+                used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
             out_str = (subject + "\n\n" + response) if subject and response else (subject or response or "")
             out_str = out_str.replace("<br>", "\n").strip()
 
@@ -240,7 +248,7 @@ class LangfuseClient:
                 inp_str,
                 out_str,
             )
-            return inp_str, out_str
+            return inp_str, out_str, used_documents
         except Exception as e:
             logger.warning(f"Failed to fetch trace {trace_id}", exc_info=True)
             raise LangfuseError(f"Failed to fetch trace {trace_id}") from e

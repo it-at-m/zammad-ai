@@ -6,18 +6,15 @@ REFUSAL_LABELS = ["refusal", "compliance"]
 
 TOXICITY_LABELS = [
     "violence_and_weapons",
-    "non_violent_crime",
     "sexual_content",
     "hate_and_discrimination",
     "self_harm_and_suicide",
-    "pii_exposure",
     "misinformation",
     "copyright_violation",
     "child_safety",
     "political_manipulation",
     "unethical_conduct",
     "regulated_advice",
-    "privacy_violation",
     "other",
     "benign",
 ]

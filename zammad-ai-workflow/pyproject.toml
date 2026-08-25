@@ -2,7 +2,7 @@
 name = "zammad-ai-workflow"
 license = "MIT"
 
-version = "0.3.7"
+version = "0.3.8"
 
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
@@ -42,6 +42,7 @@ dependencies = [
     "uvicorn==0.49.0",
     "fastembed==0.8.0",
     "langchain-classic==1.0.8",
+    "qdrant-client==1.19.0",
 ]
 
 [dependency-groups]

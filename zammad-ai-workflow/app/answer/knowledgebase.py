@@ -3,6 +3,7 @@
 from logging import Logger
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
+from langchain_classic.retrievers.multi_query import MultiQueryRetriever
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -14,9 +15,12 @@ from qdrant_client.http.models import CollectionInfo
 from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
 from app.errors import QdrantPermanentError, QdrantRetryableError
-from app.settings import QdrantSettings
+from app.settings import MultiQuerySettings, QdrantSettings
 from app.settings.genai import GenAIProviderSettings
+from app.utils.genai_provider import get_chat_model
 from app.utils.logging import getLogger
+
+from .multiquery_helper import MULTI_QUERY_PROMPT, _build_queries, _search_documents_across_queries
 
 logger: Logger = getLogger("zammad-ai.answer.knowledgebase")
 
@@ -94,6 +98,7 @@ class QdrantKBClient:
         self.collection_name: str = qdrant_settings.collection_name
 
         self.qdrant_settings: QdrantSettings = qdrant_settings
+        self.multi_query_settings: MultiQuerySettings = qdrant_settings.multi_query
         # Create sync + async Qdrant client with appropriate configuration
         self.client = QdrantClient(
             url=qdrant_settings.url.encoded_string(),
@@ -214,6 +219,18 @@ class QdrantKBClient:
             search_kwargs={"k": qdrant_settings.retrieval_num_documents},
         )
 
+        self.multi_query_retriever: MultiQueryRetriever | None = None
+        if self.multi_query_settings.enabled:
+            query_llm = get_chat_model(genai_settings, "answer")
+            generated_multi_query_retriever: MultiQueryRetriever = MultiQueryRetriever.from_llm(
+                retriever=self.retriever,
+                llm=query_llm,
+                prompt=MULTI_QUERY_PROMPT,
+                include_original=self.multi_query_settings.include_original,
+            )
+            setattr(generated_multi_query_retriever, "verbose", False)
+            self.multi_query_retriever: MultiQueryRetriever = generated_multi_query_retriever
+
     async def asearch_documents(
         self,
         query: str,
@@ -234,6 +251,7 @@ class QdrantKBClient:
         """
         if k is None:
             k = self.qdrant_settings.retrieval_num_documents
+        search_k = k
 
         # By default, restrict general knowledge-base searches to points that
         # are NOT law-indexed. Laws are stored in the same collection and are
@@ -245,11 +263,27 @@ class QdrantKBClient:
         if search_filter is None:
             search_filter = Filter(must=[IsEmptyCondition(is_empty=PayloadField(key="metadata.law_id"))])
 
-        return await self.vectorstore.asimilarity_search_with_relevance_scores(
-            query=query,
-            k=k,
+        multi_query_retriever = getattr(self, "multi_query_retriever", None)
+        multi_query_settings = getattr(self, "multi_query_settings", None)
+        if not isinstance(multi_query_settings, MultiQuerySettings):
+            multi_query_settings = MultiQuerySettings()
+
+        queries: list[str] = await _build_queries(query, multi_query_retriever, multi_query_settings)
+        if len(queries) == 1:
+            return await self.vectorstore.asimilarity_search_with_relevance_scores(
+                query=query,
+                k=search_k,
+                offset=offset,
+                filter=search_filter,
+            )
+
+        return await _search_documents_across_queries(
+            vectorstore=self.vectorstore,
+            retrieval_num_documents=self.qdrant_settings.retrieval_num_documents,
+            queries=queries,
+            k=search_k,
             offset=offset,
-            filter=search_filter,
+            search_filter=search_filter,
         )
 
     async def asearch_law_documents(
@@ -271,33 +305,6 @@ class QdrantKBClient:
             k=k,
             offset=offset,
             search_filter=law_filter,
-        )
-
-    def search_documents(
-        self,
-        query: str,
-        k: int | None = None,
-        offset: int = 0,
-        search_filter: Filter | None = None,
-    ) -> list[tuple[Document, float]]:
-        """Search for relevant documents in the Qdrant collection based on a query string.
-
-        Args:
-            query (str): The query string to search for relevant documents.
-            k (int, optional): The number of top relevant documents to return.
-            offset (int, optional): The number of top relevant documents to skip for pagination. Defaults to 0.
-            search_filter (Filter, optional): Optional Qdrant metadata filter to scope retrieval.
-
-        Returns:
-            list[tuple[Document, float]]: A list of tuples containing relevant documents and their corresponding relevance scores between 0 and 1.
-        """
-        if k is None:
-            k = self.qdrant_settings.retrieval_num_documents
-        return self.vectorstore.similarity_search_with_relevance_scores(
-            query=query,
-            k=k,
-            offset=offset,
-            filter=search_filter,
         )
 
     async def close(self) -> None:

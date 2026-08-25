@@ -106,6 +106,19 @@ class JudgeSettings(BaseModel):
     )
 
 
+class MultiQuerySettings(BaseModel):
+    """Settings for optional multi-query retrieval expansion."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether to expand each retrieval query into multiple semantically similar queries.",
+    )
+    include_original: bool = Field(
+        default=True,
+        description="Whether to include the original query alongside generated variants.",
+    )
+
+
 class QdrantSettings(BaseModel):
     """Settings for Qdrant vector database integration, including host URL, API key, collection name, and vector configuration."""
 
@@ -147,6 +160,10 @@ class QdrantSettings(BaseModel):
     sparse_vector_name: str = Field(
         description="Optional: Name of the sparse vector",
         default="sparse",
+    )
+    multi_query: MultiQuerySettings = Field(
+        default_factory=MultiQuerySettings,
+        description="Optional multi-query expansion settings for Qdrant retrieval.",
     )
 
 
