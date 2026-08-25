@@ -44,10 +44,7 @@ def retrieve_answer_ids(
     # Filter answer IDs by category if category IDs are specified
     if answer_ids_in_category is not None and len(answer_ids_in_category) > 0:
         answer_ids = [aid for aid in answer_ids if aid in answer_ids_in_category]
-        logger.info(
-            "Filtered answer IDs by category. %d answers match the specified category IDs.",
-            len(answer_ids),
-        )
+        logger.debug("Filtered answer IDs by category", extra={"stage": "filter_by_category", "count": len(answer_ids)})
 
     return answer_ids
 
@@ -63,11 +60,14 @@ def _get_all_answer_ids(client: ZammadAPIClient | ZammadEAIClient) -> list[int]:
         the knowledge base information cannot be retrieved.
 
     """
-    logger.info("Performing full indexing.")
+    logger.info("Performing full indexing", extra={"stage": "full_indexing"})
 
     knowledgebase: ZammadKnowledgebase | None = client.kb_info()
     if knowledgebase:
-        logger.info("Found %d answers in the knowledge base.", len(knowledgebase.answerIds))
+        logger.debug(
+            "Knowledge base answers discovered",
+            extra={"stage": "full_indexing", "count": len(knowledgebase.answerIds)},
+        )
         return knowledgebase.answerIds
 
     logger.error("Failed to fetch knowledge base information.")
@@ -90,7 +90,7 @@ def _get_recent_answer_ids_from_rss(interval_days: int, client: ZammadAPIClient 
         or empty list if RSS feed cannot be parsed or no recent updates found.
 
     """
-    logger.info("Performing indexing based on RSS feed.")
+    logger.info("Performing indexing based on RSS feed", extra={"stage": "rss_indexing"})
 
     feed: FeedParserDict | None = client.parse_rss_feed()
     if not feed:
@@ -123,7 +123,7 @@ def _get_recent_answer_ids_from_rss(interval_days: int, client: ZammadAPIClient 
             logger.warning("Could not parse entry %s", entry.get("id", "unknown"), exc_info=True)
             continue
 
-    logger.info("Found %d recent answers from RSS feed.", len(ids))
+    logger.debug("Recent RSS answers discovered", extra={"stage": "rss_indexing", "count": len(ids)})
     return ids
 
 
@@ -173,7 +173,10 @@ def get_answers_data(
             continue
         answers[answer_id] = data
 
-    logger.info("Successfully fetched data for %d/%d answers.", len(answers), len(answer_ids))
+    logger.debug(
+        "Fetched answer data",
+        extra={"stage": "fetch_answers", "count": len(answers), "requested_count": len(answer_ids)},
+    )
     return answers
 
 
@@ -265,7 +268,7 @@ def retrieve_deleted_answer_ids(
                 )
                 continue
 
-        logger.info("Retrieved %d deleted answer IDs.", len(deleted_ids))
+        logger.debug("Deleted answer IDs discovered", extra={"stage": "delete_documents", "count": len(deleted_ids)})
     except Exception:
         logger.error("Failed to retrieve deleted answer IDs.", exc_info=True)
 

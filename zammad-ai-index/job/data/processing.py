@@ -60,7 +60,7 @@ def prepare_qdrant_data(
             logger.error("Failed to process answer %d", answer_id, exc_info=True)
             continue
 
-    logger.info("Successfully prepared %d items for Qdrant indexing.", len(qdrant_data))
+    logger.debug("Prepared Qdrant data", extra={"stage": "prepare_qdrant_data", "count": len(qdrant_data)})
     return qdrant_data
 
 
@@ -219,7 +219,12 @@ def filter_for_changed_data(
                     "No content changes detected for answer ID %d, skipping re-indexing.", item.metadata.answer_id
                 )
 
-    logger.info(
-        "Filtered data to %d/%d items with detected changes for indexing.", len(filtered_data), len(new_qdrant_data)
+    logger.debug(
+        "Filtered Qdrant items",
+        extra={
+            "stage": "filter_for_changed_data",
+            "filtered_count": len(filtered_data),
+            "input_count": len(new_qdrant_data),
+        },
     )
     return filtered_data

@@ -105,7 +105,7 @@ class GenAIHandler:
             prompt=prompts["processing_id"], output_schema=ProcessingIdResponse
         )
 
-        logger.info("GenAI handler initialized successfully")
+        logger.info("GenAI handler initialized", extra={"stage": "startup"})
 
     @observe(as_type="span")
     async def categorize_ticket(
@@ -134,7 +134,7 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
-            logger.info("Starting ToolStrategy categorization invocation.")
+            logger.debug("Categorization invocation started", extra={"stage": "categorize_ticket"})
             with propagate_attributes(session_id=session_id):
                 response: CategorizationResult = await self._ainvoke_structured_agent(
                     structured_agent=self._categorization_chain,
@@ -148,7 +148,7 @@ class GenAIHandler:
                     config=config,
                     expected_type=CategorizationResult,
                 )
-            logger.info("Finished ToolStrategy categorization invocation.")
+            logger.debug("Categorization invocation finished", extra={"stage": "categorize_ticket"})
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for categorization", exc_info=True)
@@ -172,7 +172,7 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
-            logger.info("Starting ToolStrategy days-since-request invocation.")
+            logger.debug("Days-since-request invocation started", extra={"stage": "extract_days_since_request"})
             with propagate_attributes(session_id=session_id):
                 response: DaysSinceRequestResponse = await self._ainvoke_structured_agent(
                     structured_agent=self._days_since_request_chain,
@@ -183,7 +183,7 @@ class GenAIHandler:
                     config=config,
                     expected_type=DaysSinceRequestResponse,
                 )
-            logger.info("Finished ToolStrategy days-since-request invocation.")
+            logger.debug("Days-since-request invocation finished", extra={"stage": "extract_days_since_request"})
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for days since request extraction", exc_info=True)
@@ -204,7 +204,7 @@ class GenAIHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
-            logger.info("Starting ToolStrategy processing-id invocation.")
+            logger.debug("Processing-id invocation started", extra={"stage": "extract_processing_id"})
             with propagate_attributes(session_id=session_id):
                 response: ProcessingIdResponse = await self._ainvoke_structured_agent(
                     structured_agent=self._processing_id_chain,
@@ -214,7 +214,7 @@ class GenAIHandler:
                     config=config,
                     expected_type=ProcessingIdResponse,
                 )
-            logger.info("Finished ToolStrategy processing-id invocation.")
+            logger.debug("Processing-id invocation finished", extra={"stage": "extract_processing_id"})
             return response
         except Exception as e:
             logger.error("Error during GenAI invocation for processing id extraction", exc_info=True)
