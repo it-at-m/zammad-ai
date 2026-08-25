@@ -5,8 +5,11 @@ api:
   max_input_length: 10000
 
 guardrails:
-  enabled: true
   confidence_threshold: 0.7
-  block_on_high_risk: false
   huggingface_cache_dir: /app/huggingface_cache
   offline_mode: true
+  max_concurrency: 4
+  default_model: default
+  models:
+    default:
+      hf_model_name: fastino/gliguard-LLMGuardrails-300M

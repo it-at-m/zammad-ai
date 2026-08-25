@@ -1,14 +1,14 @@
 # Prometheus Metrics
 
-Zammad-AI exposes Prometheus metrics for the backend API, triage flow, answer generation, and Kafka processing. These metrics are intended for local observability during development and for dashboards such as Grafana.
+Zammad-AI exposes Prometheus metrics for the backend API, triage flow, answer generation, and Kafka processing.
 
 ## Metrics Endpoint
 
 The application exports metrics on the standard Prometheus `/metrics` endpoint.
 
-The metrics server is started during application startup when `prometheus.enabled` is set to `true`.
+The metrics server is started during application startup when `prometheus.enabled` is true.
 
-The port is configured via settings but default to `9090`.
+The default port is `9090`.
 
 ## Exported Metrics
 

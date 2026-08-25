@@ -1,6 +1,6 @@
 # Frontend / Developer UI
 
-The project includes an optional Gradio-based frontend module for local developer workflows.
+The project includes an optional Gradio-based frontend for local workflows and ticket feedback.
 
 ## Scope
 
@@ -17,6 +17,7 @@ When `frontend.enabled` is true:
 - Gradio Blocks UI is mounted at `/`.
 - Frontend calls API endpoints under `/api/v1/triage` and `/api/v1/answer`.
 - Basic auth is enabled and required.
+- Feedback settings can post internal notes and scores to Langfuse.
 
 When `frontend.enabled` is false and mode is `development`:
 
@@ -32,6 +33,10 @@ frontend:
   request_timeout_seconds: 300.0
   auth_username: "admin"
   auth_password: "change-me"
+  feedback:
+    post_internal_note: false
+    language: "de"
+    tags: []
 ```
 
 Environment variable overrides follow the usual nested settings pattern, e.g.:
@@ -39,3 +44,5 @@ Environment variable overrides follow the usual nested settings pattern, e.g.:
 - `ZAMMAD_AI_FRONTEND__ENABLED`
 - `ZAMMAD_AI_FRONTEND__AUTH_USERNAME`
 - `ZAMMAD_AI_FRONTEND__AUTH_PASSWORD`
+- `ZAMMAD_AI_FRONTEND__FEEDBACK__POST_INTERNAL_NOTE`
+- `ZAMMAD_AI_FRONTEND__FEEDBACK__LANGUAGE`

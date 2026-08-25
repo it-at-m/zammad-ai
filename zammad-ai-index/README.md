@@ -1,18 +1,19 @@
 # zammad-ai-index
 
-The zammad-ai-index service synchronizes content from the Zammad Knowledge Base into a Qdrant collection.
-Its purpose is to provide consistent and efficient vector indexing for downstream AI-based search and response workflows.
+`zammad-ai-index` is a single-run indexing job that synchronizes Zammad Knowledge Base content into Qdrant.
+It is used by the answer pipeline to keep retrieval content current.
 
 ## Architecture Overview
 
 - `job/zammad/*` fetches knowledge base data from Zammad via REST API (`api.py`) or EAI (`eai.py`).
 - `job/data/*` retrieves IDs and transforms answers into Qdrant document items.
+- `job/law/*` can ingest configured law sources into the same collection.
 - `job/qdrant/qdrant.py` manages Qdrant client setup, embeddings, snapshots, add/delete operations.
 - `job/settings/*` contains Pydantic settings and configuration precedence.
 
 ## Purpose
 
-zammad-ai-index performs a scheduled or manual synchronization between Zammad and Qdrant. During this process, it:
+The job runs once and exits, so it can be scheduled by cron, a systemd timer, or a Kubernetes CronJob. During a run it:
 
 - indexes new or updated knowledge base content
 - removes content from Qdrant that no longer exists in Zammad
@@ -36,7 +37,7 @@ The indexing run follows a fixed, fault-tolerant workflow:
 - uv as dependency and execution tool
 - reachable Qdrant server
 - valid Zammad credentials
- - OpenAI env vars for embeddings
+- OpenAI env vars for embeddings
 
 ## Setup
 
@@ -65,6 +66,7 @@ At minimum, configure:
 - Zammad connection settings
 - Qdrant connection settings
 - index parameters such as batch size
+- `genai.embedding_model` and the corresponding `OPENAI_API_KEY`
 
 Recommended: keep secrets in `.env` and non-secret defaults in `config.yaml`.
 
@@ -98,6 +100,7 @@ Notes:
 
 - The job exits without writing if no new or changed documents are detected.
 - A Qdrant collection snapshot is created before any write; snapshot failure aborts the run.
+- The job supports both Zammad API and EAI authentication modes.
 
 ## Law Ingestion (Experimental)
 
@@ -137,6 +140,8 @@ Key sections (see `config.example.yaml` for a full example):
 - `qdrant`: `url`, `api_key`, `collection_name`, `vector_name`, `vector_dimension`, `timeout`, `retrieval_num_documents`
 - `zammad`: `type` (`api` or `eai`), `base_url`, `knowledge_base_id`, auth fields, optional RSS feed token/locale, and `document_parsing` (`mode`, `url`, `http_proxy_url`, `document_types`)
 - `laws` (optional): list of law sources with `id`, `name`, `url`, `chunk_size`, `chunk_overlap`
+- `mode`: `production`, `development`, or `unittest`
+- `langfuse_enabled`: enable or disable tracing/prompt lookup
 
 ## Modes
 

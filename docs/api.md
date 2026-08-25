@@ -1,64 +1,80 @@
-## API Reference
+# API Reference
 
-This document describes the HTTP API for the Zammad-AI service (v1).
+Base path: `/api/v1`
 
-**Base path:** `/api/v1`
+## Authentication
 
-**Authentication**
+If `api.api_key` is configured, requests must include:
 
-- The API uses a simple token-based authentication. Provide the token using the `Authorization` header with the `Bearer` scheme:
-  - Header name: `Authorization`
-  - Format: `Authorization: Bearer <token>`
-
-  If no API key is configured in the server settings, authentication is disabled and requests are accepted without a header.
-
-**Endpoints**
-
-- `POST /api/v1/triage`
-  - Description: Classify ticket text and determine an action.
-  - Request JSON: `{ "text": "...", "session_id": "optional-uuid" }`
-  - Response JSON (example):
-    ```json
-    {
-      "triage": {
-        "user_text": "...",
-        "category": { "name": "Fragen" },
-        "action": { "name": "AI_Answer" },
-        "reasoning": "...",
-        "confidence": 0.87
-      },
-      "session_id": "..."
-    }
-    ```
-
-- `POST /api/v1/answer`
-  - Description: Request an AI-generated answer for a ticket when the action requires it.
-  - Request JSON: `{ "text": "...", "category": "...", "action": "...", "session_id": "..." }`
-  - Response JSON (example):
-    ```json
-    {
-      "response": "Generated answer text...",
-      "documents": [{ "id": "...", "source": "..." }],
-      "auto_publish": false
-    }
-    ```
-
-**Examples (curl)**
-
-- Triage:
-
-```bash
-  curl -X POST "http://localhost:8080/api/v1/triage" \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer <token>" \
-   -d '{"text": "Meine Frage..."}'
+```http
+Authorization: Bearer <token>
 ```
 
-- Answer:
+If no API key is configured, the endpoints accept requests without a bearer token.
+
+## Endpoints
+
+### `GET /health`
+
+Health check.
+
+Response:
+
+```json
+{ "status": "healthy" }
+```
+
+### `GET /prompt_versions`
+
+Returns the loaded prompt versions from triage and answer services.
+
+### `POST /triage`
+
+Classifies incoming text and selects a triage action.
+
+Request:
+
+```json
+{ "text": "...", "session_id": "optional-uuid" }
+```
+
+Response fields:
+
+- `triage.user_text`
+- `triage.category`
+- `triage.action`
+- `triage.reasoning`
+- `triage.confidence`
+- `triage.extracted_values`
+- `session_id`
+
+### `POST /answer`
+
+Generates an answer for a ticket.
+
+Request:
+
+```json
+{
+  "text": "...",
+  "ticket_id": 12345,
+  "category": "General Questions",
+  "action": "AIAnswer",
+  "session_id": "optional-uuid"
+}
+```
+
+Response fields:
+
+- `response`
+- `documents` as `[{ "title": "...", "url": "..." }]`
+- `auto_publish`
+
+## Example
 
 ```bash
-  curl -X POST "http://localhost:8080/api/v1/answer" \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer <token>" \
-   -d '{"text": "...", "category": "Fragen", "action": "AI_Answer", "session_id": "..."}'
+curl -X POST "http://localhost:8080/api/v1/triage" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"text":"Meine Frage..."}'
 ```

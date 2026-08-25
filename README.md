@@ -2,12 +2,13 @@
 
 [![Made with love by it@M][made-with-love-shield]][itm-opensource]
 
-Zammad-AI is a GenAI-powered extension for Zammad. The repository contains two separate Python services:
+Zammad-AI is a GenAI-powered integration layer for Zammad. The repository contains three Python services:
 
 - `zammad-ai-workflow`: the backend service for ticket triage, answer generation, Kafka processing, and the optional embedded frontend.
-- `zammad-ai-index`: the indexing job that synchronizes Zammad knowledge base content into Qdrant Database.
+- `zammad-ai-index`: the indexing job that synchronizes Zammad knowledge base content into Qdrant.
+- `slm-guardrails`: the content-safety service used by the workflow for prompt and response checks.
 
-The services are intentionally separated from the core Zammad application so prompts, retrieval, automation rules, and integrations can evolve independently.
+The services are separated from core Zammad so prompts, retrieval, automation rules, and integrations can evolve independently.
 
 ## Why a separate zammad-ai component
 
@@ -23,29 +24,26 @@ We keep this component separate from Zammad core to:
 
 ### What is different from Zammad built-in AI components
 
-- Product scope:
-	Zammad built-in AI focuses on generic in-product assistance. `zammad-ai` focuses on backend orchestration, custom business rules, and external integrations.
-- Extensibility:
-	Zammad built-in AI is feature-configurable. `zammad-ai` is code-first and designed for custom prompts, adapters, and processing pipelines.
-- Data flow:
-	Zammad built-in AI is primarily embedded in UI workflows. `zammad-ai` adds event-driven ingest/filter/process/output flows and explicit indexing jobs.
-- Operations:
-	Zammad built-in AI is managed as part of Zammad. `zammad-ai` can be deployed, scaled, monitored, and released as independent services.
-- Integration boundary:
-	Zammad built-in AI enhances agent UX directly in Zammad. `zammad-ai` acts as a composable AI middleware that can serve Zammad and surrounding systems.
+- Product scope: Zammad built-in AI focuses on generic in-product assistance. `zammad-ai` focuses on backend orchestration, custom business rules, and external integrations.
+- Extensibility: Zammad built-in AI is feature-configurable. `zammad-ai` is code-first and designed for custom prompts, adapters, and processing pipelines.
+- Data flow: Zammad built-in AI is primarily embedded in UI workflows. `zammad-ai` adds event-driven ingest/filter/process/output flows and explicit indexing jobs.
+- Operations: Zammad built-in AI is managed as part of Zammad. `zammad-ai` can be deployed, scaled, monitored, and released as independent services.
+- Integration boundary: Zammad built-in AI enhances agent UX directly in Zammad. `zammad-ai` acts as a composable AI middleware that can serve Zammad and surrounding systems.
 
 ## What the project does
 
 - Consumes ticket events from Kafka and exposes REST endpoints for triage and answer generation.
 - Uses Qdrant for knowledge base retrieval.
 - Integrates with Langfuse for tracing and prompt management.
-- Supports Zammad API and [EAI](https://github.com/it-at-m/dbs/tree/main/ticketing-eai)-based integrations.
+- Delegates prompt and response safety checks to `slm-guardrails`.
+- Supports Zammad REST API and EAI-based integrations.
 - Exposes Prometheus metrics and an optional Gradio frontend for local workflows.
 
 ## Repository layout
 
 - [zammad-ai-workflow/](zammad-ai-workflow/) - backend service and API entry point.
 - [zammad-ai-index/](zammad-ai-index/) - knowledge base indexing job.
+- [slm-guardrails/](slm-guardrails/) - content safety guardrail service.
 - [docs/](docs/) - architecture, configuration, and API documentation.
 - [compose.yaml](compose.yaml) - local Kafka, Qdrant, Mailpit, Prometheus, Grafana, and UI stack.
 - [observability/](observability/) - Prometheus and Grafana provisioning files.
@@ -64,10 +62,12 @@ For the Digital Citizen Service architecture, see the [DBS Architecture document
 
 ## Documentation
 
+- [Project overview](docs/index.md)
 - [Configuration Guide](docs/configuration.md)
 - [API Reference](docs/api.md)
-- [Architecture ADRs](docs/adr/index.md)
 - [Component Overview](docs/components/index.md)
+- [Architecture ADRs](docs/adr/index.md)
+- [Release Workflow](docs/release-workflow.md)
 
 ## Local setup
 
@@ -123,6 +123,7 @@ uv run python main.py
 The backend exposes the following public routes:
 
 - `GET /api/v1/health`
+- `GET /api/v1/prompt_versions`
 - `POST /api/v1/triage`
 - `POST /api/v1/answer`
 

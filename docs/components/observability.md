@@ -1,6 +1,6 @@
 # Observability (Langfuse)
 
-The service integrates with Langfuse to provide observability, tracing, and dynamic prompt management for all AI-related operations.
+The workflow and index job can integrate with Langfuse for tracing and prompt management.
 
 ## Features
 
@@ -15,7 +15,7 @@ All calls to language models are traced using Langfuse's LangChain integration. 
 
 ### Prompt Management
 
-Prompt templates can be managed directly in the Langfuse UI. The `LangfuseClient` in `zammad-ai-workflow/app/observe/langfuse.py` retrieves these prompts by name and label (e.g., `production`). This allow updating prompts without redeploying the service.
+Prompt templates can be managed directly in the Langfuse UI. The workflow loads prompts from `app/observe/langfuse.py` by name and label, which allows prompt updates without redeploying the service.
 
 ## Integration Details
 
@@ -23,9 +23,9 @@ Prompt templates can be managed directly in the Langfuse UI. The `LangfuseClient
 
 This client handles:
 
-- **Callback Initialization**: Sets up `CallbackHandler` for LangChain.
-- **Dynamic Prompt Fetching**: Implements `get_prompt` to retrieve text-based templates.
-- **Session Tracking**: Generates unique session IDs and builds `RunnableConfig` objects that include the Langfuse callback.
+- callback initialization for LangChain
+- prompt fetching by name and label
+- session tracking via request or Kafka session IDs
 
 ### Environment Variables
 
@@ -37,4 +37,4 @@ Langfuse is typically configured using standard environment variables:
 
 ## Implementation in Triage
 
-The `GenAIHandler` uses the `LangfuseClient` to wrap every chain execution in a trace. If a `session_id` is provided (e.g., from a Kafka event or API request), it is used to group the resulting traces in the Langfuse dashboard.
+The triage and answer flows wrap chain execution in traces when `langfuse_enabled` is true.
