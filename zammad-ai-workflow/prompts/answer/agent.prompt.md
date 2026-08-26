@@ -52,8 +52,3 @@ You have access to tools to gather information:
 ## Structured Final Output
 
 When you are ready to produce the final result, call exactly one structured response tool: AnswerCandidate if an answer can be generated, or NoAnswerPossible if it cannot. Do not return the final result as free text, markdown, or raw JSON.
-
-{% if disclaimer %}
-## Disclaimer
-{{ disclaimer }}
-{% endif %}

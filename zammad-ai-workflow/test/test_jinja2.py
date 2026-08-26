@@ -149,7 +149,6 @@ class TestContextBuilders:
         assert "available_tools" in context
         assert "knowledge_base_enabled" in context
         assert "dlf_enabled" in context
-        assert "disclaimer" in context
 
     def test_build_judge_context_empty(self, settings_factory):
         """Test building judge context with default settings."""
@@ -187,7 +186,6 @@ class TestSettingsModels:
             available_tools=tools,
             knowledge_base_enabled=True,
             dlf_enabled=False,
-            disclaimer="Test disclaimer",
             retrieval_num_documents=5,
         )
         assert context.knowledge_base_enabled is True
@@ -268,7 +266,6 @@ class TestIntegration:
             "available_tools": [{"name": "search_website", "description": "Search tool"}],
             "knowledge_base_enabled": True,
             "dlf_enabled": False,
-            "disclaimer": "Test",
         }
         result = renderer.render_template(template, context)
 
