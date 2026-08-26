@@ -90,7 +90,6 @@ def build_answer_context(
         - available_tools: list of ToolDefinition objects
         - knowledge_base_enabled: bool
         - dlf_enabled: bool
-        - disclaimer: str
         - retrieval_num_documents: int
 
     Example:
@@ -106,7 +105,6 @@ def build_answer_context(
         "available_tools": [{"name": tool.name, "description": tool.description} for tool in tools],
         "knowledge_base_enabled": bool(settings.qdrant.collection_name),
         "dlf_enabled": settings.dlf is not None,
-        "disclaimer": settings.ai_answer_disclaimer,
         "retrieval_num_documents": settings.qdrant.retrieval_num_documents,
         # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day
         "today": today_str,

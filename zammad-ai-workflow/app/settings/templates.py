@@ -70,7 +70,6 @@ class AnswerTemplateContext(BaseModel):
         available_tools: List of tools available for answer generation.
         knowledge_base_enabled: Whether knowledge base search is enabled.
         dlf_enabled: Whether DLF (Dienstleistungsfinder) search is enabled.
-        disclaimer: Disclaimer text to append to answers.
         retrieval_num_documents: Number of documents to retrieve for context.
     """
 
@@ -85,10 +84,6 @@ class AnswerTemplateContext(BaseModel):
     dlf_enabled: bool = Field(
         default=False,
         description="Whether DLF (Dienstleistungsfinder) search is enabled.",
-    )
-    disclaimer: str = Field(
-        default="",
-        description="Disclaimer text to append to answers.",
     )
     retrieval_num_documents: int = Field(
         default=5,

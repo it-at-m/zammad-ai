@@ -117,7 +117,7 @@ answer:
     type: "file" # Options: "string", "file", "langfuse"
     prompt: "prompts/answer/agent.prompt.md"
     # Prompts can use Jinja2 syntax! Variables like {{ available_tools }}, {{ knowledge_base_enabled }},
-    # {{ dlf_enabled }}, {{ disclaimer }} are automatically available.
+    # {{ dlf_enabled }} are automatically available.
   qdrant:
     url: "https://your-qdrant-instance.example.com"
     api_key: null # Set in .env: ZAMMAD_AI_ANSWER__QDRANT__API_KEY
@@ -256,7 +256,7 @@ triage:
   #
   # Available Jinja2 variables:
   # - Triage prompts: knowledge_base_enabled, dlf_enabled, no_category_name, no_action_name, categories, today
-  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, disclaimer, retrieval_num_documents, today
+  # - Answer prompts: available_tools, knowledge_base_enabled, dlf_enabled, retrieval_num_documents, today
   # - Judge prompts: thresholds (dict), repair_enabled, max_repairs, today
   prompts:
     type: "file" # Options: "langfuse", "string", or "file"
