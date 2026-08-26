@@ -54,7 +54,7 @@ def run_indexing(
         Exception: Critical errors during indexing are logged and re-raised.
 
     """
-    logger.info("Starting indexing process...")
+    logger.info("Indexing process started", extra={"stage": "indexing"})
 
     try:
         # Step 0: Retrieve answer IDs of filtered categories if category filtering is enabled
@@ -64,17 +64,17 @@ def run_indexing(
         answer_ids: list[int] = retrieve_answer_ids(zammad_client, answer_ids_in_category)
         answers: dict[int, KnowledgeBaseAnswer] = {}
         if not answer_ids:
-            logger.info("No answer IDs found for processing.")
+            logger.info("No answer IDs found", extra={"stage": "retrieve_answer_ids", "count": 0})
         else:
-            logger.info("Retrieved %d answer IDs for processing.", len(answer_ids))
+            logger.info("Answer IDs retrieved", extra={"stage": "retrieve_answer_ids", "count": len(answer_ids)})
 
             # Step 2: Fetch detailed answer data
             answers: dict[int, KnowledgeBaseAnswer] = get_answers_data(answer_ids, zammad_client)
 
             if not answers:
-                logger.info("No answer data retrieved for the provided answer IDs.")
+                logger.info("No answer data retrieved", extra={"stage": "fetch_answers", "count": 0})
             else:
-                logger.info("Fetched data for %d answers.", len(answers))
+                logger.info("Answer data fetched", extra={"stage": "fetch_answers", "count": len(answers)})
 
         # Step 3: Get all points from Qdrant
         all_points: list[Record] = qdrant_client.get_all_points()
@@ -86,16 +86,14 @@ def run_indexing(
         deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, answer_ids_in_category)
 
         if not qdrant_items:
-            logger.info("No new or changed documents to index.")
+            logger.info("No new or changed documents to index", extra={"stage": "prepare_documents", "count": 0})
             if deleted_answer_ids:
-                logger.info(
-                    "However, %d deleted answer IDs detected that will be removed from Qdrant.", len(deleted_answer_ids)
-                )
+                logger.info("Deleted answers detected", extra={"stage": "delete_documents", "count": len(deleted_answer_ids)})
             else:
-                logger.info("No deleted answer IDs detected. Exiting.")
+                logger.info("No deleted answer IDs detected", extra={"stage": "delete_documents", "count": 0})
                 return
         else:
-            logger.info("Prepared %d documents for Qdrant indexing.", len(qdrant_items))
+            logger.info("Documents prepared for Qdrant", extra={"stage": "prepare_documents", "count": len(qdrant_items)})
 
         # Step 6: Create Qdrant snapshot if not already created by caller
         snapshot_success: bool = True
@@ -103,7 +101,7 @@ def run_indexing(
             snapshot_success = qdrant_client.create_snapshot()
 
         if snapshot_success:
-            logger.info("Successfully created or skipped Qdrant snapshot before indexing.")
+            logger.info("Qdrant snapshot ready", extra={"stage": "snapshot"})
         else:
             logger.warning("Failed to create Qdrant snapshot before indexing. Exiting.")
             return
@@ -113,7 +111,7 @@ def run_indexing(
             success: bool = add_documents_to_qdrant(qdrant_items, qdrant_client)
 
             if success:
-                logger.info("Successfully indexed documents into Qdrant.")
+                logger.info("Documents indexed into Qdrant", extra={"stage": "write_documents", "count": len(qdrant_items)})
             else:
                 logger.error("Failed to index documents into Qdrant.")
                 return
@@ -122,13 +120,11 @@ def run_indexing(
         if deleted_answer_ids:
             try:
                 qdrant_client.delete_points_by_ids(deleted_answer_ids)
-                logger.info(
-                    "Successfully deleted %d documents from Qdrant for deleted answer IDs.", len(deleted_answer_ids)
-                )
+                logger.info("Deleted documents from Qdrant", extra={"stage": "delete_documents", "count": len(deleted_answer_ids)})
             except Exception:
                 logger.error("Failed to delete points for deleted answer IDs: %s", deleted_answer_ids, exc_info=True)
 
-        logger.info("Indexing process completed successfully.")
+        logger.info("Indexing process completed", extra={"stage": "finished"})
 
     except Exception:
         logger.error("Critical error during indexing process", exc_info=True)
@@ -159,7 +155,7 @@ def _prepare_and_filter_data(
         answers=answers,
         client=zammad_client,
     )
-    logger.info("Prepared data for %d answers for Qdrant indexing.", len(qdrant_data))
+    logger.debug("Prepared Qdrant data", extra={"stage": "prepare_qdrant_data", "count": len(qdrant_data)})
 
     # Filter to only include changed documents
     filtered_items: list[QdrantDocumentItem] = filter_for_changed_data(

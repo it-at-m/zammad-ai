@@ -1,100 +1,85 @@
 # Configuration Guide
 
-The Zammad-AI service is configured using a combination of YAML files, environment variables, and `.env` files.
+Zammad-AI uses pydantic-settings with YAML, environment variables, `.env`, and CLI arguments.
 
-## Configuration Hierarchy
+## Source Priority
 
-The application loads configuration in the following order of priority (highest first):
+Highest priority first:
 
-1. **CLI Arguments**
-2. **Environment Variables** (prefixed with `ZAMMAD_AI_`, e.g., `ZAMMAD_AI_GENAI__CHAT_MODEL`)
-3. **.env File**
-4. **config.yaml**
-5. **Defaults** defined in the source code (`zammad-ai-workflow/app/settings/`)
+1. CLI arguments
+2. Environment variables with the `ZAMMAD_AI_` prefix
+3. `.env`
+4. `config.yaml`
+5. Defaults defined in the source code
 
-## Core Configuration Sections
+## Workflow Service
 
-### Use Case
+Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zammad-ai-workflow/config.example.yaml`.
 
-Identifies the specific deployment or purpose of the service.
+### Core Sections
 
-- `usecase.name`: Machine-readable name.
-- `usecase.description`: Human-readable description.
+- `usecase`: deployment name and description
+- `genai`: model provider, chat model, embedding model, and retry settings
+- `zammad`: REST API or EAI connection settings, knowledge base ID, and document parsing config
+- `kafka`: broker URL, topic names, retry policy, client ID, group ID, and mTLS security
+- `triage`: categories, actions, rules, prompt sources, and fallback behavior
+- `answer`: answer prompts, Qdrant settings, optional DLF integration, judge settings, and law tools
+- `frontend`: optional Gradio UI and feedback settings
+- `api`: API key and graceful shutdown timeout
+- `prometheus`: metrics server toggle and port
+- `guardrails`: remote `slm-guardrails` client settings used by the workflow (`enabled`, `base_url`, `request_timeout_seconds`, `auth_token`, `verify_tls`, `confidence_threshold`, `model`)
+- `log`: log format and level
+- `preparser`: optional preprocessing before LLM calls
+- `max_user_text_length`: input truncation limit
+- `recursion_limit`: agent recursion cap
+- `mode`: `production`, `development`, or `unittest`
 
-### GenAI
-
-Configures the interface to the Large Language Model.
-
-- `sdk`: Currently supports `openai`.
-- `chat_model`: The model used for generating responses (e.g., `gpt-4o`).
-- `embedding_model`: The model used for vector search.
-- `temperature`: Creativity setting (0.0 recommended for consistent results).
-
-### Zammad
-
-Connectivity settings for the Zammad instance.
-
-- `type`: `api` (standard REST) or `eai` (Enterprise Application Integration).
-- `base_url`: URL of your Zammad instance.
-- `timeout`: Request timeout in seconds.
-- `max_retries`: Number of retries for failed requests.
-
-### Answer → Qdrant
-
-Vector database settings for knowledge retrieval used by the answer generation pipeline.
-
-- `url`: URL of the Qdrant instance.
-- `api_key`: API key for authentication (set via env var).
-- `collection_name`: The vector collection to query.
-- `vector_name`: Optional name of the vector field.
-- `vector_dimension`: Must match the embedding model output (e.g., 1024 or 1536).
-- `timeout`: Timeout in seconds for Qdrant client operations.
-- `retrieval_num_documents`: Number of documents to retrieve for context.
-- `multi_query.enabled`: Expand each search into multiple generated queries.
-- `multi_query.include_original`: Also search with the original query.
-
-### Kafka
-
-Event streaming configuration.
-
-- `broker_url`: Kafka bootstrap server.
-- `topic`: Topic to listen for new ticket events.
-- `retry_topic`: Topic used for delayed retry processing.
-- `group_id`: Consumer group identifier.
-- `retry_delay_seconds`: Base delay in seconds used for exponential backoff.
-- `max_retry_attempts`: Maximum number of retry attempts after the initial processing attempt.
-- `security`: mTLS security settings (optional).
-
-### Limits
-
-- `max_user_text_length`: Maximum combined length of article text and attachment content accepted during triage and answer processing. Messages exceeding this length will be truncated to this limit.
-
-### Triage
-
-Defines the business logic for categorization and automation.
-
-- `categories`: List of `id` and `name` pairs for classification.
-- `actions`: List of available automated actions.
-- `action_rules`: Mapping of categories and conditions to actions.
-- `prompts`: Source of LLM prompt templates (`langfuse`, `file`, or `string`).
-
-## Secrets Management
-
-Sensitive information must NOT be placed in `config.yaml`. Use context-specific environment variables or a `.env` file:
+### Common Secrets
 
 ```env
-# OpenAI
-OPENAI_API_KEY=sk-...
-
-# Zammad
+OPENAI_API_KEY=...
+ZAMMAD_AI_API__API_KEY=...
 ZAMMAD_AI_ZAMMAD__AUTH_TOKEN=...
-ZAMMAD_AI_ZAMMAD__RSS_FEED_TOKEN=...
-
-# Qdrant
 ZAMMAD_AI_QDRANT__API_KEY=...
-
-# Langfuse (if prompts.type is "langfuse")
 LANGFUSE_PUBLIC_KEY=...
 LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=...
 ```
+
+Guardrails service secrets:
+
+```env
+ZAMMAD_AI_GUARDRAILS__AUTH_TOKEN=...
+SLM_GUARDRAIL_API__AUTH_TOKEN=...
+```
+
+## Index Job
+
+Main settings live in `zammad-ai-index/job/settings/` and are loaded by `zammad-ai-index/config.example.yaml`.
+
+### Core Sections
+
+- `index`: full vs incremental indexing, look-back interval, and batch size
+- `genai`: embedding/chat model provider settings
+- `zammad`: REST API or EAI connection settings
+- `qdrant`: collection URL, API key, collection name, vector dimension, and retrieval options
+- `laws`: optional law sources to ingest into the same Qdrant collection
+- `log`: log format and level
+- `mode`: `production`, `development`, or `unittest`
+
+### Common Secrets
+
+```env
+OPENAI_API_KEY=...
+ZAMMAD_AI_QDRANT__API_KEY=...
+ZAMMAD_AI_ZAMMAD__AUTH_TOKEN=...
+ZAMMAD_AI_ZAMMAD__OAUTH2_CLIENT_SECRET=...
+```
+
+## Notes
+
+- Keep secrets out of `config.yaml`.
+- Use double underscores for nested environment overrides, for example `ZAMMAD_AI_KAFKA__BROKER_URL`.
+- The workflow service defaults to Kafka port `9092`, the backend port `8080`, and Prometheus port `9090`.
+- The workflow service calls the guardrails service at `http://localhost:8081` by default.
+- The index job expects the Qdrant collection to exist and match the configured embedding dimension.

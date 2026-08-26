@@ -1,32 +1,32 @@
 # Qdrant Vector Database
 
-The project uses Qdrant as a vector database for knowledge retrieval and semantic search. This component is used to manage and query relevant information to augment the context of GenAI requests.
+The project uses Qdrant for retrieval in the answer pipeline and for indexing Zammad knowledge base content.
 
 ## Integration
 
-The Qdrant integration is configured via `app.settings.answer.QdrantSettings` (nested under the `answer` settings). It uses the `langchain-qdrant` package to provide a vector store compatible with LangChain chains.
+The workflow service configures Qdrant under `answer.qdrant`. The index job configures it under `qdrant`.
 
 ## Configuration Keys
 
-- `host`: The URL of the Qdrant instance.
+- `url`: The URL of the Qdrant instance.
 - `api_key`: Secret key for authentication.
 - `collection_name`: The name of the collection where knowledge vectors are stored.
-- `vector_dimension`: The dimensionality of the embeddings (defaults to 1024, matching common models like `text-embedding-3-large`).
-- `vector_name`: The name of the vector configuration in the Qdrant collection (defaults to `dense`)
-- `retrieval_mode`: One of `dense`, `sparse` or `hybrid`. When selecting `sparse` or `hybrid` the QdrantVectorStore requires a compatible sparse embedding implementation and a collection configured with sparse vectors, such as FastEmbedSparse.
-- `sparse_vector_name`: Name of the sparse vector configuration in the Qdrant collection (defaults to `sparse`).
-- `multi_query.enabled`: Enables `MultiQueryRetriever`-style query expansion before Qdrant retrieval.
-- `multi_query.include_original`: Keeps the original user query in the merged retrieval set.
+- `vector_dimension`: The dimensionality of the embeddings.
+- `vector_name`: Optional name of the vector configuration in the collection.
+- `retrieval_num_documents`: Number of documents to retrieve per query.
+- `retrieval_mode`: `dense`, `sparse`, or `hybrid`.
+- `sparse_vector_name`: Name of the sparse vector configuration.
+- `multi_query.enabled`: Enable multi-query expansion.
+- `multi_query.include_original`: Keep the original query in the retrieval set.
 
 ## Data Models
 
-The `QdrantVectorMetadata` model in `zammad-ai-workflow/app/models/qdrant.py` defines the structure of the metadata stored alongside vectors:
+The workflow stores answer documents with `title` and `url` fields. The index job stores knowledge base and law metadata in Qdrant payloads.
 
-- `id`: Unique identifier (e.g., Zammad article ID).
-- `title`: Title of the source content.
-- `content`: The raw text content.
-- `attachments`: Optional references to associated files.
+- Knowledge base entries are compared by content hash before being written.
+- Law entries use deterministic IDs and store metadata such as `law_id`, `paragraph`, `annex`, and `chunk`.
 
 ## Current Status
 
-Currently, the Qdrant integration is primarily used for the (planned) Knowledge Management system, where updates from Zammad (e.g., via RSS feed) are indexed into the vector store.
+The workflow requires Qdrant for answer generation when retrieval is enabled.
+The index job requires the target collection to exist before it runs.
