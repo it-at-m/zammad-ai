@@ -45,7 +45,7 @@ class AgentContext(BaseModel):
 
 @tool(
     "search_website",
-    description="Search the city of munich website including all public service descriptions and information articles for relevant documents",
+    description="Search the city of munich website including all public service descriptions and information articles for relevant documents. Never append personal information to the query.",
     args_schema=SearchDLFInput,
     parse_docstring=False,
     response_format="content",
@@ -54,7 +54,7 @@ async def search_dlf(runtime: ToolRuntime[AgentContext], query: str) -> list[DLF
     """Search the Munich city (DLF) site using the runtime's DLF client and return retrieved documents.
 
     Parameters:
-        query (str): Query string to send to the DLF site.
+        query (str): Query string to send to the DLF site. No personal information should be included in the query.
 
     Returns:
         list[DLFDocument]: Documents retrieved from the DLF client matching the query.

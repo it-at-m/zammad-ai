@@ -4,7 +4,7 @@ from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
-from app.guardrails import GuardrailService, get_guardrail_service, reset_guardrail_service
+from app.guardrails import GuardrailService, reset_guardrail_service
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
@@ -23,11 +23,13 @@ class ActionService:
 
     logger: Logger = getLogger("zammad-ai.action.service")
 
-    def __init__(self, settings: ZammadAISettings, answer_service: AnswerService):
+    def __init__(
+        self, settings: ZammadAISettings, answer_service: AnswerService, guardrail_service: GuardrailService
+    ) -> None:
         """Initialize action execution with settings, answer service, guardrail service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
-        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        self.guardrail_service: GuardrailService = guardrail_service
         self.max_user_text_length: int = settings.max_user_text_length
         # Zammad client setup
         if isinstance(self.settings.zammad, ZammadAPISettings):
@@ -152,7 +154,24 @@ class ActionService:
             ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
         """
         # Evaluate guardrails before answer generation
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(user_text)
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+            user_text,
+            toxicity_labels=[
+                "violence_and_weapons",
+                "sexual_content",
+                "hate_and_discrimination",
+                "self_harm_and_suicide",
+                "misinformation",
+                "copyright_violation",
+                "child_safety",
+                "political_manipulation",
+                "unethical_conduct",
+                "regulated_advice",
+                "other",
+                "benign",
+            ],
+            jailbreak_labels=None,
+        )
         if self.settings.guardrails.enabled:
             self.logger.info(
                 f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"
@@ -280,11 +299,14 @@ _service: ActionService | None = None
 
 
 def get_action_service(
-    settings: ZammadAISettings | None = None, answer_service: AnswerService | None = None
+    guardrail_service: GuardrailService,
+    settings: ZammadAISettings | None = None,
+    answer_service: AnswerService | None = None,
 ) -> ActionService:
     """Get or create the shared ActionService instance.
 
     Args:
+        guardrail_service: The guardrail service to initialize the ActionService instance.
         settings: Optional settings to initialize the ActionService instance.
                  If not provided, uses get_settings().
         answer_service: Optional AnswerService instance to use.
@@ -300,6 +322,6 @@ def get_action_service(
 
             settings = get_settings()
         if answer_service is None:
-            answer_service = get_answer_service(settings)
-        _service = ActionService(settings=settings, answer_service=answer_service)
+            answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
+        _service = ActionService(settings=settings, answer_service=answer_service, guardrail_service=guardrail_service)
     return _service

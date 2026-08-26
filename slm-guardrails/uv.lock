@@ -1043,7 +1043,7 @@ wheels = [
 
 [[package]]
 name = "slm-guardrails"
-version = "1.0.2"
+version = "1.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },

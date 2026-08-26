@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.action.service import ActionService, get_action_service
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import KafkaPayloadError
+from app.guardrails.http_client import GuardrailService, get_guardrail_service
 from app.kafka.helper import (
     _handle_processing_exception,
     _parse_original_group_id,
@@ -199,10 +200,10 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             ),
         ),
     )
-
+    guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
     triage_service: TriageService = get_triage_service(settings=settings)
-    answer_service: AnswerService = get_answer_service(settings=settings)
-    action_service: ActionService = get_action_service(settings=settings, answer_service=answer_service)
+    answer_service: AnswerService = get_answer_service(guardrail_service=guardrail_service, settings=settings)
+    action_service: ActionService = get_action_service(settings=settings, guardrail_service=guardrail_service, answer_service=answer_service)
     broker = router.broker
 
     @router.subscriber(

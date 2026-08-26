@@ -14,6 +14,7 @@ from langgraph.graph.state import CompiledStateGraph
 from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
+from app.guardrails.http_client import GuardrailService
 from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
@@ -54,7 +55,7 @@ ANSWER_RUNS_IN_PROGRESS = Gauge(
 class AnswerService:
     """Service that coordinates prompt loading, agent execution, and cleanup."""
 
-    def __init__(self, settings: ZammadAISettings) -> None:
+    def __init__(self, settings: ZammadAISettings, guardrail_service: GuardrailService) -> None:
         # Optionally set up Langfuse client if enabled in settings
         """Initialize the AnswerService, configuring prompt sources, the agent, and supporting clients from the provided settings.
 
@@ -134,7 +135,12 @@ class AnswerService:
             qdrant_settings=settings.answer.qdrant,
         )
         self.dlf_client: DLFClient | None = (
-            DLFClient(dlf_settings=settings.answer.dlf) if settings.answer.dlf is not None else None
+            DLFClient(
+                dlf_settings=settings.answer.dlf,
+                guardrail_service=guardrail_service,
+            )
+            if settings.answer.dlf is not None
+            else None
         )
         self.agent_context: AgentContext = AgentContext(
             qdrant_kb_client=self.qdrant_kb_client,
@@ -435,12 +441,17 @@ class AnswerService:
 _service: AnswerService | None = None
 
 
-def get_answer_service(settings: ZammadAISettings | None = None) -> AnswerService:
+def get_answer_service(
+    guardrail_service: GuardrailService,
+    settings: ZammadAISettings | None = None,
+) -> AnswerService:
     """Get or create the shared AnswerService instance.
 
     Args:
         settings: Optional settings to initialize the AnswerService instance.
                  If not provided, uses get_settings().
+        guardrail_service: Optional guardrail service to initialize the AnswerService instance.
+                           If not provided, uses get_guardrail_service().
 
     Returns:
         AnswerService: The shared AnswerService instance.
@@ -451,5 +462,5 @@ def get_answer_service(settings: ZammadAISettings | None = None) -> AnswerServic
             from app.settings import get_settings
 
             settings = get_settings()
-        _service = AnswerService(settings=settings)
+        _service = AnswerService(settings=settings, guardrail_service=guardrail_service)
     return _service

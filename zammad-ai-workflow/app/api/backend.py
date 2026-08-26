@@ -16,6 +16,7 @@ from starlette.responses import Response
 from app.action.service import get_action_service
 from app.answer import get_answer_service
 from app.frontend import mount_feedback_frontend, mount_frontend
+from app.guardrails.http_client import get_guardrail_service
 from app.models.api_v1 import HealthCheckResponse
 from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
@@ -106,9 +107,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
         logger.info("Initializing shared Triage, Answer, Action, and Preparser services")
+        app.state.guardrail_service = get_guardrail_service(settings=settings.guardrails)
         app.state.triage_service = get_triage_service(settings=settings)
-        app.state.answer_service = get_answer_service(settings=settings)
-        app.state.action_service = get_action_service(settings=settings, answer_service=app.state.answer_service)
+        app.state.answer_service = get_answer_service(settings=settings, guardrail_service=app.state.guardrail_service)
+        app.state.action_service = get_action_service(
+            settings=settings, answer_service=app.state.answer_service, guardrail_service=app.state.guardrail_service
+        )
         app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
         if kafka_router is None:

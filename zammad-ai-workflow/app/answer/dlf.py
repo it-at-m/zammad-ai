@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from stamina import retry_context
 
 from app.errors import DLFPermanentError, DLFRetryableError
+from app.guardrails.http_client import GuardrailService
+from app.models.guardrails import GuardrailResult
 from app.settings.answer import DLFSettings
 from app.utils.logging import getLogger
 
@@ -50,7 +52,11 @@ class SearchDLFInput(BaseModel):
     """Validated input for DLF search queries."""
 
     query: str = Field(
-        description=f"The search query string; maximum length is {QUERY_MAX_LENGTH} characters (~ {QUERY_MAX_LENGTH // 10} words).",
+        description="The search query string; maximum length is"
+        + str(QUERY_MAX_LENGTH)
+        + " characters (~ "
+        + str(QUERY_MAX_LENGTH // 10)
+        + " words). Do not include personal information in the query.",
         max_length=QUERY_MAX_LENGTH,
     )
 
@@ -64,11 +70,12 @@ class DLFError(DLFPermanentError):
 class DLFClient:
     """Stateful client for interacting with the Dienstleistungsfinder (DLF) API."""
 
-    def __init__(self, dlf_settings: DLFSettings) -> None:
+    def __init__(self, dlf_settings: DLFSettings, guardrail_service: GuardrailService) -> None:
         """Configure the DLFClient using provided settings by creating an AsyncClient and storing filter categories.
 
         Parameters:
             dlf_settings (DLFSettings): Settings that provide the DLF base URL, request timeout, and filter categories.
+            guardrail_service (GuardrailService): Service for evaluating guardrail compliance.
 
         Raises:
             ValueError: If `dlf_settings.url` is None.
@@ -83,6 +90,7 @@ class DLFClient:
         self.categories: list[str] = dlf_settings.filter_categories
         self.attempts: int = dlf_settings.max_retries + 1  # Total attempts = initial try + retries
         self.logger = logger
+        self.guardrail_service = guardrail_service
 
     async def retrieve_documents(self, query: str) -> list[DLFDocument]:  # type: ignore
         """Retrieve documents from the DLF matching the given search query.
@@ -96,6 +104,35 @@ class DLFClient:
         Raises:
             DLFError: If there is an error during retrieval, such as network issues or invalid responses from the DLF API.
         """
+        # Check query for PII and safety using guardrails
+        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+            query,
+            toxicity_labels=[
+                "pii_exposure",
+                "privacy_violation",
+                "non_violent_crime",
+                "benign",
+            ],
+            jailbreak_labels=None,
+        )
+        if guardrail_result is not None:
+            if guardrail_result.prompt_safety == "unsafe":
+                self.logger.warning(
+                    msg="Query flagged as unsafe by guardrails.",
+                    extra={"guardrail_result": guardrail_result.model_dump()},
+                )
+                raise DLFError("Query flagged as unsafe by guardrails.")
+            if (
+                "pii_exposure" in guardrail_result.prompt_toxicity
+                or "privacy_violation" in guardrail_result.prompt_toxicity
+                or "non_violent_crime" in guardrail_result.prompt_toxicity
+            ):
+                self.logger.warning(
+                    msg="Query flagged for potential PII exposure by guardrails.",
+                    extra={"guardrail_result": guardrail_result.model_dump()},
+                )
+                raise DLFError("Query flagged for potential PII exposure by guardrails.")
+
         # Create payload
         payload = DLFAPIPayload(
             query=query,
