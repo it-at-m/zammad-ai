@@ -212,6 +212,14 @@ class AnswerSettings(BaseModel):
         ),
         discriminator="type",
     )
+    format_prompt: PromptSourceConfig = Field(
+        description="Prompt configuration for formatting the answer agent's responses. Can be provided as a raw string, a file path, or a Langfuse prompt reference.",
+        default_factory=lambda: FilePromptConfig(
+            prompt=get_prompts_dir() / "answer" / "format.prompt.md",
+        ),
+        discriminator="type",
+    )
+
     dlf: DLFSettings | None = Field(
         default=None,
     )

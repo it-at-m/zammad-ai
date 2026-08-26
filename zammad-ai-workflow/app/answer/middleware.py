@@ -9,8 +9,11 @@ from typing import Any
 from langchain.agents.middleware import before_agent
 from langchain.messages import HumanMessage, SystemMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
+from langfuse import observe, propagate_attributes
 from pydantic import BaseModel, Field, ValidationError
 
+from app.models.answer import AnswerCandidate
 from app.utils.logging import getLogger
 
 logger: Logger = getLogger("zammad-ai.answer.middleware")
@@ -135,3 +138,29 @@ def build_knowledgebase_middleware(query_model: BaseChatModel):
             return {"messages": [SystemMessage(content=KB_CONTEXT_EMPTY)]}
 
     return knowledgebase_middleware
+
+
+@observe(as_type="span")
+async def _format_answer(
+    chat_model: BaseChatModel,
+    structured_response: AnswerCandidate,
+    langfuse_client: Any | None,
+    format_prompt: str,
+    format_langfuse_prompt: Any,
+    session_id: str | None = None,
+) -> AnswerCandidate:
+    """Format the answer of the agent."""
+    prompt = [
+        SystemMessage(content=format_prompt),
+        HumanMessage(content=str(structured_response.model_dump_json(indent=2))),
+    ]
+    config: RunnableConfig = (
+        langfuse_client.build_config(langfuse_prompt=format_langfuse_prompt, session_id=session_id)
+        if langfuse_client is not None
+        else RunnableConfig()
+    )
+    structured_model = chat_model.with_structured_output(AnswerCandidate)
+    with propagate_attributes(session_id=session_id):
+        result = await structured_model.ainvoke(prompt, config=config)
+
+    return result if isinstance(result, AnswerCandidate) else AnswerCandidate.model_validate(result)

@@ -24,6 +24,7 @@ from app.settings.answer import (
     StringPromptConfig,
 )
 from app.utils.context_builders import build_answer_context, build_judge_context, merge_contexts
+from app.utils.genai_provider import get_chat_model
 from app.utils.jinja2 import PromptTemplateRenderer, get_template_renderer
 from app.utils.langchain import extract_structured_response, with_recursion_limit
 from app.utils.logging import getLogger
@@ -34,6 +35,7 @@ from .agent import AgentContext, build_agent
 from .dlf import DLFClient
 from .judge import JudgeHandler, JudgeResult
 from .knowledgebase import QdrantKBClient
+from .middleware import _format_answer
 
 logger: Logger = getLogger("zammad-ai.answer.service")
 
@@ -85,6 +87,13 @@ class AnswerService:
             prompt_source_name="agent system prompt",
         )
 
+        self.answer_chat_model = get_chat_model(settings.genai, "answer")
+
+        self.format_prompt, self.format_prompt_version, self.format_langfuse_prompt = self._resolve_prompt(
+            prompt_config=settings.answer.format_prompt,
+            prompt_source_name="format prompt",
+        )
+
         self.judge_settings: JudgeSettings = settings.answer.judge
         self.judge_handler: JudgeHandler | None = None
         if self.judge_settings.enabled:
@@ -116,7 +125,7 @@ class AnswerService:
             AgentState[AnswerCandidate], AgentContext, AgentState, AgentState[AnswerCandidate]  # type: ignore
         ] = build_agent(
             genai_settings=settings.genai,
-            system_prompt=self.agent_prompt,
+            agent_prompt=self.agent_prompt,
             dlf_enabled=settings.answer.dlf is not None,
             laws=settings.answer.laws,
         )
@@ -213,6 +222,21 @@ class AnswerService:
                 config=config,
                 context=per_request_context,
             )
+
+            if isinstance(structured_response, AnswerCandidate):
+                try:
+                    formatted_response = await _format_answer(
+                        self.answer_chat_model,
+                        structured_response,
+                        self.langfuse_client,
+                        self.format_prompt,
+                        self.format_langfuse_prompt,
+                        session_id=session_id,
+                    )
+                    structured_response.response = formatted_response.response
+                    structured_response.subject = formatted_response.subject
+                except Exception:
+                    logger.error("Failed to format final answer.", exc_info=True)
 
             # Sanitize Markdown asterisks used for emphasis (e.g. **bold**, *italic*)
             # to avoid the frontend/model re-rendering them and consuming context.
@@ -395,15 +419,16 @@ class AnswerService:
         Returns:
             dict[str, int | None]: A dictionary where keys are prompt names and values are their corresponding version numbers (or None if not applicable).
         """
+        prompts: dict[str, int | None] = {}
         if self.settings.answer.agent_prompt.type == "langfuse":
-            prompts: dict[str, int | None] = {
-                "answer": self.agent_prompt_version,
-            }
-        else:
-            prompts: dict[str, int | None] = {}
+            prompts["agent"] = self.agent_prompt_version
+
+        if self.settings.answer.format_prompt.type == "langfuse":
+            prompts["format"] = self.format_prompt_version
 
         if self.judge_handler is not None and self.settings.answer.judge.prompt.type == "langfuse":
             prompts["judge"] = self.judge_prompt_version
+
         return prompts
 
 
