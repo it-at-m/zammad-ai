@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from logging import Logger
-from re import Match, search
+from re import search
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
@@ -32,6 +32,14 @@ class QdrantKBError(Exception):
     """Custom exception for Qdrant-related errors."""
 
     ...
+
+
+def _snapshot_creation_time(snapshot_name: str) -> datetime | None:
+    """Extract the creation time encoded in a Qdrant snapshot name."""
+    match = search(r"\b(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})\b", snapshot_name)
+    if match is None:
+        return None
+    return datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S").replace(tzinfo=timezone.utc)
 
 
 class QdrantKBClient:
@@ -172,40 +180,40 @@ class QdrantKBClient:
         create_snapshot: bool = True
         snapshots: list[SnapshotDescription] = self.client.list_snapshots(collection_name=self.collection_name)
 
-        if len(snapshots) > 0:
-            CREATION_TIME_PATTERN = r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.snapshot)"  # pattern to extract creation time from qdrant snapshot as no metadata is persisted any more.
-            creation_times: list[datetime] = []
-
-            for snapshot in snapshots:
-                match: Match[str] | None = search(CREATION_TIME_PATTERN, snapshot.name)
-                if match is not None:
-                    creation_times.append(datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S"))
-                else:
-                    self.logger.warning(
-                        f"Could not extract timestamp from snapshot name '{snapshot.name}' for collection '{self.collection_name}'"
-                    )
-                    creation_times.append(datetime.min)
-
-            snapshots_w_creation_time: list[tuple[SnapshotDescription, datetime]] = sorted(
-                zip(snapshots, creation_times),
-                key=lambda x: x[1],
-                reverse=True,  # Latest snapshot is first event
+        if snapshots:
+            sorted_snapshots = sorted(
+                snapshots,
+                key=lambda snapshot: (
+                    _snapshot_creation_time(snapshot.name) or datetime.min.replace(tzinfo=timezone.utc)
+                ),
+                reverse=True,
             )
 
-            latest_snapshot_w_creation_time: tuple[SnapshotDescription, datetime] = snapshots_w_creation_time[0]
-            time_difference: timedelta = datetime.now(timezone.utc) - latest_snapshot_w_creation_time[1]
+            latest_snapshot = sorted_snapshots[0]
+            latest_snapshot_created_at = _snapshot_creation_time(latest_snapshot.name)
 
-            if time_difference < timedelta(hours=self.qdrant_settings.snapshot_delta):
-                create_snapshot = False
+            if latest_snapshot_created_at is None:
+                self.logger.warning(
+                    f"Could not extract timestamp from snapshot name '{latest_snapshot.name}' for collection '{self.collection_name}'"
+                )
             else:
-                cutoff_index: int = self.qdrant_settings.num_snapshots - 1
-                if len(snapshots_w_creation_time) > cutoff_index:
-                    for snapshot, _ in snapshots_w_creation_time[cutoff_index:]:
-                        self.client.delete_snapshot(
-                            collection_name=self.collection_name,
-                            snapshot_name=snapshot.name,
-                        )
-                    self.logger.info(msg="Deleted old snapshots.")
+                time_difference: timedelta = datetime.now(timezone.utc) - latest_snapshot_created_at
+
+                if time_difference < timedelta(hours=self.qdrant_settings.snapshot_delta):
+                    create_snapshot = False
+                else:
+                    cutoff_index: int = self.qdrant_settings.num_snapshots - 1
+                    if len(sorted_snapshots) > cutoff_index:
+                        for snapshot in sorted_snapshots[cutoff_index:]:
+                            if _snapshot_creation_time(snapshot.name) is None:
+                                self.logger.warning(
+                                    f"Could not extract timestamp from snapshot name '{snapshot.name}' for collection '{self.collection_name}'"
+                                )
+                            self.client.delete_snapshot(
+                                collection_name=self.collection_name,
+                                snapshot_name=snapshot.name,
+                            )
+                        self.logger.info(msg="Deleted old snapshots.")
 
         if create_snapshot:
             new_snapshot: SnapshotDescription | None = self.client.create_snapshot(
