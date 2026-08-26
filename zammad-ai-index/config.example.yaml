@@ -70,10 +70,16 @@ qdrant:
   timeout: 60
   # Number of nearest-neighbour documents to retrieve per search query.
   retrieval_num_documents: 5
+
   # Optional: Can be dense, sparse or hybrid. When sparse or hybrid is used, a sparse embedding implementation must be used
   # retrieval_mode: hybrid
   # Optional: Name of the sparse vector
   # sparse_vector_name: sparse
+
+  # The maximum number of snapshots to keep in Qdrant. Older snapshots will be deleted when creating a new snapshot.
+  num_snapshots: 10
+  # Minimum delta between snapshots in hours.
+  snapshot_delta: 12
 
 # ---------------------------------------------------------------------------
 # Law ingestion (optional)

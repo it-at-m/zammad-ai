@@ -47,3 +47,11 @@ class QdrantSettings(BaseModel):
         description="Name of the sparse vector configuration in the Qdrant collection (used when retrieval_mode is 'sparse' or 'hybrid').",
         default="sparse",
     )
+    num_snapshots: PositiveInt = Field(
+        description="The maximum number of snapshots to keep in Qdrant. Older snapshots will be deleted when creating a new snapshot.",
+        default=10,
+    )
+    snapshot_delta: PositiveInt = Field(
+        description="Minimum delta between snapshots in hours.",
+        default=12,
+    )
