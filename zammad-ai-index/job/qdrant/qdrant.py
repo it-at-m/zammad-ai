@@ -1,8 +1,8 @@
 """Qdrant access helpers used by the index job."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from logging import Logger
-from re import search
+from re import Match, search
 from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
@@ -164,47 +164,65 @@ class QdrantKBClient:
         )
 
     def create_snapshot(self) -> bool:
-        """Create a snapshot of the Qdrant collection for backup purposes. Delete old snapshots if they exceed the configured limit.
+        """Create a snapshot of the Qdrant collection for backup purposes & delete old snapshots if they exceed the configured limit.
 
         Returns:
-            bool: True if snapshot creation was successful, False otherwise.
+            bool: True if snapshot creation was successful or no new snapshot is needed due to recency, False otherwise.
         """
-        new_snapshot: SnapshotDescription | None = self.client.create_snapshot(
-            collection_name=self.collection_name, wait=True
-        )
+        create_snapshot: bool = True
+        snapshots: list[SnapshotDescription] = self.client.list_snapshots(collection_name=self.collection_name)
 
-        if new_snapshot is None:
-            self.logger.error(f"Failed to create snapshot for collection '{self.collection_name}'")
-            return False
+        if len(snapshots) > 0:
+            CREATION_TIME_PATTERN = r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.snapshot)"  # pattern to extract creation time from qdrant snapshot as no metadata is persisted any more.
+            creation_times: list[datetime] = []
 
-        cutoff_date: datetime = datetime.now(UTC) - timedelta(days=self.qdrant_settings.snapshot_delete_days)
-        snapshots_list: list[SnapshotDescription] = self.client.list_snapshots(collection_name=self.collection_name)
-        deleted_count = 0
-        pattern = r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})(?=\.snapshot)"
-
-        for snapshot in snapshots_list:
-            if not snapshot.creation_time:
-                match = search(pattern, snapshot.name)
-                if match:
-                    timestamp: datetime = datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S")
+            for snapshot in snapshots:
+                match: Match[str] | None = search(CREATION_TIME_PATTERN, snapshot.name)
+                if match is not None:
+                    creation_times.append(datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S"))
                 else:
                     self.logger.warning(
                         f"Could not extract timestamp from snapshot name '{snapshot.name}' for collection '{self.collection_name}'"
                     )
-                    continue
+                    creation_times.append(datetime.min)
+
+            snapshots_w_creation_time: list[tuple[SnapshotDescription, datetime]] = sorted(
+                zip(snapshots, creation_times),
+                key=lambda x: x[1],
+                reverse=True,  # Latest snapshot is first event
+            )
+
+            latest_snapshot_w_creation_time: tuple[SnapshotDescription, datetime] = snapshots_w_creation_time[0]
+            time_difference: timedelta = datetime.now(timezone.utc) - latest_snapshot_w_creation_time[1]
+
+            if time_difference < timedelta(hours=self.qdrant_settings.snapshot_delta):
+                create_snapshot = False
             else:
-                timestamp: datetime = datetime.fromisoformat(snapshot.creation_time.replace("Z", "+00:00"))
-            if timestamp < cutoff_date:
-                self.logger.debug(
-                    f"Deleting old snapshot '{snapshot.name}' created at {snapshot.creation_time} for collection '{self.collection_name}'"
+                cutoff_index: int = self.qdrant_settings.num_snapshots - 1
+                if len(snapshots_w_creation_time) > cutoff_index:
+                    for snapshot, _ in snapshots_w_creation_time[cutoff_index:]:
+                        self.client.delete_snapshot(
+                            collection_name=self.collection_name,
+                            snapshot_name=snapshot.name,
+                        )
+                    self.logger.info(msg="Deleted old snapshots.")
+
+        if create_snapshot:
+            new_snapshot: SnapshotDescription | None = self.client.create_snapshot(
+                collection_name=self.qdrant_settings.collection_name,
+                wait=True,
+            )
+            if new_snapshot is None:
+                self.logger.error(msg="Failed to create new snapshot")
+                return False
+            else:
+                self.logger.info(
+                    msg=f"Created new snapshot '{new_snapshot.name}' for collection '{self.collection_name}'."
                 )
-                self.client.delete_snapshot(collection_name=self.collection_name, snapshot_name=snapshot.name)
-                deleted_count += 1
-        self.logger.info(
-            f"Created new snapshot '{new_snapshot.name}' for collection '{self.collection_name}'. "
-            f"Deleted {deleted_count} old snapshots older than {self.qdrant_settings.snapshot_delete_days} days."
-        )
-        return True
+                return True
+        else:
+            self.logger.info(msg="No new snapshot created, recent one already exists.")
+            return True
 
     def add_documents(self, items: list[QdrantDocumentItem]) -> None:
         """Add multiple Qdrant document items to the collection.
