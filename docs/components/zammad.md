@@ -38,7 +38,7 @@ Incoming Zammad data and outgoing requests are validated using Pydantic models d
 ## Related Configuration
 
 - `zammad.type`
-- `zammad.base_url` -> The base URL of the Zammad instance. To use as api or to generate links to e.g. knowledge base articles.
+- `zammad.base_url` -> Base URL of the Zammad instance. Use it for API calls and to generate links, such as knowledge base articles.
 - `zammad.knowledge_base_id`
 - `zammad.auth_token` or EAI OAuth fields
 - `zammad.document_parsing`
