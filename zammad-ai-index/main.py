@@ -155,7 +155,6 @@ def _prepare_and_filter_data(
         answers=answers,
         client=zammad_client,
     )
-    logger.debug("Prepared Qdrant data", extra={"stage": "prepare_qdrant_data", "count": len(qdrant_data)})
 
     # Filter to only include changed documents
     filtered_items: list[QdrantDocumentItem] = filter_for_changed_data(
