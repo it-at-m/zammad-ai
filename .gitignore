@@ -367,4 +367,4 @@ qdrant_data/
 config.yaml
 
 # certs
-ca-bundle.crt
+*.crt
