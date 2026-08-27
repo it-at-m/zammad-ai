@@ -46,6 +46,8 @@ LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=...
 ```
 
+**Info:** Variables in `.env` that are not fields in the Pydantic settings model are not automatically loaded into the configuration. For example, `OPENAI_API_KEY` is used by the OpenAI SDK but not by the Pydantic settings model.
+
 Guardrails service secrets:
 
 ```env

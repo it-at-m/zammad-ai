@@ -37,6 +37,7 @@ frontend:
     post_internal_note: false
     language: "de"
     tags: []
+    salt: "change-me"
 ```
 
 Environment variable overrides follow the usual nested settings pattern, e.g.:
@@ -46,3 +47,4 @@ Environment variable overrides follow the usual nested settings pattern, e.g.:
 - `ZAMMAD_AI_FRONTEND__AUTH_PASSWORD`
 - `ZAMMAD_AI_FRONTEND__FEEDBACK__POST_INTERNAL_NOTE`
 - `ZAMMAD_AI_FRONTEND__FEEDBACK__LANGUAGE`
+- `ZAMMAD_AI_FRONTEND__FEEDBACK__SALT`

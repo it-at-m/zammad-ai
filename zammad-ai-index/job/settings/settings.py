@@ -172,4 +172,4 @@ def get_settings() -> ZammadAIIndexSettings:
     Returns:
         ZammadAIIndexSettings: The cached settings instance used by the application.
     """
-    return ZammadAIIndexSettings()  # type: ignore
+    return ZammadAIIndexSettings()

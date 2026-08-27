@@ -11,7 +11,7 @@ FastAPI service that evaluates prompts and generated responses for the Zammad-AI
 - `POST /api/v1/guardrails/prompt`
 - `POST /api/v1/guardrails/response`
 - Optional bearer authentication
-- Model cache support and offline mode
+- Model cache support and offline mode (The service must run in an environment with internet access at least once to download the model weights)
 
 ## API
 
