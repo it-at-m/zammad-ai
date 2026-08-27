@@ -483,16 +483,16 @@ wheels = [
 
 [[package]]
 name = "faststream"
-version = "0.7.4"
+version = "0.7.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "fast-depends", extra = ["pydantic"] },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/7b/bba48f21d1283a56e420ea4b72a44a9dacafdb20a29665c028f0cc615301/faststream-0.7.4.tar.gz", hash = "sha256:1700b8729cca4ebd5873da675495639826737bb4a4e64eae50dbaefae657bf13", size = 335422, upload-time = "2026-08-07T13:35:36.559Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/0c/2b233cb66e8f776de24d8aa0f8fd0055fdeea65bff6daa902cb95f46e103/faststream-0.7.5.tar.gz", hash = "sha256:a8185385e4fe64f2f0420c8cd38a55a183f4599e5343b77bf16abc9f62ccaadf", size = 340955, upload-time = "2026-08-27T08:54:16.298Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/b6/979dfdd970e6a4606680698c05de199e597261175b53963e11907c0eb7d2/faststream-0.7.4-py3-none-any.whl", hash = "sha256:57fe079ff32efd90b5ff5d56b71a4c47cae12544b2e1b791751e30031f8f3bad", size = 563184, upload-time = "2026-08-07T13:35:34.938Z" },
+    { url = "https://files.pythonhosted.org/packages/56/45/4f96ecafb94707364e283defca94798b47484d69bb77c15175592673568d/faststream-0.7.5-py3-none-any.whl", hash = "sha256:27d1bb3a2945cbd914b326d9b78d3e51d6678293835562be962a8a2189abe20b", size = 569912, upload-time = "2026-08-27T08:54:14.739Z" },
 ]
 
 [package.optional-dependencies]
@@ -2816,7 +2816,7 @@ requires-dist = [
     { name = "cryptography", specifier = "==50.0.1" },
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "fastembed", specifier = "==0.8.0" },
-    { name = "faststream", extras = ["cli", "kafka", "prometheus"], specifier = "==0.7.4" },
+    { name = "faststream", extras = ["cli", "kafka", "prometheus"], specifier = "==0.7.5" },
     { name = "feedparser", specifier = "==6.0.14" },
     { name = "gradio", specifier = "==6.26.0" },
     { name = "httpx", extras = ["socks"], specifier = "==0.28.1" },
