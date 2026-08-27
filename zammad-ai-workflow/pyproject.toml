@@ -31,7 +31,7 @@ dependencies = [
     "langfuse==4.14.5",
     "anthropic==0.125.0",
     "markdownify==1.2.3",
-    "openai==2.54.0",
+    "openai==3.5.0",
     "pandas==3.0.5",
     "pydantic-settings==2.15.0",
     "pydantic==2.13.4",
