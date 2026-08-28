@@ -6,7 +6,6 @@ from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
 from app.guardrails import GuardrailService, reset_guardrail_service
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
-from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
 from app.settings.triage import ActionTypes
@@ -154,7 +153,7 @@ class ActionService:
             ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
         """
         # Evaluate guardrails before answer generation
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+        guardrail_result: bool = await self.guardrail_service.evaluate(
             user_text,
             toxicity_labels=[
                 "violence_and_weapons",
@@ -172,13 +171,9 @@ class ActionService:
             ],
             jailbreak_labels=None,
         )
-        if self.settings.guardrails.enabled:
-            self.logger.info(
-                f"Guardrail check in get_answer for ticket {ticket_id if ticket_id is not None else 'unknown'}: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"
-            )
 
         if (
-            (not guardrail_result or not guardrail_result.prompt_safety == "safe")
+            not guardrail_result
             and self.guardrail_service.settings.block_on_high_risk
             and self.guardrail_service.settings.enabled
         ):
@@ -234,12 +229,12 @@ class ActionService:
 
         # Evaluate guardrails on the generated response as well
         if isinstance(response, AnswerCandidate):
-            response_guardrail_result: GuardrailResponseResult | None = await self.guardrail_service.evaluate_response(
+            response_guardrail_result: bool = await self.guardrail_service.evaluate_response(
                 text=user_text, response=response.response
             )
             self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
             if (
-                (not response_guardrail_result or not response_guardrail_result.response_safety == "safe")
+                not response_guardrail_result
                 and self.guardrail_service.settings.block_on_high_risk
                 and self.guardrail_service.settings.enabled
             ):

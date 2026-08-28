@@ -8,7 +8,6 @@ from stamina import retry_context
 
 from app.errors import DLFPermanentError, DLFRetryableError
 from app.guardrails.http_client import GuardrailService
-from app.models.guardrails import GuardrailResult
 from app.settings.answer import DLFSettings
 from app.utils.logging import getLogger
 
@@ -105,7 +104,7 @@ class DLFClient:
             DLFError: If there is an error during retrieval, such as network issues or invalid responses from the DLF API.
         """
         # Check query for PII and safety using guardrails
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+        guardrail_result: bool = await self.guardrail_service.evaluate(
             query,
             toxicity_labels=[
                 "pii_exposure",
@@ -115,23 +114,11 @@ class DLFClient:
             ],
             jailbreak_labels=None,
         )
-        if guardrail_result is not None:
-            if guardrail_result.prompt_safety == "unsafe":
-                self.logger.warning(
-                    msg="Query flagged as unsafe by guardrails.",
-                    extra={"guardrail_result": guardrail_result.model_dump()},
-                )
-                raise DLFError("Query flagged as unsafe by guardrails.")
-            if (
-                "pii_exposure" in guardrail_result.prompt_toxicity
-                or "privacy_violation" in guardrail_result.prompt_toxicity
-                or "non_violent_crime" in guardrail_result.prompt_toxicity
-            ):
-                self.logger.warning(
-                    msg="Query flagged for potential PII exposure by guardrails.",
-                    extra={"guardrail_result": guardrail_result.model_dump()},
-                )
-                raise DLFError("Query flagged for potential PII exposure by guardrails.")
+        if not guardrail_result:
+            self.logger.warning(
+                msg="Query flagged as unsafe by guardrails.",
+            )
+            raise DLFError("Query flagged as unsafe by guardrails.")
 
         # Create payload
         payload = DLFAPIPayload(

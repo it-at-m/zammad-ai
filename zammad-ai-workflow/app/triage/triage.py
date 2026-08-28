@@ -17,7 +17,6 @@ from app.errors import (
     TriageError as AppTriageError,
 )
 from app.guardrails import GuardrailService, get_guardrail_service, reset_guardrail_service
-from app.models.guardrails import GuardrailResult
 from app.models.triage import (
     CategorizationResult,
     DaysSinceRequestResponse,
@@ -320,7 +319,7 @@ class TriageService:
             )
 
         # Evaluate guardrails before categorization
-        guardrail_result: GuardrailResult | None = await self.guardrail_service.evaluate(
+        guardrail_result: bool = await self.guardrail_service.evaluate(
             message,
             toxicity_labels=[
                 "violence_and_weapons",
@@ -338,13 +337,8 @@ class TriageService:
             ],
             jailbreak_labels=None,
         )
-        if self.settings.guardrails.enabled:
-            logger.info(
-                f"Guardrail check in predict_category: safety={guardrail_result.prompt_safety if guardrail_result else 'unknown'}, toxicity={guardrail_result.prompt_toxicity if guardrail_result else 'unknown'}, jailbreak={guardrail_result.jailbreak_detection if guardrail_result else 'unknown'}"
-            )
-
         if (
-            (not guardrail_result or not guardrail_result.prompt_safety == "safe")
+            not guardrail_result
             and self.guardrail_service.settings.block_on_high_risk
             and self.guardrail_service.settings.enabled
         ):

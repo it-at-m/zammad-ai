@@ -48,15 +48,15 @@ class GuardrailService:
 
     async def evaluate(
         self, text: str, toxicity_labels: list[str] | None = None, jailbreak_labels: list[str] | None = None
-    ) -> GuardrailResult | None:
+    ) -> bool:
         """Evaluate user input text via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return None
+            return False
 
         # Skip empty text to avoid unnecessary calls
         if not text or not text.strip():
             logger.debug("Guardrail skipped for empty text")
-            return SAFE_PROMPT_RESULT
+            return True
 
         url = f"{self._base_url}/api/v1/guardrails/prompt"
         payload = {
@@ -71,11 +71,12 @@ class GuardrailService:
             resp.raise_for_status()
             data: Any = resp.json()
             # Coerce using our Pydantic model to guard against schema drift
-            return GuardrailResult(**data)
+            result = GuardrailResult(**data)
+            return is_guardrail_safe(result)
         except Exception:
             # Fail-open on any error
             logger.error("Remote guardrail evaluate failed.", exc_info=True)
-            return None
+            return False
 
     async def close(self) -> None:
         """Close the underlying HTTPX client."""
@@ -85,16 +86,14 @@ class GuardrailService:
         await self._client.aclose()
         self._closed = True
 
-    async def evaluate_response(
-        self, text: str, response: str, toxicity_labels: list[str] | None = None
-    ) -> GuardrailResponseResult | None:
+    async def evaluate_response(self, text: str, response: str, toxicity_labels: list[str] | None = None) -> bool:
         """Evaluate generated response via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return None
+            return False
 
         if not response or not response.strip():
             logger.debug("Guardrail skipped for empty response")
-            return SAFE_RESPONSE_RESULT
+            return True
 
         url = f"{self._base_url}/api/v1/guardrails/response"
         payload = {
@@ -108,10 +107,10 @@ class GuardrailService:
             resp: Response = await self._client.post(url, json=payload)
             resp.raise_for_status()
             data: Any = resp.json()
-            return GuardrailResponseResult(**data)
+            return is_guardrail_safe(GuardrailResponseResult(**data))
         except Exception:
             logger.error("Remote guardrail evaluate_response failed.", exc_info=True)
-            return None
+            return False
 
 
 _service: GuardrailService | None = None
@@ -133,3 +132,22 @@ def reset_guardrail_service() -> None:
     """Clear the shared GuardrailService singleton so it can be recreated."""
     global _service
     _service = None
+
+
+def is_guardrail_safe(guardrail_result: GuardrailResult | GuardrailResponseResult | None) -> bool:
+    """Determine if the guardrail result is safe or not."""
+    if guardrail_result is None:
+        return False
+    elif isinstance(guardrail_result, GuardrailResult):
+        if guardrail_result.prompt_safety == "safe":
+            return True
+        if (
+            len(guardrail_result.jailbreak_detection) == 1 and guardrail_result.jailbreak_detection[0] == "benign"
+        ) and (len(guardrail_result.prompt_toxicity) == 1 and guardrail_result.prompt_toxicity[0] == "benign"):
+            return True
+    elif isinstance(guardrail_result, GuardrailResponseResult):
+        if guardrail_result.response_safety == "safe":
+            return True
+        if len(guardrail_result.response_toxicity) == 1 and guardrail_result.response_toxicity[0] == "benign":
+            return True
+    return False
