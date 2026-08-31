@@ -5,6 +5,7 @@ from logging import Logger
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError
 from app.guardrails import GuardrailService, reset_guardrail_service
+from app.metrics import record_kafka_ticket_outcome
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.models.triage import Action
@@ -81,6 +82,11 @@ class ActionService:
                     subject=response.subject if isinstance(response, AnswerCandidate) else "Answer",
                     internal=False,
                 )
+                record_kafka_ticket_outcome(
+                    category=triage.category.name,
+                    action_type=triage.action.type,
+                    outcome="answer",
+                )
                 self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
                 # Optionally schedule the ticket to be moved to a pending-close state after configured days
                 try:
@@ -97,6 +103,11 @@ class ActionService:
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
                     text=response.response,
+                )
+                record_kafka_ticket_outcome(
+                    category=triage.category.name,
+                    action_type=triage.action.type,
+                    outcome="shared_draft",
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
                 if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):
@@ -209,6 +220,7 @@ class ActionService:
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
+            record_kafka_ticket_outcome(category=category_name, action_type=action.type, outcome="manual")
             self.logger.info(
                 f"Action {action.name} is of type No_Action. No answer will be generated for ticket {ticket_id if ticket_id is not None else 'unknown'}."
             )

@@ -24,6 +24,7 @@ from app.kafka.helper import (
     _safe_ticket_id,
     _sleep_until_retry_after,
 )
+from app.metrics import record_processed_main_kafka_event
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
@@ -44,7 +45,7 @@ async def _process_ticket_event(
     triage_service: TriageService,
     action_service: ActionService,
     event: Event | dict[str, object],
-    group_state: dict[str, int | None],
+    group_state: dict[str, int | str | None],
 ) -> None:
     """Parse and process a Kafka event."""
     if isinstance(event, Event):
@@ -104,6 +105,8 @@ async def _process_ticket_event(
     except TypeError, ValueError:
         raise KafkaPayloadError("Invalid ticket id in Kafka payload")
 
+    record_processed_main_kafka_event()
+
     zammad_client: BaseZammadClient = triage_service.zammad_client
     try:
         ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
@@ -159,6 +162,8 @@ async def _process_ticket_event(
         original_group_id = None
 
     result: TriageResult = await triage_service.perform_triage(ticket=ticket)
+    group_state["category"] = result.category.name
+    group_state["action_type"] = result.action.type.value
     logger.debug(
         "Triage result ready",
         extra={
@@ -170,6 +175,18 @@ async def _process_ticket_event(
         },
     )
     await action_service.execute_action(ticket_id=ticket_id, triage=result)
+
+
+def _get_group_state_str(group_state: dict[str, int | str | None], key: str) -> str | None:
+    """Return a string value from group state when present."""
+    value = group_state.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _get_group_state_int(group_state: dict[str, int | str | None], key: str) -> int | None:
+    """Return an integer value from group state when present."""
+    value = group_state.get(key)
+    return value if isinstance(value, int) else None
 
 
 def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
@@ -203,7 +220,9 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
     triage_service: TriageService = get_triage_service(settings=settings)
     answer_service: AnswerService = get_answer_service(guardrail_service=guardrail_service, settings=settings)
-    action_service: ActionService = get_action_service(settings=settings, guardrail_service=guardrail_service, answer_service=answer_service)
+    action_service: ActionService = get_action_service(
+        settings=settings, guardrail_service=guardrail_service, answer_service=answer_service
+    )
     broker = router.broker
 
     @router.subscriber(
@@ -214,7 +233,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     async def event_handler(event: Event | dict[str, object]) -> None:
         """Process a Kafka event from the main topic."""
         async with track_activity():
-            group_state: dict[str, int | None] = {}
+            group_state: dict[str, int | str | None] = {}
             try:
                 await _process_ticket_event(
                     settings=settings,
@@ -223,7 +242,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     event=event,
                     group_state=group_state,
                 )
-                original_group_id = group_state.get("original_group_id")
+                original_group_id = _get_group_state_int(group_state, "original_group_id")
                 if original_group_id is not None:
                     ticket_id = (
                         _safe_ticket_id(event.ticket)
@@ -251,8 +270,10 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     settings=settings,
                     zammad_client=triage_service.zammad_client,
                     event=Event.model_validate(event) if not isinstance(event, Event) else event,
-                    original_group_id=group_state.get("original_group_id"),
+                    original_group_id=_get_group_state_int(group_state, "original_group_id"),
                     retry_count=0,
+                    category=_get_group_state_str(group_state, "category"),
+                    action_type=_get_group_state_str(group_state, "action_type"),
                 )
             raise AckMessage()
 
@@ -269,7 +290,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
     ) -> None:
         """Process retryable Kafka events after waiting for their retry window."""
         async with track_activity():
-            group_state: dict[str, int | None] = {}
+            group_state: dict[str, int | str | None] = {}
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
             remaining_delay_seconds = await _sleep_until_retry_after(
@@ -295,7 +316,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     group_state=group_state,
                 )
                 if parsed_original_group_id is None:
-                    parsed_original_group_id = group_state.get("original_group_id")
+                    parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
                 if parsed_original_group_id is not None:
                     ticket_id = (
                         _safe_ticket_id(event.ticket)
@@ -315,7 +336,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             except Exception as e:
                 parsed_original_group_id = _parse_original_group_id(original_group_id)
                 if parsed_original_group_id is None:
-                    parsed_original_group_id = group_state.get("original_group_id")
+                    parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)
@@ -328,6 +349,8 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     event=Event.model_validate(event) if not isinstance(event, Event) else event,
                     original_group_id=parsed_original_group_id,
                     retry_count=parsed_retry_count,
+                    category=_get_group_state_str(group_state, "category"),
+                    action_type=_get_group_state_str(group_state, "action_type"),
                 )
             raise AckMessage()
 

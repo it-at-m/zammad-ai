@@ -39,6 +39,17 @@ Collected while the answer service generates responses:
 
 Kafka processing metrics use the `zammad_ai_kafka_*` prefix and are emitted by the Kafka middleware layer.
 
+Business counters derived from Kafka processing are also exported:
+
+- `zammad_ai_kafka_events_total`
+  - Counts only main-topic Kafka events that pass payload parsing and request/action filtering.
+  - Retry-topic events and filtered events are not counted.
+- `zammad_ai_kafka_ticket_outcomes_total`
+  - Counts Kafka-driven ticket outcomes with labels `category`, `action_type`, and `outcome`.
+  - `action_type` values are normalized to `ai_answer`, `static_answer`, `no_action`, or `unknown`.
+  - `outcome` values currently include `answer`, `shared_draft`, `manual`, and `aborted_with_error`.
+  - When a ticket aborts before a triage result exists, `category="unknown"` and `action_type="unknown"` are used.
+
 ## Configuration
 
 Prometheus is configured in `config.yaml` under the `prometheus` section:
