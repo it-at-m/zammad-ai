@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from logging import getLogger
 from typing import Any, Final
 
 import httpx
@@ -9,9 +10,9 @@ from dotenv import load_dotenv
 from httpx._models import Response
 from truststore import inject_into_ssl
 
+from app.errors import GuardrailEvaluationError
 from app.models.guardrails import GuardrailResponseResult, GuardrailResult
 from app.settings.guardrails import GuardrailSettings
-from app.utils.logging import getLogger
 
 load_dotenv()
 inject_into_ssl()
@@ -51,7 +52,7 @@ class GuardrailService:
     ) -> bool:
         """Evaluate user input text via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return False
+            return True
 
         # Skip empty text to avoid unnecessary calls
         if not text or not text.strip():
@@ -73,10 +74,10 @@ class GuardrailService:
             # Coerce using our Pydantic model to guard against schema drift
             result = GuardrailResult(**data)
             return is_guardrail_safe(result)
-        except Exception:
+        except Exception as e:
             # Fail-open on any error
             logger.error("Remote guardrail evaluate failed.", exc_info=True)
-            return False
+            raise GuardrailEvaluationError("Remote guardrail evaluate failed") from e
 
     async def close(self) -> None:
         """Close the underlying HTTPX client."""
@@ -89,7 +90,7 @@ class GuardrailService:
     async def evaluate_response(self, text: str, response: str, toxicity_labels: list[str] | None = None) -> bool:
         """Evaluate generated response via remote guardrail service or skip when disabled."""
         if not self.settings.enabled:
-            return False
+            return True
 
         if not response or not response.strip():
             logger.debug("Guardrail skipped for empty response")
@@ -108,9 +109,9 @@ class GuardrailService:
             resp.raise_for_status()
             data: Any = resp.json()
             return is_guardrail_safe(GuardrailResponseResult(**data))
-        except Exception:
+        except Exception as e:
             logger.error("Remote guardrail evaluate_response failed.", exc_info=True)
-            return False
+            raise GuardrailEvaluationError("Remote guardrail evaluate_response failed") from e
 
 
 _service: GuardrailService | None = None

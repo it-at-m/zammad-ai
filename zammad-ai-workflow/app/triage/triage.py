@@ -10,6 +10,7 @@ from truststore import inject_into_ssl
 
 from app.errors import (
     GenAIError,
+    GuardrailEvaluationError,
     TriageCategoryWrongError,
     ZammadRetryableError,
 )
@@ -319,39 +320,32 @@ class TriageService:
             )
 
         # Evaluate guardrails before categorization
-        guardrail_result: bool = await self.guardrail_service.evaluate(
-            message,
-            toxicity_labels=[
-                "violence_and_weapons",
-                "sexual_content",
-                "hate_and_discrimination",
-                "self_harm_and_suicide",
-                "misinformation",
-                "copyright_violation",
-                "child_safety",
-                "political_manipulation",
-                "unethical_conduct",
-                "regulated_advice",
-                "other",
-                "benign",
-            ],
-            jailbreak_labels=None,
-        )
-        if (
-            not guardrail_result
-            and self.guardrail_service.settings.block_on_high_risk
-            and self.guardrail_service.settings.enabled
-        ):
-            logger.warning("Categorization blocked by guardrails")
-            if not guardrail_result:
-                raise TriageError(
-                    "Guardrail evaluation failed or returned no result; categorization blocked",
-                    retryable=True,
-                )
-            raise TriageError(
-                f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
-                retryable=False,
+        try:
+            guardrail_result: bool = await self.guardrail_service.evaluate(
+                message,
+                toxicity_labels=[
+                    "violence_and_weapons",
+                    "sexual_content",
+                    "hate_and_discrimination",
+                    "self_harm_and_suicide",
+                    "misinformation",
+                    "copyright_violation",
+                    "child_safety",
+                    "political_manipulation",
+                    "unethical_conduct",
+                    "regulated_advice",
+                    "other",
+                    "benign",
+                ],
+                jailbreak_labels=None,
             )
+        except GuardrailEvaluationError as e:
+            logger.error("Guardrail evaluation failed before categorization.", exc_info=True)
+            raise TriageError("Guardrail evaluation failed before categorization", retryable=True) from e
+
+        if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not guardrail_result:
+            logger.warning("Categorization blocked by guardrails")
+            raise TriageError("Input failed safety checks", retryable=False)
 
         if len(message) > self.max_user_text_length:
             logger.warning(

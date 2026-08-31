@@ -3,7 +3,7 @@
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
-from app.errors import ActionExecutionError, AppError
+from app.errors import ActionExecutionError, AppError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.triage import Action
@@ -153,42 +153,34 @@ class ActionService:
             ActionExecutionError: If guardrails fail with block_on_high_risk enabled, or if no action is found.
         """
         # Evaluate guardrails before answer generation
-        guardrail_result: bool = await self.guardrail_service.evaluate(
-            user_text,
-            toxicity_labels=[
-                "violence_and_weapons",
-                "sexual_content",
-                "hate_and_discrimination",
-                "self_harm_and_suicide",
-                "misinformation",
-                "copyright_violation",
-                "child_safety",
-                "political_manipulation",
-                "unethical_conduct",
-                "regulated_advice",
-                "other",
-                "benign",
-            ],
-            jailbreak_labels=None,
-        )
+        try:
+            guardrail_result: bool = await self.guardrail_service.evaluate(
+                user_text,
+                toxicity_labels=[
+                    "violence_and_weapons",
+                    "sexual_content",
+                    "hate_and_discrimination",
+                    "self_harm_and_suicide",
+                    "misinformation",
+                    "copyright_violation",
+                    "child_safety",
+                    "political_manipulation",
+                    "unethical_conduct",
+                    "regulated_advice",
+                    "other",
+                    "benign",
+                ],
+                jailbreak_labels=None,
+            )
+        except GuardrailEvaluationError as e:
+            self.logger.error("Guardrail evaluation failed before answer generation.", exc_info=True)
+            raise ActionExecutionError("Guardrail evaluation failed before answer generation", retryable=True) from e
 
-        if (
-            not guardrail_result
-            and self.guardrail_service.settings.block_on_high_risk
-            and self.guardrail_service.settings.enabled
-        ):
+        if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not guardrail_result:
             self.logger.warning(
                 f"Answer generation blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
             )
-            if not guardrail_result:
-                raise ActionExecutionError(
-                    "Guardrail evaluation failed or returned no result; action execution blocked",
-                    retryable=True,
-                )
-            raise ActionExecutionError(
-                f"Input failed safety checks: {guardrail_result.prompt_toxicity}, {guardrail_result.jailbreak_detection}",
-                retryable=False,
-            )
+            raise ActionExecutionError("Input failed safety checks", retryable=False)
 
         if len(user_text) > self.settings.max_user_text_length:
             self.logger.warning(
@@ -229,27 +221,21 @@ class ActionService:
 
         # Evaluate guardrails on the generated response as well
         if isinstance(response, AnswerCandidate):
-            response_guardrail_result: bool = await self.guardrail_service.evaluate_response(
-                text=user_text, response=response.response
-            )
+            try:
+                response_guardrail_result: bool = await self.guardrail_service.evaluate_response(
+                    text=user_text, response=response.response
+                )
+            except GuardrailEvaluationError as e:
+                self.logger.error("Guardrail evaluation failed for generated response.", exc_info=True)
+                raise ActionExecutionError(
+                    "Guardrail evaluation failed for generated response", retryable=True
+                ) from e
             self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
-            if (
-                not response_guardrail_result
-                and self.guardrail_service.settings.block_on_high_risk
-                and self.guardrail_service.settings.enabled
-            ):
+            if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not response_guardrail_result:
                 self.logger.warning(
                     f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
                 )
-                if not response_guardrail_result:
-                    raise ActionExecutionError(
-                        "Guardrail evaluation for generated response failed or returned no result; action execution blocked",
-                        retryable=True,
-                    )
-                raise ActionExecutionError(
-                    f"Generated response failed safety checks: {response_guardrail_result.response_toxicity}, {response_guardrail_result.response_refusal}",
-                    retryable=False,
-                )
+                raise ActionExecutionError("Generated response failed safety checks", retryable=False)
 
         return response
 

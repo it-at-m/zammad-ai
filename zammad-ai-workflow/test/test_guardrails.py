@@ -4,6 +4,7 @@ import httpx
 import pytest
 from pydantic import HttpUrl
 
+from app.errors import GuardrailEvaluationError
 from app.guardrails import GuardrailService
 from app.settings.guardrails import GuardrailSettings
 
@@ -28,13 +29,13 @@ def guardrail_service(guardrail_settings: GuardrailSettings) -> GuardrailService
 
 @pytest.mark.asyncio
 async def test_guardrail_service_disabled() -> None:
-    """When disabled, guardrail client should return None."""
+    """When disabled, guardrail client should allow the request through."""
     settings = GuardrailSettings(enabled=False)
     service = GuardrailService(settings)
 
     result = await service.evaluate("any text")
 
-    assert result is False
+    assert result is True
 
 
 def test_guardrail_settings_defaults() -> None:
@@ -71,13 +72,13 @@ def test_guardrail_settings_block_on_high_risk() -> None:
 
 @pytest.mark.asyncio
 async def test_guardrail_response_disabled() -> None:
-    """When disabled, response guardrail should return None."""
+    """When disabled, response guardrail should allow the response through."""
     settings = GuardrailSettings(enabled=False)
     service = GuardrailService(settings)
 
     result = await service.evaluate_response("prompt", "response")
 
-    assert result is False
+    assert result is True
 
 
 @pytest.mark.asyncio
@@ -132,8 +133,8 @@ async def test_guardrail_http_response_success(guardrail_settings: GuardrailSett
 
 
 @pytest.mark.asyncio
-async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSettings) -> None:
-    """Client fails with None on HTTP errors."""
+async def test_guardrail_http_error_raises_evaluation_error(guardrail_settings: GuardrailSettings) -> None:
+    """Client should raise a retryable evaluation error on HTTP failures."""
     service = GuardrailService(guardrail_settings)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -142,11 +143,11 @@ async def test_guardrail_http_error_fail_open(guardrail_settings: GuardrailSetti
     transport = httpx.MockTransport(handler)
     service._client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=2.0)
 
-    result_prompt = await service.evaluate("text")
-    result_response = await service.evaluate_response("prompt", "response")
+    with pytest.raises(GuardrailEvaluationError):
+        await service.evaluate("text")
 
-    assert result_prompt is False
-    assert result_response is False
+    with pytest.raises(GuardrailEvaluationError):
+        await service.evaluate_response("prompt", "response")
 
 
 @pytest.mark.asyncio
@@ -162,7 +163,7 @@ async def test_guardrail_service_close_is_idempotent(guardrail_settings: Guardra
             self.calls += 1
 
     dummy_client = DummyClient()
-    service._client = dummy_client  # ty: ignore[invalid-assignment]
+    service.__dict__["_client"] = dummy_client
 
     await service.close()
     await service.close()
