@@ -47,17 +47,21 @@ async def test_retrieve_documents_allows_queries_when_guardrails_disabled() -> N
             },
         )
 
+    await service.client.aclose()
     service.__dict__["client"] = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://testserver",
         timeout=2.0,
     )
 
-    documents = await service.retrieve_documents("unsafe query")
+    try:
+        documents = await service.retrieve_documents("unsafe query")
 
-    assert len(documents) == 1
-    assert documents[0].title == "Example"
-    assert documents[0].content == "Line 1 Line 2"
+        assert len(documents) == 1
+        assert documents[0].title == "Example"
+        assert documents[0].content == "Line 1 Line 2"
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio
@@ -72,11 +76,15 @@ async def test_retrieve_documents_blocks_unsafe_query_when_guardrails_enabled() 
     def handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError(f"Unexpected request to {request.url}")
 
+    await service.client.aclose()
     service.__dict__["client"] = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://testserver",
         timeout=2.0,
     )
 
-    with pytest.raises(DLFError, match="Query flagged as unsafe by guardrails"):
-        await service.retrieve_documents("unsafe query")
+    try:
+        with pytest.raises(DLFError, match="Query flagged as unsafe by guardrails"):
+            await service.retrieve_documents("unsafe query")
+    finally:
+        await service.close()
