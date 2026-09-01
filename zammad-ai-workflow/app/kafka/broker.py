@@ -46,6 +46,7 @@ async def _process_ticket_event(
     action_service: ActionService,
     event: Event | dict[str, object],
     group_state: dict[str, int | str | None],
+    record_processed_event: bool = False,
 ) -> None:
     """Parse and process a Kafka event."""
     if isinstance(event, Event):
@@ -105,7 +106,8 @@ async def _process_ticket_event(
     except TypeError, ValueError:
         raise KafkaPayloadError("Invalid ticket id in Kafka payload")
 
-    record_processed_main_kafka_event()
+    if record_processed_event:
+        record_processed_main_kafka_event()
 
     zammad_client: BaseZammadClient = triage_service.zammad_client
     try:
@@ -241,6 +243,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     action_service=action_service,
                     event=event,
                     group_state=group_state,
+                    record_processed_event=True,
                 )
                 original_group_id = _get_group_state_int(group_state, "original_group_id")
                 if original_group_id is not None:
@@ -314,6 +317,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     action_service=action_service,
                     event=event,
                     group_state=group_state,
+                    record_processed_event=False,
                 )
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")

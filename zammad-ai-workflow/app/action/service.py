@@ -55,6 +55,9 @@ class ActionService:
                 session_id=session_id,
             )
 
+            if triage.action.type == ActionTypes.NoAction:
+                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
+
             if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if not self.settings.triage.no_action_internal_note:
@@ -220,7 +223,6 @@ class ActionService:
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
-            record_kafka_ticket_outcome(category=category_name, action_type=action.type, outcome="manual")
             self.logger.info(
                 f"Action {action.name} is of type No_Action. No answer will be generated for ticket {ticket_id if ticket_id is not None else 'unknown'}."
             )
