@@ -4,11 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from logging import Logger
-
-from app.utils.logging import getLogger
-
-logger: Logger = getLogger("zammad-ai.errors")
 
 
 @dataclass(slots=True, frozen=True)
@@ -82,6 +77,16 @@ class DLFPermanentError(DLFError):
     """Permanent DLF failure that should be dropped."""
 
     retryable = False
+
+
+class GuardrailError(AppError):
+    """Base exception for guardrail evaluation errors."""
+
+
+class GuardrailEvaluationError(GuardrailError):
+    """Transient or malformed guardrail evaluation failure."""
+
+    retryable = True
 
 
 class QdrantError(AppError):
