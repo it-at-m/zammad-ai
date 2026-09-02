@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - id: build_docs
-        uses: it-at-m/lhm_actions/action-templates/actions/action-build-docs@2bb2618a4686a01cc54518c07d9052b80b9a1078 # v1.5.2
+        uses: it-at-m/lhm_actions/action-templates/actions/action-build-docs@54b32c7d11363cad45838c9a3d8a8560b93f0e8c # v1.5.4
         with:
           docs-path: "docs"
       - id: deploy_docs
         # Only deploy documentation from the main branch to prevent unauthorized changes
-        uses: it-at-m/lhm_actions/action-templates/actions/action-deploy-docs@2bb2618a4686a01cc54518c07d9052b80b9a1078 # v1.5.2
+        uses: it-at-m/lhm_actions/action-templates/actions/action-deploy-docs@54b32c7d11363cad45838c9a3d8a8560b93f0e8c # v1.5.4
