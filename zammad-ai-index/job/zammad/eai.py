@@ -114,7 +114,7 @@ class ZammadEAIClient(BaseZammadClient):
             if category_id in visited_categories:
                 continue
             visited_categories.add(category_id)
-            data = self._request("GET", f"/knowledge_bases/{self.kb_id}/categories/{category_id}")
+            data = self._request("GET", f"/knowledgeBases/{self.kb_id}/categories/{category_id}")
             if not data:
                 continue
             stack.extend(data.get("childIds", []))
