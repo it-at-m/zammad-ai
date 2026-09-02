@@ -1,12 +1,18 @@
 [project]
 name = "slm-guardrails"
 license = "MIT"
-version = "1.1.0"
+version = "1.0.4"
 
 description = "Content safety guardrail service for Zammad AI (FastAPI)"
 readme = "README.md"
 requires-python = "==3.14.7"
-authors = [{ name = "Zammad-AI Team" }]
+authors = [
+    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
+    { name = "Paul Ilitz", email = "paul.ilitz@muenchen.de" },
+]
+maintainers = [
+    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
+]
 
 dependencies = [
     "fastapi==0.141.1",
@@ -23,6 +29,7 @@ dependencies = [
     "torch==2.13.0",
     "transformers==5.16.1",
     "setuptools==84.0.0",
+    "peft==0.20.0",
 ]
 
 [dependency-groups]
