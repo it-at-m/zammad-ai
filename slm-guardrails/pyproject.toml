@@ -1,7 +1,7 @@
 [project]
 name = "slm-guardrails"
 license = "MIT"
-version = "1.0.4"
+version = "1.0.5"
 
 description = "Content safety guardrail service for Zammad AI (FastAPI)"
 readme = "README.md"
@@ -37,6 +37,14 @@ dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.4", "ty==0.0.75"]
 
 [tool.uv]
 add-bounds = "exact"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
