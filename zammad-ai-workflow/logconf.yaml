@@ -53,6 +53,10 @@ loggers:
     level: WARNING
     handlers: [httpx]
     propagate: no
+  httpcore2:
+    level: WARNING
+    handlers: [httpx]
+    propagate: no
   PIL.Image:
     level: WARNING
     handlers: [console]

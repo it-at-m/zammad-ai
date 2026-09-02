@@ -42,6 +42,10 @@ loggers:
     level: WARNING
     handlers: [httpx]
     propagate: no
+  httpcore2:
+    level: WARNING
+    handlers: [httpx]
+    propagate: no
   openai:
     level: WARNING
     handlers: [httpx]

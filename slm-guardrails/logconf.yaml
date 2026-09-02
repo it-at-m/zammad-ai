@@ -32,6 +32,10 @@ loggers:
     level: INFO
     handlers: [console]
     propagate: false
+  httpcore2:
+    level: WARNING
+    handlers: [httpx]
+    propagate: no
 root:
   level: INFO
   handlers: [console]
