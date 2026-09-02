@@ -16,6 +16,7 @@ from app.kafka.helper import (
     _reschedule_retry_event,
     _sleep_until_retry_after,
 )
+from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
@@ -80,6 +81,17 @@ def create_mock_settings() -> ZammadAISettings:
         )
     finally:
         sys.argv = original_argv
+
+
+def _get_counter_value(metric, sample_name: str, labels: dict[str, str] | None = None) -> float:
+    for collected_metric in metric.collect():
+        for sample in collected_metric.samples:
+            if sample.name != sample_name:
+                continue
+            if labels is not None and sample.labels != labels:
+                continue
+            return sample.value
+    return 0.0
 
 
 @pytest.fixture
@@ -265,6 +277,70 @@ async def test_event_handler_with_multiple_valid_request_types(
         assert mock_triage.perform_triage.call_count == 1
         called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
         assert called_ticket is not None and called_ticket.id == 3720
+
+
+@pytest.mark.asyncio
+async def test_event_handler_counts_processed_main_events(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Only main-topic events that pass filtering should increment the ingress counter."""
+    baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, _ = build_router(settings=settings)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(topic=settings.kafka.topic, message=kafka_message_factory())
+
+    assert mock_triage.perform_triage.call_count == 1
+    assert _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total") == baseline + 1
+
+
+@pytest.mark.asyncio
+async def test_event_handler_does_not_count_filtered_events(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Filtered main-topic events should not increment the ingress counter."""
+    baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, _ = build_router(settings=settings)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.topic,
+            message=kafka_message_factory(anliegenart="anderer Support"),
+        )
+
+    mock_triage.perform_triage.assert_not_called()
+    assert _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total") == baseline
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_does_not_count_main_event_metric(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retry-topic events should not increment the main ingress counter."""
+    baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, _ = build_router(settings=settings)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.retry_topic,
+            message=kafka_message_factory(),
+            headers={"retry_count": "1"},
+        )
+
+    assert mock_triage.perform_triage.call_count == 1
+    assert _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total") == baseline
 
 
 @pytest.mark.asyncio
@@ -503,6 +579,70 @@ async def test_retry_limit_restores_original_group(
 
     zammad_client.update_ticket_group.assert_awaited_once_with(ticket_id=3720, group_id=17)
     broker.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_limit_counts_aborted_with_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Final retry aborts should increment the aborted-with-error counter."""
+    labels = {"category": "Test", "action_type": "no_action", "outcome": "aborted_with_error"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.max_retry_attempts = 1
+    broker = AsyncMock()
+    zammad_client = AsyncMock()
+    event = Event.model_validate(kafka_message_factory())
+
+    with pytest.raises(AckMessage):
+        await _handle_processing_exception(
+            TriageError("retryable triage", retryable=True),
+            ticket_id=3720,
+            category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+            broker=broker,
+            settings=settings,
+            zammad_client=zammad_client,
+            event=event,
+            original_group_id=None,
+            retry_count=1,
+            category="Test",
+            action_type="NoAction",
+        )
+
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline + 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_intermediate_retry_does_not_count_aborted_with_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Intermediate retries should not increment the aborted-with-error counter."""
+    labels = {"category": "unknown", "action_type": "unknown", "outcome": "aborted_with_error"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.max_retry_attempts = 2
+    broker = AsyncMock()
+    zammad_client = AsyncMock()
+    event = Event.model_validate(kafka_message_factory())
+
+    with pytest.raises(AckMessage):
+        await _handle_processing_exception(
+            TriageError("retryable triage", retryable=True),
+            ticket_id=3720,
+            category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+            broker=broker,
+            settings=settings,
+            zammad_client=zammad_client,
+            event=event,
+            original_group_id=None,
+            retry_count=1,
+        )
+
+    assert _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline
 
 
 @pytest.mark.asyncio

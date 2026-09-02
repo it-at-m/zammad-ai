@@ -5,6 +5,7 @@ from logging import Logger
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
+from app.metrics import record_kafka_ticket_outcome
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
@@ -53,6 +54,9 @@ class ActionService:
                 session_id=session_id,
             )
 
+            if triage.action.type == ActionTypes.NoAction:
+                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
+
             if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if not self.settings.triage.no_action_internal_note:
@@ -80,6 +84,11 @@ class ActionService:
                     subject=response.subject if isinstance(response, AnswerCandidate) else "Answer",
                     internal=False,
                 )
+                record_kafka_ticket_outcome(
+                    category=triage.category.name,
+                    action_type=triage.action.type,
+                    outcome="answer",
+                )
                 self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
                 # Optionally schedule the ticket to be moved to a pending-close state after configured days
                 try:
@@ -96,6 +105,11 @@ class ActionService:
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
                     text=response.response,
+                )
+                record_kafka_ticket_outcome(
+                    category=triage.category.name,
+                    action_type=triage.action.type,
+                    outcome="shared_draft",
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
                 if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):

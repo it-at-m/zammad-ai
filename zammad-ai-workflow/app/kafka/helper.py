@@ -8,6 +8,7 @@ from typing import Any
 from faststream.exceptions import AckMessage, NackMessage
 
 from app.errors import AckDecision, ExceptionDecision, KafkaPayloadError, classify_exception
+from app.metrics import record_kafka_ticket_outcome
 from app.models.kafka import Event
 from app.settings import ZammadAISettings
 from app.utils.logging import getLogger
@@ -223,6 +224,8 @@ async def _handle_processing_exception(
     event: Event,
     original_group_id: int | None,
     retry_count: int,
+    category: str | None = None,
+    action_type: str | None = None,
 ) -> None:
     """Classify processing errors and either republish or acknowledge them."""
     decision: ExceptionDecision = classify_exception(
@@ -254,6 +257,11 @@ async def _handle_processing_exception(
                     "max_retry_attempts": settings.kafka.max_retry_attempts,
                     "retry_topic": settings.kafka.retry_topic,
                 },
+            )
+            record_kafka_ticket_outcome(
+                category=category,
+                action_type=action_type,
+                outcome="aborted_with_error",
             )
             if original_group_id is not None:
                 restored_ticket_id = ticket_id if ticket_id is not None else _safe_ticket_id(event.ticket)
