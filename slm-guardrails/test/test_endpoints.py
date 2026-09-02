@@ -59,6 +59,20 @@ class DummyOpirModel:
         return {"label_scores": {}}
 
 
+class DummyAutoExtractorModel:
+    def __init__(self) -> None:
+        """Capture loader side effects for assertions."""
+        self.saved_to: str | None = None
+        self.to_device: str | None = None
+
+    def save_pretrained(self, path: str) -> None:
+        self.saved_to = path
+
+    def to(self, device: str):
+        self.to_device = device
+        return self
+
+
 def _patch_settings(monkeypatch, *, enabled: bool = True, auth_token: str | None = None) -> ServiceSettings:
     settings = ServiceSettings(
         api=APISettings(host="127.0.0.1", port=8081, auth_token=auth_token),
@@ -106,6 +120,31 @@ async def test_service_starts_and_loads_opir(monkeypatch) -> None:
 
     assert service.has_model("fastino") is True
     assert service.has_model("opir") is True
+
+
+async def test_gliner25_uses_auto_extractor(monkeypatch) -> None:
+    from guardrail_app.guardrails.service import GuardrailService
+
+    settings = GuardrailSettings(offline_mode=False, huggingface_cache_dir="C:/tmp/hf", models={})
+
+    monkeypatch.setattr("guardrail_app.guardrails.service.GuardrailService._load_models", lambda self: None)
+
+    loaded = DummyAutoExtractorModel()
+    called: dict[str, object] = {}
+
+    def fake_from_pretrained(model_name: str, **kwargs):
+        called["model_name"] = model_name
+        called["kwargs"] = kwargs
+        return loaded
+
+    monkeypatch.setattr("gliner2.AutoExtractor.from_pretrained", fake_from_pretrained)
+
+    service = GuardrailService(settings)
+    service._load_model("gliner25", ModelConfig(hf_model_name="fastino/gliner2.5-multi-v1", offline_mode=False))
+
+    assert service.has_model("gliner25") is True
+    assert called["model_name"] == "fastino/gliner2.5-multi-v1"
+    assert loaded.to_device == "cpu"
 
 
 async def test_prompt_opir_model(monkeypatch) -> None:

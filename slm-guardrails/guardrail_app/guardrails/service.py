@@ -175,7 +175,7 @@ class GuardrailService:
                 model = _GLiClassGuardrailAdapter(model_name, cache_dir, offline)
             else:
                 try:
-                    from gliner2 import GLiNER2  # local import
+                    from gliner2 import AutoExtractor  # local import
                 except ImportError as e:
                     logger.error(
                         "gliner2 is required for model '%s' but not installed.",
@@ -185,13 +185,15 @@ class GuardrailService:
                     raise RuntimeError("Missing dependency: gliner2") from e
 
                 if not offline:
-                    model = GLiNER2.from_pretrained(model_name)
+                    model = AutoExtractor.from_pretrained(model_name)
                     try:
                         model.save_pretrained(os.path.join(cache_dir, model_name))
                     except Exception:
                         logger.debug("Could not save pretrained model to cache for %s", model_id)
                 else:
-                    model = GLiNER2.from_pretrained(os.path.join(cache_dir, model_name), local_files_only=True)
+                    model = AutoExtractor.from_pretrained(
+                        os.path.join(cache_dir, model_name), local_files_only=True
+                    )
                 model.to("cpu")
 
             self._models[model_id] = model
