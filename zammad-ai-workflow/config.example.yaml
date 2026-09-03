@@ -38,6 +38,8 @@ genai:
   triage_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   answer_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
   judge_temperature: 0.0 # Temperature for chat completions (0.0 = deterministic)
+  use_responses_api: false # Set to true to use OpenAI Responses API
+  http_socket_options: [] # Optional: list of socket options for HTTP requests
 
 # Anthropic-specific settings (only used when sdk: "anthropic")
 #  sdk: "anthropic"

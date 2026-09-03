@@ -1,6 +1,6 @@
 """Settings for GenAI integration and model selection."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt
 
@@ -59,58 +59,40 @@ class BaseGenAISettings(BaseModel):
     )
 
 
+# OpenAI reasoning effort levels
+OpenAiEffortType = Literal["minimal", "low", "medium", "high"]
+
+
 class GenAIOpenAISettings(BaseGenAISettings):
     """OpenAI-specific GenAI configuration."""
 
     sdk: Literal["openai"] = Field(description="GenAI SDK to use", default="openai")
 
     # Optional reasoning configuration for LLM interactions
-    triage_reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+    triage_reasoning_effort: OpenAiEffortType | None = Field(
         description="Reasoning effort for supporting models",
         default=None,
     )
-    answer_reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+    http_socket_options: list[dict[str, Any]] = Field(
+        description="Socket options passed to the OpenAI client",
+        default_factory=list,
+    )
+    use_responses_api: bool = Field(
+        description="Whether to use the OpenAI Responses API",
+        default=False,
+    )
+    answer_reasoning_effort: OpenAiEffortType | None = Field(
         description="Reasoning effort for answer generation model",
         default=None,
     )
-    judge_reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+    judge_reasoning_effort: OpenAiEffortType | None = Field(
         description="Reasoning effort for judge model",
         default=None,
     )
 
-    @property
-    def triage_reasoning_config(self) -> dict[str, str] | None:
-        """Constructs a reasoning configuration dictionary for LLM interactions based on the configured reasoning effort."""
-        if self.triage_reasoning_effort is not None:
-            return {
-                "effort": self.triage_reasoning_effort,
-                "summary": "detailed",
-            }
-        return None
-
-    @property
-    def answer_reasoning_config(self) -> dict[str, str] | None:
-        """Constructs a reasoning configuration dictionary for LLM interactions based on the configured reasoning effort."""
-        if self.answer_reasoning_effort is not None:
-            return {
-                "effort": self.answer_reasoning_effort,
-                "summary": "detailed",
-            }
-        return None
-
-    @property
-    def judge_reasoning_config(self) -> dict[str, str] | None:
-        """Constructs a reasoning configuration dictionary for LLM interactions based on the configured reasoning effort."""
-        if self.judge_reasoning_effort is not None:
-            return {
-                "effort": self.judge_reasoning_effort,
-                "summary": "detailed",
-            }
-        return None
-
 
 # Anthropic effort levels
-EffortType = Literal["max", "xhigh", "high", "medium", "low"]
+AnthropicEffortType = Literal["max", "xhigh", "high", "medium", "low"]
 
 
 class ThinkingConfig(BaseModel):
@@ -145,15 +127,15 @@ class GenAIAnthropicSettings(BaseGenAISettings):
         default=None,
     )
     # Convenience shorthand for output effort
-    triage_effort: EffortType | None = Field(
+    triage_effort: AnthropicEffortType | None = Field(
         description="Default Anthropic effort level for triage operations",
         default=None,
     )
-    answer_effort: EffortType | None = Field(
+    answer_effort: AnthropicEffortType | None = Field(
         description="Default Anthropic effort level for answer generation",
         default=None,
     )
-    judge_effort: EffortType | None = Field(
+    judge_effort: AnthropicEffortType | None = Field(
         description="Default Anthropic effort level for judge model",
         default=None,
     )
