@@ -303,11 +303,10 @@ class AnswerService:
             judgment: JudgeResult = await self.judge_handler.judge_answer(
                 question=user_text,
                 answer=structured_response.response,
-                documents=[document.model_dump() for document in structured_response.documents],
                 session_id=session_id,
             )
 
-            if self._is_judged_ok(judgment):
+            if judgment.passed:
                 logger.debug("Answer passed judgment without need for repair.")
                 return structured_response
 
@@ -352,15 +351,6 @@ class AnswerService:
         structured_response.auto_publish = False
         return structured_response
 
-    def _is_judged_ok(self, judgment: JudgeResult) -> bool:
-        """Return whether a judgment meets the configured quality thresholds."""
-        return (
-            judgment.passed
-            and judgment.context_relevance >= self.judge_settings.thresholds.context_relevance
-            and judgment.groundedness >= self.judge_settings.thresholds.groundedness
-            and judgment.answer_relevance >= self.judge_settings.thresholds.answer_relevance
-        )
-
     def _resolve_prompt(
         self,
         prompt_config: StringPromptConfig | FilePromptConfig | LangfusePromptConfig,
@@ -397,8 +387,8 @@ class AnswerService:
 
         renderer: PromptTemplateRenderer = get_template_renderer()
         if renderer._has_jinja2_syntax(template_content):
-            # Provide both answer and judge contexts so templates like the
-            # judge prompt can access 'thresholds', 'repair_enabled', etc.
+            # Provide both answer and judge contexts so templates can access
+            # shared runtime variables such as 'repair_enabled' and 'max_repairs'.
             answer_ctx = build_answer_context(self.settings.answer)
             judge_ctx = build_judge_context(self.settings)
             context = merge_contexts(answer_ctx, judge_ctx)

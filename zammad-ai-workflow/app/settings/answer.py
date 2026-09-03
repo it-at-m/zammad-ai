@@ -8,7 +8,6 @@ from pydantic import (
     Field,
     FilePath,
     HttpUrl,
-    NonNegativeFloat,
     NonNegativeInt,
     PositiveInt,
     SecretStr,
@@ -55,36 +54,12 @@ PromptSourceConfig = StringPromptConfig | FilePromptConfig | LangfusePromptConfi
 # it will be automatically rendered with the appropriate context.
 
 
-class JudgeThresholds(BaseModel):
-    """Thresholds for LLM judge evaluation of generated answers."""
-
-    context_relevance: NonNegativeFloat = Field(
-        default=0.75,
-        description="Minimum context relevance score required for a passing judgment.",
-        le=1.0,
-    )
-    groundedness: NonNegativeFloat = Field(
-        default=0.75,
-        description="Minimum groundedness score required for a passing judgment.",
-        le=1.0,
-    )
-    answer_relevance: NonNegativeFloat = Field(
-        default=0.75,
-        description="Minimum answer relevance score required for a passing judgment.",
-        le=1.0,
-    )
-
-
 class JudgeSettings(BaseModel):
     """Settings for LLM judge evaluation of generated answers."""
 
     enabled: bool = Field(
         default=False,
         description="Whether to run an LLM judge after answer generation.",
-    )
-    thresholds: JudgeThresholds = Field(
-        default_factory=JudgeThresholds,
-        description="Thresholds used to determine whether an answer passes judgment.",
     )
     prompt: PromptSourceConfig = Field(
         description="Prompt configuration for the judge evaluation step.",

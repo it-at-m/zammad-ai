@@ -6,7 +6,7 @@ logic for extracting relevant configuration and formatting it appropriately
 for template consumption.
 
 The key insight: Jinja2 is used for STATIC configuration (enabled features,
-thresholds, tool lists) while LangChain variables (like {text}, {categories})
+tool lists) while LangChain variables (like {text}, {categories})
 are used for PER-REQUEST data.
 """
 
@@ -117,15 +117,13 @@ def build_judge_context(
     """Build context dictionary for judge templates.
 
     Constructs a context dictionary with all variables needed for rendering
-    judge-related Jinja2 templates. This includes evaluation thresholds and
-    repair configuration.
+    judge-related Jinja2 templates. This includes repair configuration.
 
     Args:
         settings: Application settings containing judge configuration.
 
     Returns:
         Dictionary with variables for Jinja2 rendering:
-        - thresholds: dict with context_relevance, groundedness, answer_relevance
         - repair_enabled: bool
         - max_repairs: int
 
@@ -139,11 +137,6 @@ def build_judge_context(
     today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
 
     return {
-        "thresholds": {
-            "context_relevance": judge_settings.thresholds.context_relevance,
-            "groundedness": judge_settings.thresholds.groundedness,
-            "answer_relevance": judge_settings.thresholds.answer_relevance,
-        },
         "repair_enabled": judge_settings.enabled and judge_settings.max_repairs > 0,
         "max_repairs": judge_settings.max_repairs,
         # Provide today's date (ISO format + weekday + calendar week) for prompts that need to reference the current day

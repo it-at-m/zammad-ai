@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,7 +13,7 @@ from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
 from app.models.answer import AnswerCandidate, DocumentDict
 from app.settings import ZammadAISettings
-from app.settings.answer import JudgeSettings, JudgeThresholds, StringPromptConfig
+from app.settings.answer import JudgeSettings, StringPromptConfig
 
 VALID_RESPONSE = (
     "Dies ist eine ausreichend lange Testantwort fuer die Antwortgenerierung. "
@@ -70,9 +71,6 @@ class FakeJudgeHandler:
         """
         if self.judge_result is None:
             return JudgeResult(
-                context_relevance=1.0,
-                groundedness=1.0,
-                answer_relevance=1.0,
                 passed=True,
                 reasoning="pass",
             )
@@ -99,13 +97,13 @@ def _build_answer_service(
             },
         }
     )
-    service.langfuse_client = FakeLangfuseClient() # ty: ignore
-    service.user_message_template = FakePromptTemplate() # ty: ignore
+    cast(Any, service).langfuse_client = FakeLangfuseClient()
+    cast(Any, service).user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()
     service.agent.ainvoke = ainvoke
-    service.agent_context = object() # ty: ignore
-    service.judge_handler = None
-    service.judge_settings = None # ty: ignore
+    cast(Any, service).agent_context = object()
+    cast(Any, service).judge_handler = None
+    cast(Any, service).judge_settings = None
     return service
 
 
@@ -176,7 +174,6 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
     setattr(service, "judge_handler", FakeJudgeHandler())
     service.judge_settings = JudgeSettings(
         enabled=True,
-        thresholds=JudgeThresholds(),
         prompt=StringPromptConfig(prompt="Judge the answer."),
         repair_prompt=StringPromptConfig(prompt="Repair: {repair_instructions}"),
         max_repairs=1,
@@ -215,9 +212,6 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=ZammadAISettings)
     judge_handler = FakeJudgeHandler()
     judge_handler.judge_result = JudgeResult(
-        context_relevance=0.1,
-        groundedness=0.1,
-        answer_relevance=0.1,
         passed=False,
         reasoning="not grounded",
         repair_instructions="add direct support from documents",
@@ -225,7 +219,6 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
     setattr(service, "judge_handler", judge_handler)
     service.judge_settings = JudgeSettings(
         enabled=True,
-        thresholds=JudgeThresholds(),
         prompt=StringPromptConfig(prompt="Judge the answer."),
         repair_prompt=StringPromptConfig(prompt="Repair: {repair_instructions}"),
         max_repairs=1,
@@ -241,12 +234,12 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
 def test_judge_handler_builds_config_with_prompt_reference() -> None:
     """Judge traces should carry the Langfuse prompt reference when available."""
     handler = JudgeHandler.__new__(JudgeHandler)
-    handler.langfuse_client = FakeLangfuseClient() # ty: ignore
-    handler.langfuse_prompt = object() # ty: ignore
+    cast(Any, handler).langfuse_client = FakeLangfuseClient()
+    cast(Any, handler).langfuse_prompt = object()
 
     _, config = handler._build_runnable_config(session_id="session-id")
 
-    assert config["session_id"] == "session-id" # ty: ignore
+    assert cast(dict[str, Any], config)["session_id"] == "session-id"
     assert getattr(handler.langfuse_client, "last_langfuse_prompt") is handler.langfuse_prompt
 
 
