@@ -66,6 +66,8 @@ def _openai_role_config(
             model: str = genai_settings.judge_model or genai_settings.chat_model
             temp: float = genai_settings.judge_temperature
             reasoning: OpenAiEffortType | None = genai_settings.judge_reasoning_effort
+        case _:
+            raise ValueError(f"Unsupported GenAI role: {role}")
 
     return model, temp, genai_settings.max_retries, reasoning
 
@@ -90,6 +92,8 @@ def _anthropic_role_config(
             temp: float = genai_settings.judge_temperature
             thinking: ThinkingConfig | None = genai_settings.judge_thinking
             effort: AnthropicEffortType | None = genai_settings.judge_effort
+        case _:
+            raise ValueError(f"Unsupported GenAI role: {role}")
 
     return model, temp, genai_settings.max_retries, thinking, effort
 
@@ -105,8 +109,8 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: ChatRole):
                     temperature=temperature,
                     max_retries=max_retries,
                     reasoning_effort=reasoning,
-                    http_socket_options=[],
-                    use_responses_api=False,
+                    http_socket_options=genai_settings.http_socket_options,
+                    use_responses_api=genai_settings.use_responses_api,
                 )
                 return chat
             except ImportError:

@@ -40,13 +40,18 @@ def test_get_chat_model_openai(monkeypatch):
     """Ensure an OpenAI chat model is constructed with expected kwargs."""
     provider = _load_provider_with_fake_dependency(monkeypatch, "langchain_openai", "ChatOpenAI")
 
-    settings = GenAIOpenAISettings(chat_model="gpt-test", answer_reasoning_effort="medium")
+    settings = GenAIOpenAISettings(
+        chat_model="gpt-test",
+        answer_reasoning_effort="medium",
+        http_socket_options=[{"family": 0}],
+        use_responses_api=True,
+    )
 
     model = provider.get_chat_model(settings, "answer")
     assert model._init_kwargs["model"] == "gpt-test"
     assert model._init_kwargs["reasoning_effort"] == "medium"
-    assert model._init_kwargs["http_socket_options"] == []
-    assert model._init_kwargs["use_responses_api"] is False
+    assert model._init_kwargs["http_socket_options"] == [{"family": 0}]
+    assert model._init_kwargs["use_responses_api"] is True
 
     sys.modules.pop("app.utils.genai_provider", None)
 

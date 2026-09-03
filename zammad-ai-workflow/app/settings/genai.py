@@ -1,6 +1,6 @@
 """Settings for GenAI integration and model selection."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt
 
@@ -72,6 +72,14 @@ class GenAIOpenAISettings(BaseGenAISettings):
     triage_reasoning_effort: OpenAiEffortType | None = Field(
         description="Reasoning effort for supporting models",
         default=None,
+    )
+    http_socket_options: list[dict[str, Any]] = Field(
+        description="Socket options passed to the OpenAI client",
+        default_factory=list,
+    )
+    use_responses_api: bool = Field(
+        description="Whether to use the OpenAI Responses API",
+        default=False,
     )
     answer_reasoning_effort: OpenAiEffortType | None = Field(
         description="Reasoning effort for answer generation model",
