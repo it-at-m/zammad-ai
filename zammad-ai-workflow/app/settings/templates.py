@@ -100,15 +100,10 @@ class JudgeTemplateContext(BaseModel):
     They configure the evaluation criteria and behavior.
 
     Attributes:
-        thresholds: Score thresholds for each evaluation dimension.
         repair_enabled: Whether automatic repair of failed answers is enabled.
         max_repairs: Maximum number of repair attempts.
     """
 
-    thresholds: dict[str, float] = Field(
-        description="Score thresholds for each evaluation dimension (context_relevance, groundedness, answer_relevance).",
-        default_factory=dict,
-    )
     repair_enabled: bool = Field(
         default=False,
         description="Whether automatic repair of failed answers is enabled.",

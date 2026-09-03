@@ -139,15 +139,11 @@ answer:
     max_retries: 2 # Maximum number of retries for DLF API calls
   judge:
     enabled: false # Set to true to enable LLM judge checks after answer generation
-    thresholds:
-      context_relevance: 0.75
-      groundedness: 0.75
-      answer_relevance: 0.75
     prompt:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/judge/judge.prompt.md"
-      # Prompts can use Jinja2 syntax! Variables like {{ thresholds.context_relevance }},
-      # {{ repair_enabled }}, {{ max_repairs }} are automatically available.
+      # Prompts can use Jinja2 syntax! Variables like {{ repair_enabled }} and
+      # {{ max_repairs }} are automatically available.
     repair_prompt:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/answer/repair.prompt.md"

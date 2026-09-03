@@ -155,7 +155,6 @@ class TestContextBuilders:
         settings = settings_factory()
         context = build_judge_context(settings)
 
-        assert "thresholds" in context
         assert "repair_enabled" in context
         assert "max_repairs" in context
 
@@ -195,13 +194,11 @@ class TestSettingsModels:
     def test_judge_template_context(self):
         """Test JudgeTemplateContext creation."""
         context = JudgeTemplateContext(
-            thresholds={"context_relevance": 0.8, "groundedness": 0.8, "answer_relevance": 0.8},
             repair_enabled=True,
             max_repairs=3,
         )
         assert context.repair_enabled is True
         assert context.max_repairs == 3
-        assert context.thresholds["context_relevance"] == 0.8
 
 
 class TestIntegration:
@@ -230,11 +227,6 @@ class TestIntegration:
             "no_category_name": "Cannot Categorize",
             "no_action_name": "no_action",
             "categories": [{"name": "Test Category", "auto_publish": True}],
-            "thresholds": {
-                "context_relevance": 0.75,
-                "groundedness": 0.75,
-                "answer_relevance": 0.75,
-            },
             "repair_enabled": False,
             "max_repairs": 0,
         }
@@ -286,19 +278,14 @@ class TestIntegration:
         template = load_prompt(prompts_dir / "judge" / "judge.prompt.md")
 
         # Check that it has Jinja2 syntax
-        assert "{{ thresholds" in template or "{% if" in template
+        assert "{{ repair_enabled" in template or "{% if" in template
 
         # Render with test context
         context = {
-            "thresholds": {
-                "context_relevance": 0.75,
-                "groundedness": 0.75,
-                "answer_relevance": 0.75,
-            },
             "repair_enabled": True,
             "max_repairs": 3,
         }
         result = renderer.render_template(template, context)
 
         # Verify rendering worked
-        assert "0.75" in result
+        assert "Repair is enabled" in result

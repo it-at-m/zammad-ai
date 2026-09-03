@@ -60,7 +60,6 @@ class JudgeHandler:
         self,
         question: str,
         answer: str,
-        documents: list[dict[str, Any]],
         session_id: str | None = None,
     ) -> JudgeResult:
         """Judge an answer and return the structured result."""
@@ -71,7 +70,7 @@ class JudgeHandler:
                 agent_result: dict[str, Any] = await self._judge_agent.ainvoke(
                     input={
                         "messages": [
-                            HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}\n\nDocuments: {documents}")
+                            HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}")
                         ],
                     },
                     config=config,

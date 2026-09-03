@@ -1,6 +1,6 @@
 """Settings models and configuration loading for Zammad AI."""
 
-from .answer import AnswerSettings, JudgeSettings, JudgeThresholds, LawToolSettings, MultiQuerySettings, QdrantSettings
+from .answer import AnswerSettings, JudgeSettings, LawToolSettings, MultiQuerySettings, QdrantSettings
 from .frontend import FrontendSettings
 from .genai import GenAIAnthropicSettings, GenAIOpenAISettings, GenAIProviderSettings
 from .guardrails import GuardrailSettings
@@ -21,7 +21,6 @@ __all__: list[str] = [
     "get_settings",
     "KafkaSettings",
     "JudgeSettings",
-    "JudgeThresholds",
     "LawToolSettings",
     "MultiQuerySettings",
     "QdrantSettings",
