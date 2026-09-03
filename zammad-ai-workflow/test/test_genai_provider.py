@@ -5,10 +5,13 @@ helper `get_chat_model` constructs the expected chat model objects
 and passes through configuration like reasoning effort.
 """
 
+from __future__ import annotations
+
+import importlib
 import sys
 import types
 
-from app.settings.genai import GenAIAnthropicSettings, GenAIOpenAISettings
+from app.settings.genai import GenAIAnthropicSettings, GenAIOpenAISettings, ThinkingConfig
 
 
 def _make_fake_module(name: str, class_name: str):
@@ -24,36 +27,43 @@ def _make_fake_module(name: str, class_name: str):
     return m
 
 
+def _load_provider_with_fake_dependency(monkeypatch, module_name: str, class_name: str):
+    fake_mod = _make_fake_module(module_name, class_name)
+    monkeypatch.setitem(sys.modules, module_name, fake_mod)
+
+    import app.utils.genai_provider as provider
+
+    return importlib.reload(provider)
+
+
 def test_get_chat_model_openai(monkeypatch):
     """Ensure an OpenAI chat model is constructed with expected kwargs."""
-    # Provide fake langchain_openai module with ChatOpenAI
-    fake_mod = _make_fake_module("langchain_openai", "ChatOpenAI")
-    # Use monkeypatch to ensure the fake module is removed after the test
-    monkeypatch.setitem(sys.modules, "langchain_openai", fake_mod)
+    provider = _load_provider_with_fake_dependency(monkeypatch, "langchain_openai", "ChatOpenAI")
 
-    settings = GenAIOpenAISettings(chat_model="gpt-test")
+    settings = GenAIOpenAISettings(chat_model="gpt-test", answer_reasoning_effort="medium")
 
-    from app.utils.genai_provider import get_chat_model
+    model = provider.get_chat_model(settings, "answer")
+    assert model._init_kwargs["model"] == "gpt-test"
+    assert model._init_kwargs["reasoning_effort"] == "medium"
+    assert model._init_kwargs["http_socket_options"] == []
+    assert model._init_kwargs["use_responses_api"] is False
 
-    model = get_chat_model(settings, "answer")
-    assert hasattr(model, "_init_kwargs")
+    sys.modules.pop("app.utils.genai_provider", None)
 
 
 def test_get_chat_model_anthropic(monkeypatch):
     """Ensure an Anthropic chat model is constructed and reasoning maps to kwargs."""
-    # Provide fake langchain_anthropic module with ChatAnthropic
-    fake_mod = _make_fake_module("langchain_anthropic", "ChatAnthropic")
-    # Use monkeypatch to ensure the fake module is removed after the test
-    monkeypatch.setitem(sys.modules, "langchain_anthropic", fake_mod)
+    provider = _load_provider_with_fake_dependency(monkeypatch, "langchain_anthropic", "ChatAnthropic")
 
-    # (leave out the unused base settings variable)
+    settings_with_reasoning = GenAIAnthropicSettings(
+        chat_model="claude-test",
+        answer_thinking=ThinkingConfig(budget_tokens=1024),
+        answer_effort="high",
+    )
+    model = provider.get_chat_model(settings_with_reasoning, "answer")
 
-    from app.utils.genai_provider import get_chat_model
+    assert model._init_kwargs["model_name"] == "claude-test"
+    assert model._init_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+    assert model._init_kwargs["effort"] == "high"
 
-    # Also test that reasoning mapping results in kwargs when configured
-    settings_with_reasoning = GenAIAnthropicSettings(chat_model="claude-test")
-    model = get_chat_model(settings_with_reasoning, "answer")
-    # Our fake ChatAnthropic stores init kwargs on the instance
-    assert hasattr(model, "_init_kwargs")
-    # Ensure model was constructed with thinking/effort when reasoning provided
-    assert ("thinking" in model._init_kwargs) or ("effort" in model._init_kwargs)
+    sys.modules.pop("app.utils.genai_provider", None)
