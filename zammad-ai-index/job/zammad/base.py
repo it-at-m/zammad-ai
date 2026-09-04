@@ -92,6 +92,19 @@ class BaseZammadClient(ABC):
         """
         ...
 
+    @abstractmethod
+    def update_kb(self) -> bool:
+        """Update the knowledge base with the given ID.
+
+        Args:
+            kb_id: The ID of the knowledge base to update.
+
+        Returns:
+            bool: True if update was successful, False otherwise.
+
+        """
+        ...
+
     def __init__(self, base_url: str, settings: BaseZammadSettings) -> None:
         """Initialize Zammad client with HTTP configuration.
 

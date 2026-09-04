@@ -100,6 +100,20 @@ class ZammadEAIClient(BaseZammadClient):
         return TypeAdapter(ZammadKnowledgebase).validate_python(data) if data else None
 
     @override
+    def update_kb(self) -> bool:
+        """Update knowledge base information."""
+        if not self.kb_id:
+            logger.warning("Knowledge base ID is not set. Cannot update KB.")
+            return False
+
+        try:
+            self._request("POST", f"/knowledgeBases/{self.kb_id}/update")
+            return True
+        except ZammadConnectionError:
+            logger.error(f"Failed to update knowledge base {self.kb_id}.", exc_info=True)
+            return False
+
+    @override
     def get_answer_ids_of_categories(self, category_ids: list[int]) -> list[int]:
         if not category_ids:
             return []
