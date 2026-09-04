@@ -43,6 +43,12 @@ class AgentContext(BaseModel):
     }
 
 
+def _enable_expected_tool_failures(tool: BaseTool) -> BaseTool:
+    """Return a tool configured to surface expected failures back to the agent."""
+    tool.handle_tool_error = True
+    return tool
+
+
 @tool(
     "search_website",
     description="Search the city of munich website including all public service descriptions and information articles for relevant documents. Never append personal information to the query.",
@@ -201,7 +207,7 @@ def build_law_tool(law: LawToolSettings) -> BaseTool:
             logger.error("Error retrieving law documents from Qdrant", exc_info=True)
             raise ToolException(f"Failed to retrieve documents from {law_name}") from e
 
-    return search_law
+    return _enable_expected_tool_failures(search_law)
 
 
 def build_agent(
@@ -227,10 +233,10 @@ def build_agent(
 
     # Configure the tools
     available_tools: list[BaseTool] = [
-        search_knowledgebase,
+        _enable_expected_tool_failures(search_knowledgebase),
     ]
     if dlf_enabled:
-        available_tools.append(search_dlf)
+        available_tools.append(_enable_expected_tool_failures(search_dlf))
     for law in laws or []:
         available_tools.append(build_law_tool(law))
 
