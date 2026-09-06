@@ -17,7 +17,7 @@ maintainers = [
 dependencies = [
     "fastapi==0.141.1",
     "httpx==0.28.1",
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     "python-dotenv==1.2.3",
     "structlog==26.1.0",
@@ -26,14 +26,14 @@ dependencies = [
     "prometheus_client==0.26.0",
     "gliner2==2.0.0",
     "gliclass==0.1.20",
-    "torch==2.13.0",
+    "torch==2.14.0",
     "transformers==5.16.1",
     "setuptools==84.0.0",
     "peft==0.20.0",
 ]
 
 [dependency-groups]
-dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.4", "ty==0.0.75"]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.6", "ty==0.0.78"]
 
 [tool.uv]
 add-bounds = "exact"
