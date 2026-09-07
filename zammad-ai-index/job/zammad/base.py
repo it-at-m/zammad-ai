@@ -96,9 +96,6 @@ class BaseZammadClient(ABC):
     def update_kb(self) -> bool:
         """Update the knowledge base with the given ID.
 
-        Args:
-            kb_id: The ID of the knowledge base to update.
-
         Returns:
             bool: True if update was successful, False otherwise.
 
