@@ -57,6 +57,10 @@ class KafkaSettings(BaseModel):
         description="Settings related to processing of incoming events.",
         default_factory=lambda: EventProcessingSettings(),
     )
+    max_workers: NonNegativeInt = Field(
+        description="Maximum number of concurrent workers for processing events.",
+        default=5,
+    )
 
 
 class EventProcessingSettings(BaseModel):

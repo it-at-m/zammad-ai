@@ -162,6 +162,8 @@ kafka:
   topic: "ticket-events" # Kafka topic to consume from
   client_id: "zammad-ai" # Kafka client ID shown as the consumer name
   group_id: null # Consumer group ID (defaults to null)
+  max_workers: 5 # Maximum number of concurrent workers for processing events
+  retry_topic: "ticket-events-retry" # Kafka topic for retrying failed events
   event_processing:
     valid_request_types: [] # List of request types to process (example: ["support"])
     valid_action_types: [] # List of action types to process (example: ["created", "updated"])
