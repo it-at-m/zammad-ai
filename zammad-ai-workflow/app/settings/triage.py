@@ -257,3 +257,6 @@ class LangfusePrompt(BaseModel):
         description="Name of the prompt in Langfuse",
         examples=["use_case/triage/prompt_name"],
     )
+
+
+TriageSettings.model_rebuild()
