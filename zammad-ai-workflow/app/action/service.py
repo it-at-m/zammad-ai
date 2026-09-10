@@ -3,7 +3,7 @@
 from logging import Logger
 
 from app.answer.service import AnswerService, get_answer_service
-from app.errors import ActionExecutionError, AppError, GuardrailEvaluationError
+from app.errors import ActionExecutionError, AppError, GuardrailBlockedError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
 from app.metrics import record_kafka_ticket_outcome
 from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
@@ -59,22 +59,12 @@ class ActionService:
 
             if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
-                if not self.settings.triage.no_action_internal_note:
-                    return
-                text: str = _safe_format(
-                    template=self.settings.triage.no_action_internal_note,
+                await self._post_no_action_internal_note(
+                    ticket_id=ticket_id,
                     category=category,
                     action=action,
                     reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
                 )
-
-                await self.zammad_client.post_answer(
-                    ticket_id=ticket_id,
-                    text=text,
-                    subject="No answer generation possible",
-                    internal=True,  # Post an internal note if no answer is generated to document the triage result and action execution
-                )
-                self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
@@ -112,17 +102,64 @@ class ActionService:
                     outcome="shared_draft",
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
-                if self.settings.frontend.feedback.post_internal_note and isinstance(response, AnswerCandidate):
+                if self.settings.frontend.feedback.post_internal_note and isinstance(
+                    response, (AnswerCandidate, StaticAnswer)
+                ):
                     await self._post_feedback_internal_note(
                         ticket_id=ticket_id, user_text=triage.user_text[: self.max_user_text_length], response=response
                     )
+        except GuardrailBlockedError as e:
+            try:
+                await self._post_no_action_internal_note(
+                    ticket_id=ticket_id,
+                    category=triage.category.name,
+                    action=triage.action.name,
+                    reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                )
+            except Exception:
+                self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
+            raise
         except AppError:
             raise
         except Exception as e:
             self.logger.error("Action execution failed.", exc_info=True)
             raise ActionExecutionError("Action execution failed", retryable=True) from e
 
-    async def _post_feedback_internal_note(self, ticket_id: int, user_text: str, response: AnswerCandidate) -> None:
+    async def _post_no_action_internal_note(self, ticket_id: int, category: str, action: str, reason: str) -> None:
+        if not self.settings.triage.no_action_internal_note:
+            return
+        text: str = _safe_format(
+            template=self.settings.triage.no_action_internal_note,
+            category=category,
+            action=action,
+            reason=reason,
+        )
+        await self.zammad_client.post_answer(
+            ticket_id=ticket_id,
+            text=text,
+            subject="No answer generation possible",
+            internal=True,
+        )
+        self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
+
+    def _create_static_answer_trace(self, user_text: str, response: StaticAnswer) -> None:
+        if self.answer_service.langfuse_client is None:
+            return
+
+        langfuse_client = self.answer_service.langfuse_client
+        langfuse_client.langfuse_handler.last_trace_id = None
+        try:
+            with langfuse_client.langfuse.start_as_current_observation(
+                as_type="span", name="static-answer", input=user_text
+            ) as observation:
+                observation.update(output=response.response)
+                langfuse_client.langfuse_handler.last_trace_id = observation.trace_id
+        except Exception:
+            self.logger.error("Failed to create Langfuse trace for static answer.", exc_info=True)
+
+    async def _post_feedback_internal_note(
+        self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer
+    ) -> None:
         trace_id: str | None = (
             self.answer_service.langfuse_client.langfuse_handler.last_trace_id
             if self.answer_service.langfuse_client
@@ -132,7 +169,8 @@ class ActionService:
             # Generate a per-link token using the trace IO and the configured salt
             try:
                 input: str = user_text or ""
-                output: str = (response.subject or "") + "\n\n" + (response.response or "")
+                subject: str = response.subject if isinstance(response, AnswerCandidate) and response.subject else ""
+                output: str = subject + "\n\n" + response.response
                 output: str = output.replace("<br>", "\n").strip()
                 salt: str = (
                     self.settings.frontend.feedback.salt.get_secret_value()
@@ -190,11 +228,15 @@ class ActionService:
             self.logger.error("Guardrail evaluation failed before answer generation.", exc_info=True)
             raise ActionExecutionError("Guardrail evaluation failed before answer generation", retryable=True) from e
 
-        if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not guardrail_result:
+        if (
+            self.guardrail_service.settings.enabled
+            and self.guardrail_service.settings.block_on_high_risk
+            and not guardrail_result
+        ):
             self.logger.warning(
                 f"Answer generation blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
             )
-            raise ActionExecutionError("Input failed safety checks", retryable=False)
+            raise GuardrailBlockedError("Input failed safety checks", retryable=False)
 
         if len(user_text) > self.settings.max_user_text_length:
             self.logger.warning(
@@ -230,6 +272,7 @@ class ActionService:
                     f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
                 )
             response = StaticAnswer(response=action.answer)
+            self._create_static_answer_trace(user_text=user_text, response=response)
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 
@@ -241,15 +284,17 @@ class ActionService:
                 )
             except GuardrailEvaluationError as e:
                 self.logger.error("Guardrail evaluation failed for generated response.", exc_info=True)
-                raise ActionExecutionError(
-                    "Guardrail evaluation failed for generated response", retryable=True
-                ) from e
+                raise ActionExecutionError("Guardrail evaluation failed for generated response", retryable=True) from e
             self.logger.debug(f"Guardrail evaluation for response: {response_guardrail_result}")
-            if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not response_guardrail_result:
+            if (
+                self.guardrail_service.settings.enabled
+                and self.guardrail_service.settings.block_on_high_risk
+                and not response_guardrail_result
+            ):
                 self.logger.warning(
                     f"Generated response blocked by guardrails for ticket {ticket_id if ticket_id is not None else 'unknown'}"
                 )
-                raise ActionExecutionError("Generated response failed safety checks", retryable=False)
+                raise GuardrailBlockedError("Generated response failed safety checks", retryable=False)
 
         return response
 

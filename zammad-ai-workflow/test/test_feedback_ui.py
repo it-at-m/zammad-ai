@@ -46,6 +46,25 @@ def test_resolve_feedback_request_uses_trace_id_query_param(german_translations:
     assert query_params.access_key == "expected-key"
 
 
+def test_get_trace_io_supports_static_answer_string_output() -> None:
+    """Feedback loading should support the raw input/output of static-answer traces."""
+
+    class DummyTraceAPI:
+        def get(self, trace_id: str, fields: str) -> dict[str, str]:
+            assert trace_id == "static-trace"
+            assert fields == "core,io"
+            return {"input": "Eine Anfrage", "output": "Eine statische Antwort"}
+
+    client = LangfuseClient.__new__(LangfuseClient)
+    client.langfuse = SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI()))  # ty: ignore
+
+    input_text, output_text, used_documents = client.get_trace_io(trace_id="static-trace")
+
+    assert input_text == "Eine Anfrage"
+    assert output_text == "Eine statische Antwort"
+    assert used_documents == ""
+
+
 def test_resolve_feedback_request_rejects_blank_query_values(german_translations: dict[str, str]) -> None:
     """Reject blank query parameter values before loading trace data."""
     request = _make_request({"trace_id": "   ", "key": "expected-key"})
