@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.action.service import ActionService
+from app.errors import GuardrailBlockedError
 from app.metrics import KAFKA_TICKET_OUTCOMES_TOTAL
 from app.models.answer import NoAnswerPossible, StaticAnswer
 from app.models.triage import TriageResult
@@ -29,6 +30,7 @@ def _build_action_service(settings: ZammadAISettings) -> tuple[ActionService, As
     service.settings = settings
     service.answer_service = MagicMock()
     service.guardrail_service = MagicMock()
+    service.max_user_text_length = settings.max_user_text_length
     service.zammad_client = MagicMock()
     post_answer_mock = AsyncMock()
     post_shared_draft_mock = AsyncMock()
@@ -86,6 +88,31 @@ async def test_execute_action_counts_posted_shared_draft_metric(
 
 
 @pytest.mark.asyncio
+async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Standard answers posted as shared drafts should receive a feedback note."""
+    settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    service, _, _ = _build_action_service(settings)
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Standardantwort")))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="Standard", description="Standard", type=ActionTypes.StaticAnswer, answer="Antwort"),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    feedback_note_mock.assert_awaited_once_with(
+        ticket_id=1, user_text="Frage", response=StaticAnswer(response="Standardantwort")
+    )
+
+
+@pytest.mark.asyncio
 async def test_get_answer_does_not_count_manual_metric_for_no_action(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
@@ -138,3 +165,55 @@ async def test_execute_action_counts_manual_metric_for_no_action(
     await service.execute_action(ticket_id=1, triage=triage)
 
     assert _get_outcome_counter_value(category="General", action_type="no_action", outcome="manual") == baseline + 1
+
+
+@pytest.mark.asyncio
+async def test_execute_action_posts_no_action_note_for_no_answer_possible(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """NoAnswerPossible should document the no-action result internally."""
+    settings = settings_factory()
+    settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
+    service, post_answer_mock, _ = _build_action_service(settings)
+    response = NoAnswerPossible(
+        reasoning="Es liegen nicht genug Informationen für eine belastbare Antwort vor, daher kann kein verlässlicher Text erstellt werden."
+    )
+    setattr(service, "get_answer", AsyncMock(return_value=response))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    post_answer_mock.assert_awaited_once()
+    assert post_answer_mock.await_args.kwargs["internal"] is True # ty: ignore
+    assert "No answer possible" in post_answer_mock.await_args.kwargs["text"] # ty: ignore
+
+
+@pytest.mark.asyncio
+async def test_execute_action_posts_no_action_note_for_guardrail_block(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Guardrail blocks should document the skipped answer internally."""
+    settings = settings_factory()
+    settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
+    service, post_answer_mock, _ = _build_action_service(settings)
+    setattr(service, "get_answer", AsyncMock(side_effect=GuardrailBlockedError("Input failed safety checks")))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    with pytest.raises(GuardrailBlockedError):
+        await service.execute_action(ticket_id=1, triage=triage)
+
+    post_answer_mock.assert_awaited_once()
+    assert post_answer_mock.await_args.kwargs["internal"] is True # ty: ignore
+    assert "Input failed safety checks" in post_answer_mock.await_args.kwargs["text"] # ty: ignore

@@ -166,6 +166,10 @@ class ActionExecutionError(AppError):
     """Raised when action execution fails."""
 
 
+class GuardrailBlockedError(ActionExecutionError):
+    """Raised when guardrails block ticket input or a generated response."""
+
+
 class AckDecision(Enum):
     """Enum for classifying exceptions into broker ACK/NACK decisions."""
 
