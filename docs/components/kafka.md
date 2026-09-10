@@ -49,6 +49,8 @@ kafka:
   retry_delay_seconds: 300
   max_retry_attempts: 3
 
+  max_workers: 5 # Maximum number of concurrent workers for processing events
+
   # Security: choose one schema and set the discriminator `type` to `env` or `file`.
   security:
     type: env

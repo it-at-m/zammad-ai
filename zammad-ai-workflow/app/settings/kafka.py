@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, FilePath, NonNegativeInt
+from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveInt
 
 
 class KafkaSettings(BaseModel):
@@ -56,6 +56,10 @@ class KafkaSettings(BaseModel):
     event_processing: "EventProcessingSettings" = Field(
         description="Settings related to processing of incoming events.",
         default_factory=lambda: EventProcessingSettings(),
+    )
+    max_workers: PositiveInt = Field(
+        description="Maximum number of concurrent workers for processing events.",
+        default=5,
     )
 
 
