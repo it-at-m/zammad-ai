@@ -109,12 +109,15 @@ class ActionService:
                         ticket_id=ticket_id, user_text=triage.user_text[: self.max_user_text_length], response=response
                     )
         except GuardrailBlockedError as e:
-            await self._post_no_action_internal_note(
-                ticket_id=ticket_id,
-                category=triage.category.name,
-                action=triage.action.name,
-                reason=f"{triage.reasoning}\n\nNo answer possible. Explanation:\n{e}",
-            )
+            try:
+                await self._post_no_action_internal_note(
+                    ticket_id=ticket_id,
+                    category=triage.category.name,
+                    action=triage.action.name,
+                    reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                )
+            except Exception:
+                self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
             raise
         except AppError:
             raise
@@ -138,6 +141,21 @@ class ActionService:
             internal=True,
         )
         self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
+
+    def _create_static_answer_trace(self, user_text: str, response: StaticAnswer) -> None:
+        if self.answer_service.langfuse_client is None:
+            return
+
+        langfuse_client = self.answer_service.langfuse_client
+        langfuse_client.langfuse_handler.last_trace_id = None
+        try:
+            with langfuse_client.langfuse.start_as_current_observation(
+                as_type="span", name="static-answer", input=user_text
+            ) as observation:
+                observation.update(output=response.response)
+                langfuse_client.langfuse_handler.last_trace_id = observation.trace_id
+        except Exception:
+            self.logger.error("Failed to create Langfuse trace for static answer.", exc_info=True)
 
     async def _post_feedback_internal_note(
         self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer
@@ -254,6 +272,7 @@ class ActionService:
                     f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
                 )
             response = StaticAnswer(response=action.answer)
+            self._create_static_answer_trace(user_text=user_text, response=response)
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 
