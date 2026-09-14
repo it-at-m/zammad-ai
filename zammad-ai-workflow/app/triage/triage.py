@@ -406,6 +406,7 @@ class TriageService:
         """
         try:
             days_since_request = None
+            days_since_request_extracted = False
             processing_id = None
 
             # If no category or it's the no_category, always return no_action
@@ -420,7 +421,7 @@ class TriageService:
                         conditions: list[Condition] = sorted(rule.conditions, key=lambda c: c.priority)
                         for condition in conditions:
                             if condition.field == "days_since_request":
-                                if days_since_request is None:
+                                if not days_since_request_extracted:
                                     days_result: DaysSinceRequestResponse = (
                                         await self.genai_handler.extract_days_since_request(
                                             message=message,
@@ -429,6 +430,9 @@ class TriageService:
                                         )
                                     )
                                     days_since_request = days_result.days_since_request
+                                    days_since_request_extracted = True
+                                if days_since_request is None:
+                                    continue
                                 if (get_operator_function(operator=condition.operator))(
                                     days_since_request, condition.value
                                 ):

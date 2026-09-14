@@ -154,7 +154,7 @@ class FakeGenAIHandler:
             raise ValueError("Unsupported schema type for days-since-request chain")
 
         if self.days_since_request_response is None:
-            return DaysSinceRequestResponse(days_since_request=0, reason="default")
+            return DaysSinceRequestResponse(days_since_request=None, reason="default")
         return self.days_since_request_response
 
     async def extract_processing_id(
