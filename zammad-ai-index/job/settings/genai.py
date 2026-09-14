@@ -22,7 +22,7 @@ class GenAISettings(BaseModel):
     )
     max_tokens: PositiveInt = Field(
         description="Maximum number of tokens to request from the LLM",
-        default=8096,
+        default=8192,
     )
 
     # Chat model configuration with fallbacks
