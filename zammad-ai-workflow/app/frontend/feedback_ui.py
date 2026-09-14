@@ -336,7 +336,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs up submission
         (
-            thumbs_up.click(  # ty: ignore[unresolved-attribute]
+            thumbs_up.click(
                 fn=submit_feedback_up,
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
@@ -348,7 +348,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         )
         # Thumbs down submission
         (
-            thumbs_down.click(  # ty: ignore[unresolved-attribute]
+            thumbs_down.click(
                 fn=submit_feedback_down,
                 inputs=[feedback_comment, feedback_user, feedback_tags],
                 outputs=[submission_result],
