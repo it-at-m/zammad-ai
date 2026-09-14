@@ -72,5 +72,6 @@ def test_get_chat_model_anthropic(monkeypatch):
     assert model._init_kwargs["model_name"] == "claude-test"
     assert model._init_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 1024}
     assert model._init_kwargs["effort"] == "high"
+    assert model._init_kwargs["max_tokens"] == 8192
 
     sys.modules.pop("app.utils.genai_provider", None)

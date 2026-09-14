@@ -125,6 +125,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: ChatRole):
                 chat = ChatAnthropic(
                     model_name=model_name,
                     temperature=temperature,
+                    max_tokens=genai_settings.max_tokens,
                     max_retries=max_retries,
                     thinking=thinking.model_dump() if thinking is not None else None,
                     effort=effort,
