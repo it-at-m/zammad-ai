@@ -32,6 +32,7 @@ def _get_keyword_chat_model() -> Any:
             return ChatOpenAI(
                 model=settings.genai.chat_model,
                 temperature=settings.genai.temperature,
+                max_tokens=settings.genai.max_tokens,
                 max_retries=settings.genai.max_retries,
                 http_socket_options=[],
             )

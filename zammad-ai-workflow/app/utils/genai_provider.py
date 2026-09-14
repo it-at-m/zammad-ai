@@ -107,6 +107,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: ChatRole):
                 chat = CleanReasoningChatOpenAI(
                     model=model_name,
                     temperature=temperature,
+                    max_tokens=genai_settings.max_tokens,
                     max_retries=max_retries,
                     reasoning_effort=reasoning,
                     http_socket_options=genai_settings.http_socket_options,

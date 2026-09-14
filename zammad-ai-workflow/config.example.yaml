@@ -26,6 +26,7 @@ usecase:
 genai:
   sdk: "openai" # Options: "openai" or "anthropic"
   max_retries: 3 # Maximum number of retries for API calls
+  max_tokens: 8096 # Maximum number of tokens requested from the LLM
   chat_model: "gpt-4.1-mini" # Model for chat completions
   triage_model: null # Optional override for triage model (fallback: chat_model)
   answer_model: null # Optional override for answer model (fallback: chat_model)
