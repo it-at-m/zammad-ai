@@ -227,15 +227,23 @@ class LangfuseClient:
                 return d or default
 
             input_data = trace_dict.get("input") if isinstance(trace_dict, dict) else None
-            inp_str = _nested_get(input_data, "kwargs", "user_text") if input_data is not None else ""
+            if isinstance(input_data, str):
+                inp_str = input_data
+            else:
+                inp_str = _nested_get(input_data, "kwargs", "user_text") if input_data is not None else ""
 
             output_data = trace_dict.get("output") if isinstance(trace_dict, dict) else None
-            output_data: AnswerCandidate | None = (
-                AnswerCandidate.model_validate(output_data) if output_data is not None else None
-            )
-            subject: str | None = output_data.subject if output_data is not None else ""
-            response: str = output_data.response if output_data is not None else ""
-            documents_data: list[DocumentDict] = output_data.documents if output_data is not None else []
+            if isinstance(output_data, str):
+                subject = ""
+                response = output_data
+                documents_data: list[DocumentDict] = []
+            else:
+                answer_data: AnswerCandidate | None = (
+                    AnswerCandidate.model_validate(output_data) if output_data is not None else None
+                )
+                subject = answer_data.subject if answer_data is not None else ""
+                response = answer_data.response if answer_data is not None else ""
+                documents_data = answer_data.documents if answer_data is not None else []
             used_documents = ""
             for doc in documents_data:
                 used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
