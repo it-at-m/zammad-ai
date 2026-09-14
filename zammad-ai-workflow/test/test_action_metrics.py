@@ -170,8 +170,7 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
     )
     langfuse_client = cast(Any, service.answer_service).langfuse_client
     assert langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
-    await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)  # ty: ignore
-
+    await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)
     post_answer_mock.assert_awaited_once()
     assert "trace_id=fresh-trace-id" in cast(Any, post_answer_mock).await_args.kwargs["text"]
 
