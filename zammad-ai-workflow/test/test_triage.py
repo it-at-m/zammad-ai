@@ -545,6 +545,34 @@ async def test_get_action_id_condition_not_met_falls_through(
     assert action_name == "No Action"  # rule's default, not the condition's action_name
 
 
+@pytest.mark.asyncio
+async def test_get_action_id_ignores_days_since_request_condition_when_unknown(
+    triage_factory: Callable[[list[ActionRule] | None], TriageService],
+) -> None:
+    """Missing day information should not trigger numeric comparisons."""
+    action_rules = [
+        ActionRule(
+            category_name="General",
+            action_name="No Action",
+            conditions=[
+                Condition(
+                    priority=1,
+                    field="days_since_request",
+                    operator="less",
+                    value=10,
+                    action_name="AI_Answer",
+                ),
+            ],
+        ),
+    ]
+    triage = triage_factory(action_rules)
+    categorization = CategorizationResult(category=Category(name="General"), reasoning="ok", confidence=0.8)
+
+    action_name = await triage.get_action_name(categorization_result=categorization, message="msg", session_id="s")
+
+    assert action_name == "No Action"
+
+
 # ---------------------------------------------------------------------------
 # get_action_name: processing_id condition match
 # ---------------------------------------------------------------------------

@@ -49,7 +49,7 @@ class TriageResult(BaseModel):
 class DaysSinceRequestResponse(BaseModel):
     """Structured response for days-since-request evaluation."""
 
-    days_since_request: int = Field(description="Number of days since the request was made")
+    days_since_request: int | None = Field(description="Number of days since the request was made, or null when unknown")
     reason: str = Field(description="Reason for the calculation")
 
 
