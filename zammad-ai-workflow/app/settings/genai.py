@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt
+from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt, PositiveInt
 
 
 class BaseGenAISettings(BaseModel):
@@ -16,6 +16,10 @@ class BaseGenAISettings(BaseModel):
     max_retries: NonNegativeInt = Field(
         description="Maximum retry attempts",
         default=3,
+    )
+    max_tokens: PositiveInt = Field(
+        description="Maximum number of tokens to request from the LLM SDK",
+        default=8192,
     )
 
     # Chat model configuration with fallbacks

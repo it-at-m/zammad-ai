@@ -37,6 +37,8 @@ genai:
   sdk: openai
   # Maximum number of retry attempts for LLM calls.
   max_retries: 3
+  # Maximum number of tokens requested from the LLM.
+  max_tokens: 8096
   # Default model for all LLM tasks unless overridden below.
   chat_model: gpt-4.1-mini
   # Per-task model overrides (falls back to chat_model when null).
