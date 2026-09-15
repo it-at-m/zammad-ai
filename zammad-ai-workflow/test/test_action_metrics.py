@@ -29,6 +29,12 @@ class _FakeObservation:
 
 
 class _FakeLangfuse:
+    def __init__(self) -> None:
+        self.last_session_id: str | None = None
+
+    def update_current_trace(self, *, session_id: str) -> None:
+        self.last_session_id = session_id
+
     def start_as_current_observation(self, **_kwargs: object) -> _FakeObservation:
         return _FakeObservation()
 
@@ -97,6 +103,7 @@ async def test_execute_action_counts_posted_shared_draft_metric(
     setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Entwurf")))
     triage = TriageResult(
         user_text="Frage",
+        session_id="categorization-session",
         category=Category(name="General", auto_publish=False),
         action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
         reasoning="reason",
@@ -147,7 +154,7 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
     settings.frontend.base_url = "https://example.com"
     service, post_answer_mock, _ = _build_action_service(settings)
     delattr(service, "_post_feedback_internal_note")
-    service.answer_service.langfuse_client = _FakeLangfuseClient(last_trace_id)  # ty: ignore
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(last_trace_id)
     service.guardrail_service.evaluate = AsyncMock(return_value=True)
     service.guardrail_service.settings = MagicMock(enabled=False, block_on_high_risk=False)
     settings.triage.actions = [
@@ -159,13 +166,13 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
         category_name="General",
         action_name="Standard",
         user_text="Frage",
-        session_id=None,
+        session_id="categorization-session",
     )
-    assert service.answer_service.langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"  # ty: ignore
-    await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)  # ty: ignore
-
+    langfuse_client = cast(Any, service.answer_service).langfuse_client
+    assert langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
+    await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)
     post_answer_mock.assert_awaited_once()
-    assert "trace_id=fresh-trace-id" in post_answer_mock.await_args.kwargs["text"]  # ty: ignore
+    assert "trace_id=fresh-trace-id" in cast(Any, post_answer_mock).await_args.kwargs["text"]
 
 
 @pytest.mark.asyncio
@@ -181,6 +188,7 @@ async def test_execute_action_reraises_guardrail_block_when_note_post_fails(
     setattr(service, "get_answer", AsyncMock(side_effect=blocked_error))
     triage = TriageResult(
         user_text="Frage",
+        session_id="categorization-session",
         category=Category(name="General", auto_publish=False),
         action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
         reasoning="reason",
@@ -254,14 +262,20 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
 ) -> None:
     """NoAnswerPossible should document the no-action result internally."""
     settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    settings.frontend.base_url = "https://example.com"
     settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    answer_service = cast(Any, service.answer_service)
+    answer_service.langfuse_client = _FakeLangfuseClient(None)
     response = NoAnswerPossible(
         reasoning="Es liegen nicht genug Informationen für eine belastbare Antwort vor, daher kann kein verlässlicher Text erstellt werden."
     )
     setattr(service, "get_answer", AsyncMock(return_value=response))
     triage = TriageResult(
         user_text="Frage",
+        session_id="categorization-session",
         category=Category(name="General", auto_publish=False),
         action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
         reasoning="reason",
@@ -271,8 +285,10 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
     await service.execute_action(ticket_id=1, triage=triage)
 
     post_answer_mock.assert_awaited_once()
-    assert post_answer_mock.await_args.kwargs["internal"] is True  # ty: ignore
-    assert "No answer possible" in post_answer_mock.await_args.kwargs["text"]  # ty: ignore
+    assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
+    assert "No answer possible" in cast(Any, post_answer_mock).await_args.kwargs["text"]
+    feedback_note_mock.assert_awaited_once_with(ticket_id=1, user_text="Frage", response=response)
+    assert answer_service.langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
 
 
 @pytest.mark.asyncio
@@ -296,5 +312,5 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
         await service.execute_action(ticket_id=1, triage=triage)
 
     post_answer_mock.assert_awaited_once()
-    assert post_answer_mock.await_args.kwargs["internal"] is True  # ty: ignore
-    assert "Input failed safety checks" in post_answer_mock.await_args.kwargs["text"]  # ty: ignore
+    assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
+    assert "Input failed safety checks" in cast(Any, post_answer_mock).await_args.kwargs["text"]

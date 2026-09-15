@@ -122,7 +122,7 @@ def _load_feedback_trace(
         return "", "", "", translations["error.trace_load_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = compute_feedback_token(inp or "", out or "", expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
 
     if not compare_digest(provided_key, expected_token):
         return "", "", "", translations["error.access_key_invalid"]
@@ -184,7 +184,7 @@ def _submit_feedback(
         return translations["error.feedback_save_failed"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = compute_feedback_token(inp or "", out or "", expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
     if not compare_digest(provided_key, expected_token):
         return translations["error.access_key_invalid"]
 

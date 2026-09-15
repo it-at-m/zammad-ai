@@ -2,6 +2,8 @@
 
 from logging import Logger
 
+from langfuse import propagate_attributes
+
 from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError, GuardrailBlockedError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
@@ -42,6 +44,7 @@ class ActionService:
     async def execute_action(self, ticket_id: int, triage: TriageResult, session_id: str | None = None) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
         try:
+            effective_session_id: str | None = session_id or triage.session_id
             category: str = triage.category.name
             action: str = triage.action.name
             reason: str = triage.reasoning
@@ -51,7 +54,7 @@ class ActionService:
                 category_name=category,
                 action_name=action,
                 user_text=triage.user_text,
-                session_id=session_id,
+                session_id=effective_session_id,
             )
 
             if triage.action.type == ActionTypes.NoAction:
@@ -65,6 +68,17 @@ class ActionService:
                     action=action,
                     reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
                 )
+                if self.settings.frontend.feedback.post_internal_note:
+                    self._create_feedback_trace(
+                        user_text=triage.user_text[: self.max_user_text_length],
+                        response=response,
+                        session_id=effective_session_id,
+                    )
+                    await self._post_feedback_internal_note(
+                        ticket_id=ticket_id,
+                        user_text=triage.user_text[: self.max_user_text_length],
+                        response=response,
+                    )
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
@@ -142,23 +156,28 @@ class ActionService:
         )
         self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
 
-    def _create_static_answer_trace(self, user_text: str, response: StaticAnswer) -> None:
+    def _create_feedback_trace(
+        self, user_text: str, response: StaticAnswer | NoAnswerPossible, session_id: str | None = None
+    ) -> None:
         if self.answer_service.langfuse_client is None:
             return
 
         langfuse_client = self.answer_service.langfuse_client
         langfuse_client.langfuse_handler.last_trace_id = None
         try:
-            with langfuse_client.langfuse.start_as_current_observation(
-                as_type="span", name="static-answer", input=user_text
-            ) as observation:
-                observation.update(output=response.response)
-                langfuse_client.langfuse_handler.last_trace_id = observation.trace_id
+            trace_name = "static-answer" if isinstance(response, StaticAnswer) else "no-answer"
+            output_text = response.response if isinstance(response, StaticAnswer) else ""
+            with propagate_attributes(session_id=session_id):
+                with getattr(langfuse_client.langfuse, "start_as_current_observation")(
+                    as_type="span", name=trace_name, input=user_text
+                ) as observation:
+                    observation.update(output=output_text)
+                    langfuse_client.langfuse_handler.last_trace_id = observation.trace_id
         except Exception:
-            self.logger.error("Failed to create Langfuse trace for static answer.", exc_info=True)
+            self.logger.error("Failed to create Langfuse trace for feedback note.", exc_info=True)
 
     async def _post_feedback_internal_note(
-        self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer
+        self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer | NoAnswerPossible
     ) -> None:
         trace_id: str | None = (
             self.answer_service.langfuse_client.langfuse_handler.last_trace_id
@@ -167,25 +186,44 @@ class ActionService:
         )
         if trace_id and self.settings.frontend.base_url:
             # Generate a per-link token using the trace IO and the configured salt
+            note_title = "Feedback zum KI-Antwortvorschlag"
+            link_text = "Feedback zu Shared Draft geben"
+            input: str = user_text or ""
+            output: str
+            if isinstance(response, AnswerCandidate):
+                subject: str = response.subject if response.subject else ""
+                output = subject + "\n\n" + response.response
+                note_title = "Feedback zum KI-Antwortvorschlag"
+                link_text = "Feedback zu Shared Draft geben"
+            elif isinstance(response, StaticAnswer):
+                output = response.response
+                note_title = "Feedback zur statischen Antwort"
+                link_text = "Feedback zu Static Answer geben"
+            else:
+                output = ""
+                note_title = "Feedback zur No-Answer"
+                link_text = "Feedback zu No-Answer geben"
+
             try:
-                input: str = user_text or ""
-                subject: str = response.subject if isinstance(response, AnswerCandidate) and response.subject else ""
-                output: str = subject + "\n\n" + response.response
-                output: str = output.replace("<br>", "\n").strip()
+                output = output.replace("<br>", "\n").strip()
+                token_output = output if output else trace_id
                 salt: str = (
                     self.settings.frontend.feedback.salt.get_secret_value()
                     if self.settings.frontend.feedback.salt
                     else ""
                 )
-                token = compute_feedback_token(inp=input, out=output, salt=salt)
+                token = compute_feedback_token(inp=input, out=token_output, salt=salt)
             except Exception:
                 token = ""
 
-            text = f"<a href='{self.settings.frontend.base_url}/feedback/?trace_id={trace_id}&key={token}' target='_blank'>Feedback zu Shared Draft geben</a> (öffnet ein neues Fenster)"
+            text = (
+                f"<a href='{self.settings.frontend.base_url}/feedback/?trace_id={trace_id}&key={token}' target='_blank'>"
+                f"{link_text}</a> (öffnet ein neues Fenster)"
+            )
             await self.zammad_client.post_answer(
                 ticket_id=ticket_id,
                 text=text,
-                subject="Feedback zum KI-Antwortvorschlag",
+                subject=note_title,
                 internal=True,  # Post an internal note to document that feedback can be given for the answer suggestion
             )
 
@@ -272,7 +310,7 @@ class ActionService:
                     f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
                 )
             response = StaticAnswer(response=action.answer)
-            self._create_static_answer_trace(user_text=user_text, response=response)
+            self._create_feedback_trace(user_text=user_text, response=response, session_id=session_id)
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 

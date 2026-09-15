@@ -152,6 +152,42 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
     assert status == "Bewertung bereits vorhanden"
 
 
+def test_load_feedback_trace_supports_empty_output_no_answer_trace(
+    german_translations: dict[str, str],
+) -> None:
+    """No-answer traces may have empty output and still validate their access key."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            assert trace_id == "trace-123"
+            return "hello", "", ""
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            assert trace_id == "trace-123"
+            assert score_name == "user-thumbs"
+            return False
+
+    salt = "secret-salt"
+    expected = compute_feedback_token("hello", "trace-123", salt)
+    request = _make_request({"trace_id": "trace-123", "key": expected})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf=DummyClient(),
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        translations=german_translations,
+    )
+
+    assert input_text == "hello"
+    assert output_text == ""
+    assert used_documents == ""
+    assert status == "Trace geladen"
+
+
 def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[str, str]) -> None:
     """Return a localized error when Langfuse cannot load the trace."""
 

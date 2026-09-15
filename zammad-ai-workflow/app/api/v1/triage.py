@@ -79,6 +79,7 @@ async def triage(
         return TriageOutput(
             triage=TriageResult(
                 user_text=text,
+                session_id=input.session_id,
                 category=final_category,
                 action=action,
                 reasoning=categorization.reasoning,

@@ -204,6 +204,7 @@ class TriageService:
                 logger.warning(f"No articles found for ticket {ticket.id}, returning no_category and no_action")
                 return TriageResult(
                     user_text="",
+                    session_id=None,
                     category=self.no_category,
                     reasoning="No articles found",
                     confidence=1.0,
@@ -287,6 +288,7 @@ class TriageService:
             outcome = "success"
             return TriageResult(
                 user_text=customer_message,
+                session_id=session_id,
                 category=categorization.category if categorization.category else self.no_category,
                 action=action,
                 reasoning=categorization.reasoning,
