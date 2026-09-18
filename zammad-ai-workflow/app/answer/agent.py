@@ -83,9 +83,11 @@ async def search_dlf(runtime: ToolRuntime[AgentContext], query: str) -> list[DLF
     try:
         dlf_docs: list[DLFDocument] = await dlf_client.retrieve_documents(query=query)
         return dlf_docs
-    except DLFError:
+    except DLFError as e:
         logger.error("HTTP error while searching DLF", exc_info=True)
-        raise ToolException("Failed to search the munich city website. Please try other tools for now.")
+        raise ToolException(
+            "Failed to search the munich city website. Please try other tools for now. Reason: " + str(e)
+        ) from e
 
 
 @tool(

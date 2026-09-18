@@ -110,7 +110,6 @@ class DLFClient:
                 toxicity_labels=[
                     "pii_exposure",
                     "privacy_violation",
-                    "non_violent_crime",
                     "benign",
                 ],
                 jailbreak_labels=None,
@@ -123,7 +122,9 @@ class DLFClient:
             self.logger.warning(
                 msg="Query flagged as unsafe by guardrails.",
             )
-            raise DLFError("Query flagged as unsafe by guardrails.")
+            raise DLFError(
+                "Query flagged as unsafe by guardrails. Please modify your query and try again. Reason: The query may contain personally identifiable information (PII) or violate privacy guidelines."
+            )
 
         # Create payload
         payload = DLFAPIPayload(

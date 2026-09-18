@@ -326,17 +326,15 @@ class TriageService:
             guardrail_result: bool = await self.guardrail_service.evaluate(
                 message,
                 toxicity_labels=[
-                    "violence_and_weapons",
+                    "weapons",
                     "sexual_content",
                     "hate_and_discrimination",
                     "self_harm_and_suicide",
-                    "misinformation",
                     "copyright_violation",
                     "child_safety",
                     "political_manipulation",
                     "unethical_conduct",
                     "regulated_advice",
-                    "other",
                     "benign",
                 ],
                 jailbreak_labels=None,
@@ -345,7 +343,11 @@ class TriageService:
             logger.error("Guardrail evaluation failed before categorization.", exc_info=True)
             raise TriageError("Guardrail evaluation failed before categorization", retryable=True) from e
 
-        if self.guardrail_service.settings.enabled and self.guardrail_service.settings.block_on_high_risk and not guardrail_result:
+        if (
+            self.guardrail_service.settings.enabled
+            and self.guardrail_service.settings.block_on_high_risk
+            and not guardrail_result
+        ):
             logger.warning("Categorization blocked by guardrails")
             raise TriageError("Input failed safety checks", retryable=False)
 
