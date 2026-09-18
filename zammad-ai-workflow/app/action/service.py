@@ -247,17 +247,14 @@ class ActionService:
             guardrail_result: bool = await self.guardrail_service.evaluate(
                 user_text,
                 toxicity_labels=[
-                    "violence_and_weapons",
                     "sexual_content",
                     "hate_and_discrimination",
                     "self_harm_and_suicide",
-                    "misinformation",
                     "copyright_violation",
                     "child_safety",
                     "political_manipulation",
                     "unethical_conduct",
                     "regulated_advice",
-                    "other",
                     "benign",
                 ],
                 jailbreak_labels=None,
