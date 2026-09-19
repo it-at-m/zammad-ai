@@ -29,11 +29,11 @@ dependencies = [
     "torch==2.14.0",
     "transformers==5.17.0",
     "setuptools==84.0.0",
-    "peft==0.20.0",
+    "peft==0.21.0",
 ]
 
 [dependency-groups]
-dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.7", "ty==0.0.80"]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.8", "ty==0.0.82"]
 
 [tool.uv]
 add-bounds = "exact"
