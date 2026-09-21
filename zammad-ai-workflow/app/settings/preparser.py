@@ -32,6 +32,10 @@ class TablePreparserConfig(BasePreparserConfig):
         default=1,
         description="Index of column to extract as the value (0-based)",
     )
+    year_only_rows: list[str] = Field(
+        default_factory=list,
+        description="List of row titles whose values should be reduced to the birth year when possible",
+    )
 
 
 PreparserConfigTypes = Annotated[TablePreparserConfig, Field(discriminator="type")]

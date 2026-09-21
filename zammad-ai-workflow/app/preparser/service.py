@@ -47,6 +47,7 @@ class PreparserService:
                     keep_rows=cfg.keep_rows,
                     case_sensitive=getattr(cfg, "case_sensitive", False),
                     value_column=getattr(cfg, "value_column", 1),
+                    year_only_rows=getattr(cfg, "year_only_rows", []),
                 )
             case other:
                 raise NotImplementedError(f"Unknown preparser config type: {other}")
