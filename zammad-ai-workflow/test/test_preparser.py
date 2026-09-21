@@ -46,6 +46,28 @@ def test_table_preparser_partial_matches() -> None:
     assert "The summary" in out
 
 
+def test_table_preparser_can_reduce_date_rows_to_year() -> None:
+    """Configured date rows should be reduced to the year when possible."""
+    table = "| Field | Value |\n| --- | --- |\n| Geburtsdatum | 01.02.1990 |\n"
+    p = TablePreparser(keep_rows=["Geburtsdatum"], year_only_rows=["Geburtsdatum"])
+    out = p.parse(table)
+
+    assert "## Geburtsdatum" in out
+    assert "1990" in out
+    assert "01.02.1990" not in out
+
+
+def test_table_preparser_does_not_expand_two_digit_years() -> None:
+    """Two-digit years must not be interpreted as a future century by default."""
+    table = "| Field | Value |\n| --- | --- |\n| Geburtsdatum | 01.02.68 |\n"
+    p = TablePreparser(keep_rows=["Geburtsdatum"], year_only_rows=["Geburtsdatum"])
+    out = p.parse(table)
+
+    assert "## Geburtsdatum" in out
+    assert "01.02.68" in out
+    assert "2068" not in out
+
+
 def test_preparser_service_disabled_returns_original() -> None:
     """PreparserService should return the original message when disabled."""
     settings = PreparserSettings(enabled=False, config=None)

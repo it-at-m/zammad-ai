@@ -348,8 +348,11 @@ preparser:
     keep_rows:
       - "Summary"
       - "Steps to reproduce"
+      - "Birthdate"
     case_sensitive: false
     value_column: 1
+    year_only_rows:
+      - "Birthdate"
 
 # ============================================================================
 # API Configuration

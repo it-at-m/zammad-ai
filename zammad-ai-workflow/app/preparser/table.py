@@ -12,6 +12,7 @@ parser fails open and returns the original message on unexpected errors.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Iterable
 
 from app.preparser.base import AbstractPreparser
@@ -24,26 +25,51 @@ class TablePreparser(AbstractPreparser):
     """Extract configured rows from Markdown tables."""
 
     _separator_re = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*$")
+    _year_re = re.compile(r"\b(19|20)\d{2}\b")
 
-    def __init__(self, keep_rows: list[str], case_sensitive: bool = False, value_column: int = 1) -> None:
+    def __init__(
+        self,
+        keep_rows: list[str],
+        case_sensitive: bool = False,
+        value_column: int = 1,
+        year_only_rows: list[str] | None = None,
+    ) -> None:
         """Create a TablePreparser object.
 
         Args:
             keep_rows: List of row title strings to match against the first cell.
             case_sensitive: Whether matching is case-sensitive (default: False).
             value_column: Index of column to treat as the value (default: 1 -> second column).
+            year_only_rows: Row titles that should be reduced to a year when possible.
         """
         self.case_sensitive = case_sensitive
         self.value_column = int(value_column)
+        year_only_rows = year_only_rows or []
         # Normalize configured titles for matching
         if case_sensitive:
             self._norm_map = {t.strip(): t for t in keep_rows}
+            self._year_only_map = {t.strip(): t for t in year_only_rows}
         else:
             self._norm_map = {t.strip().lower(): t for t in keep_rows}
+            self._year_only_map = {t.strip().lower(): t for t in year_only_rows}
 
     def _normalize(self, s: str) -> str:
         s = s.strip()
         return s if self.case_sensitive else s.lower()
+
+    def _extract_year(self, value: str) -> str:
+        value = value.strip()
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"):
+            try:
+                return str(datetime.strptime(value, fmt).year)
+            except ValueError:
+                continue
+
+        match = self._year_re.search(value)
+        if match is not None:
+            return match.group(0)
+
+        return value
 
     def _iter_tables(self, lines: list[str]) -> Iterable[tuple[int, int]]:
         """Yield (start, end) line indexes for table body rows (exclusive end).
@@ -101,6 +127,9 @@ class TablePreparser(AbstractPreparser):
                             value = extra.strip()
                         elif len(cells) > 1:
                             value = cells[self.value_column].strip() if self.value_column < len(cells) else ""
+
+                        if norm in self._year_only_map:
+                            value = self._extract_year(value)
 
                         sections.append(f"## {title}\n{value}")
 
