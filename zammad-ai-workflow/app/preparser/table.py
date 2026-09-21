@@ -59,7 +59,7 @@ class TablePreparser(AbstractPreparser):
 
     def _extract_year(self, value: str) -> str:
         value = value.strip()
-        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y", "%d.%m.%y"):
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"):
             try:
                 return str(datetime.strptime(value, fmt).year)
             except ValueError:
