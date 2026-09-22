@@ -316,7 +316,20 @@ class ActionService:
         if isinstance(response, AnswerCandidate):
             try:
                 response_guardrail_result: bool = await self.guardrail_service.evaluate_response(
-                    text=user_text, response=response.response
+                    text=user_text,
+                    response=response.response,
+                    toxicity_labels=[
+                        "weapons",
+                        "sexual_content",
+                        "hate_and_discrimination",
+                        "self_harm_and_suicide",
+                        "copyright_violation",
+                        "child_safety",
+                        "political_manipulation",
+                        "unethical_conduct",
+                        "regulated_advice",
+                        "benign",
+                    ],
                 )
             except GuardrailEvaluationError as e:
                 self.logger.error("Guardrail evaluation failed for generated response.", exc_info=True)
