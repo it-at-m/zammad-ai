@@ -11,6 +11,7 @@ from langchain_core.runnables import RunnableLambda
 
 from app.answer.middleware import KnowledgebaseQuery, _format_answer, build_knowledgebase_middleware
 from app.models.answer import AnswerCandidate
+from app.settings.answer import MultiQuerySettings
 
 
 class FakeQueryModel:
@@ -52,6 +53,39 @@ class FakeQdrantClient:
                 0.91,
             )
         ]
+
+
+class FakeMultiQueryRetriever:
+    """Minimal multi-query retriever fake."""
+
+    def __init__(self, queries: list[str]) -> None:
+        """Store the queries to return from the fake retriever."""
+        self.queries = queries
+
+    async def agenerate_queries(self, _query: str, _run_manager: object) -> list[str]:
+        """Return the configured multi-query variants."""
+        return self.queries
+
+
+class FakeVectorStoreMulti:
+    """Vector store fake that records multi-query calls."""
+
+    def __init__(self) -> None:
+        """Initialize the fake store with deterministic document results."""
+        self.calls: list[dict[str, object]] = []
+        self.doc_a = Document(page_content="A", metadata={"id": "a", "title": "Alpha"})
+        self.doc_b = Document(page_content="B", metadata={"id": "b", "title": "Beta"})
+        self.doc_c = Document(page_content="C", metadata={"id": "c", "title": "Gamma"})
+        self.results = {
+            "erste frage": [(self.doc_a, 0.4), (self.doc_b, 0.6)],
+            "zweite frage": [(self.doc_a, 0.9), (self.doc_c, 0.5)],
+            "Personalausweis beantragen": [(self.doc_c, 0.7)],
+        }
+
+    async def asimilarity_search_with_relevance_scores(self, **kwargs: object) -> list[tuple[Document, float]]:
+        """Record the search call and return the configured results."""
+        self.calls.append(kwargs)
+        return self.results[str(kwargs["query"])]
 
 
 @pytest.mark.asyncio
@@ -110,6 +144,38 @@ async def test_knowledgebase_middleware_rejects_invalid_fallback_query() -> None
         message.content == "Knowledge-base context\n\nNo relevant knowledge-base documents were found for this request."
     )
     assert runtime.context.knowledgebase_context == message.content
+
+
+@pytest.mark.asyncio
+async def test_knowledgebase_middleware_expands_multi_query_results() -> None:
+    """Middleware should fan out multi-query search terms when enabled on the KB client."""
+    query_model = FakeQueryModel()
+    middleware: Any = build_knowledgebase_middleware(cast(BaseChatModel, query_model))
+    qdrant_client = SimpleNamespace(
+        qdrant_settings=SimpleNamespace(retrieval_num_documents=2),
+        multi_query_settings=MultiQuerySettings(enabled=True, include_original=True),
+        multi_query_retriever=FakeMultiQueryRetriever(["erste frage", "zweite frage"]),
+        vectorstore=FakeVectorStoreMulti(),
+    )
+    runtime = SimpleNamespace(context=SimpleNamespace(qdrant_kb_client=qdrant_client, knowledgebase_context=None))
+    state = {"messages": [HumanMessage(content="Ich brauche einen Personalausweis.")]}
+
+    result = await middleware.abefore_agent(state, runtime)
+
+    assert query_model.schema is KnowledgebaseQuery
+    assert len(query_model.calls) == 1
+    assert [call["query"] for call in qdrant_client.vectorstore.calls] == [
+        "erste frage",
+        "zweite frage",
+        "Personalausweis beantragen",
+    ]
+    assert result is not None
+    message = result["messages"][0]
+    assert isinstance(message, SystemMessage)
+    assert "Knowledge-base context" in message.content
+    assert "Search query: Personalausweis beantragen" in message.content
+    assert "1. Alpha (score: 0.900)" in message.content
+    assert "2. Gamma (score: 0.700)" in message.content
 
 
 @pytest.mark.asyncio

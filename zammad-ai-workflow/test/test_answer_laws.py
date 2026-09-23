@@ -25,6 +25,27 @@ class FakeVectorStore:
         return []
 
 
+class FakeVectorStoreMulti:
+    """Vector store fake for law multi-query retrieval."""
+
+    def __init__(self) -> None:
+        """Initialize the fake with deterministic law retrieval results."""
+        self.calls: list[dict[str, Any]] = []
+        self.doc_a = Document(page_content="Law A", metadata={"id": "a", "title": "Law A"})
+        self.doc_b = Document(page_content="Law B", metadata={"id": "b", "title": "Law B"})
+        self.doc_c = Document(page_content="Law C", metadata={"id": "c", "title": "Law C"})
+        self.results = {
+            "erste frage": [(self.doc_a, 0.4), (self.doc_b, 0.6)],
+            "zweite frage": [(self.doc_a, 0.9), (self.doc_c, 0.5)],
+            "originalfrage": [(self.doc_c, 0.7)],
+        }
+
+    async def asimilarity_search_with_relevance_scores(self, **kwargs: Any) -> list[tuple[Document, float]]:
+        """Record the search call and return the configured results."""
+        self.calls.append(kwargs)
+        return self.results[str(kwargs["query"])]
+
+
 class FakeMultiQueryRetriever:
     """Minimal multi-query retriever fake returning a fixed query set."""
 
@@ -205,3 +226,27 @@ async def test_asearch_documents_expands_queries_when_multi_query_is_enabled() -
     assert result[0][1] == 0.9
     assert result[1][0].page_content == "C"
     assert result[1][1] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_asearch_law_documents_expands_queries_when_multi_query_is_enabled() -> None:
+    """Law retrieval should also fan out multi-query searches while keeping the law filter."""
+    client: Any = QdrantKBClient.__new__(QdrantKBClient)
+    client.qdrant_settings = type("Settings", (), {"retrieval_num_documents": 2})()  # type: ignore[assignment]
+    client.multi_query_settings = MultiQuerySettings(enabled=True, include_original=True)  # type: ignore[assignment]
+    client.multi_query_retriever = FakeMultiQueryRetriever(["erste frage", "zweite frage"])
+    client.vectorstore = FakeVectorStoreMulti()
+
+    result = await client.asearch_law_documents(law_id="fev", query="originalfrage", k=2, offset=0)
+
+    assert [call["query"] for call in client.vectorstore.calls] == ["erste frage", "zweite frage", "originalfrage"]
+    assert all(call["offset"] == 0 for call in client.vectorstore.calls)
+    assert len(result) == 2
+    assert result[0][0].page_content == "Law A"
+    assert result[0][1] == 0.9
+    assert result[1][0].page_content == "Law C"
+    assert result[1][1] == 0.7
+
+    search_filter = client.vectorstore.calls[0]["filter"]
+    assert [condition.key for condition in search_filter.must] == ["metadata.source", "metadata.law_id"]
+    assert [condition.match.value for condition in search_filter.must] == ["law", "fev"]
