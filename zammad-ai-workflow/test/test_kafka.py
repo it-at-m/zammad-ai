@@ -1,6 +1,7 @@
 """Tests for Kafka event routing and triage invocation."""
 
 from collections.abc import Callable
+from typing import Protocol, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from app.kafka.helper import (
     _reschedule_retry_event,
     _sleep_until_retry_after,
 )
+from app.kafka.idempotency import KafkaEventIdempotencyStore, build_event_idempotency_key
 from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL
 from app.models.kafka import Event
 from app.models.triage import TriageResult
@@ -31,6 +33,11 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings
+
+
+class _KafkaSubscriberInspection(Protocol):
+    _topics: list[str]
+    _connection_args: dict[str, object]
 
 
 def create_mock_settings() -> ZammadAISettings:
@@ -822,6 +829,29 @@ async def test_event_handler_executes_action_when_triage_returns_action(
         mock_get_action_service.execute_action.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_event_handler_skips_already_processed_event(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    tmp_path,
+) -> None:
+    """Previously completed Kafka events must not be processed again after a redelivery."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.idempotency_db_path = str(tmp_path / "idempotency.sqlite3")
+    router, _ = build_router(settings=settings)
+    event = kafka_message_factory()
+
+    store = KafkaEventIdempotencyStore(tmp_path / "idempotency.sqlite3")
+    await store.mark_processed(build_event_idempotency_key(Event.model_validate(event)))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(topic=settings.kafka.topic, message=event)
+
+    mock_triage.perform_triage.assert_not_called()
+
+
 def test_router_uses_configured_max_poll_interval(settings_factory: Callable[..., ZammadAISettings]) -> None:
     """Kafka subscribers should inherit the configured poll interval budget."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
@@ -830,7 +860,9 @@ def test_router_uses_configured_max_poll_interval(settings_factory: Callable[...
     router, _ = build_router(settings=settings)
 
     connection_args_by_topic = {
-        tuple(subscriber._topics): subscriber._connection_args for subscriber in router.broker.subscribers
+        tuple(typed_subscriber._topics): typed_subscriber._connection_args
+        for subscriber in router.broker.subscribers
+        for typed_subscriber in (cast(_KafkaSubscriberInspection, subscriber),)
     }
     assert connection_args_by_topic[(settings.kafka.topic,)]["max_poll_interval_ms"] == 900_000
     assert connection_args_by_topic[(settings.kafka.retry_topic,)]["max_poll_interval_ms"] == 900_000
