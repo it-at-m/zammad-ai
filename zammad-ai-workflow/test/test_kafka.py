@@ -1,6 +1,7 @@
 """Tests for Kafka event routing and triage invocation."""
 
 from collections.abc import Callable
+from typing import Protocol, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -31,6 +32,11 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings
+
+
+class _KafkaSubscriberInspection(Protocol):
+    _topics: list[str]
+    _connection_args: dict[str, object]
 
 
 def create_mock_settings() -> ZammadAISettings:
@@ -820,3 +826,19 @@ async def test_event_handler_executes_action_when_triage_returns_action(
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
         mock_get_action_service.execute_action.assert_called_once()
+
+
+def test_router_uses_configured_max_poll_interval(settings_factory: Callable[..., ZammadAISettings]) -> None:
+    """Kafka subscribers should inherit the configured poll interval budget."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.max_poll_interval_ms = 900_000
+
+    router, _ = build_router(settings=settings)
+
+    connection_args_by_topic = {
+        tuple(typed_subscriber._topics): typed_subscriber._connection_args
+        for subscriber in router.broker.subscribers
+        for typed_subscriber in (cast(_KafkaSubscriberInspection, subscriber),)
+    }
+    assert connection_args_by_topic[(settings.kafka.topic,)]["max_poll_interval_ms"] == 900_000
+    assert connection_args_by_topic[(settings.kafka.retry_topic,)]["max_poll_interval_ms"] == 900_000

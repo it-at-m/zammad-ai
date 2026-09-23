@@ -200,6 +200,13 @@ def classify_exception(
             error_class=error_class,
         )
 
+    if type(error).__name__ == "CommitFailedError" and type(error).__module__.startswith("aiokafka"):
+        return ExceptionDecision(
+            decision=AckDecision.ACK_DROP,
+            reason="commit_failed_drop",
+            error_class=error_class,
+        )
+
     return ExceptionDecision(
         decision=AckDecision.NACK_RETRY,
         reason="untyped_exception_default_retry",

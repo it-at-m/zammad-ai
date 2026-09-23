@@ -1,8 +1,8 @@
 """Settings for Kafka connectivity and security."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveInt, model_validator
 
 
 class KafkaSettings(BaseModel):
@@ -62,6 +62,39 @@ class KafkaSettings(BaseModel):
         default=5,
     )
 
+    max_poll_interval_ms: PositiveInt = Field(
+        description="Maximum time between Kafka poll calls before the consumer is considered dead.",
+        default=300_000,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_security_type(cls, data: Any) -> Any:
+        """Infer the Kafka security discriminator when config sources omit it.
+
+        Environment and YAML sources can materialize the nested security payload without the
+        explicit ``type`` field required by the discriminated union. Normalize those inputs
+        before model validation so the configured security backend can still be parsed.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        security = data.get("security")
+        if not isinstance(security, dict) or "type" in security:
+            return data
+
+        normalized_security = dict(security)
+        if {"ca_file_path", "client_cert_path", "client_key_path"} & normalized_security.keys():
+            normalized_security["type"] = "file"
+        elif {"ca_file_base64", "pkcs12_base64", "pkcs12_pw"} & normalized_security.keys():
+            normalized_security["type"] = "env"
+        else:
+            return data
+
+        normalized_data = dict(data)
+        normalized_data["security"] = normalized_security
+        return normalized_data
+
 
 class EventProcessingSettings(BaseModel):
     """Settings related to processing of incoming events."""
@@ -117,3 +150,6 @@ class MTLSFileKafkaSecurity(BaseModel):
     client_key_path: FilePath = Field(
         description="Path to the client private key file (PEM format).",
     )
+
+
+KafkaSettings.model_rebuild()
