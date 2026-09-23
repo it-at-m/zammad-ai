@@ -232,6 +232,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         group_id=settings.kafka.group_id,
         ack_policy=AckPolicy.NACK_ON_ERROR,
         max_workers=settings.kafka.max_workers,
+        max_poll_interval_ms=settings.kafka.max_poll_interval_ms,
     )
     async def event_handler(event: Event | dict[str, object]) -> None:
         """Process a Kafka event from the main topic."""
@@ -286,6 +287,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         group_id=settings.kafka.group_id,
         max_workers=settings.kafka.max_workers,
         ack_policy=AckPolicy.NACK_ON_ERROR,
+        max_poll_interval_ms=settings.kafka.max_poll_interval_ms,
     )
     async def retry_event_handler(
         event: Event | dict[str, object],
