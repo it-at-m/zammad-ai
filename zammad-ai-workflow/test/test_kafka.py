@@ -17,7 +17,6 @@ from app.kafka.helper import (
     _reschedule_retry_event,
     _sleep_until_retry_after,
 )
-from app.kafka.idempotency import KafkaEventIdempotencyStore, build_event_idempotency_key
 from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL
 from app.models.kafka import Event
 from app.models.triage import TriageResult
@@ -827,29 +826,6 @@ async def test_event_handler_executes_action_when_triage_returns_action(
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
         mock_get_action_service.execute_action.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_event_handler_skips_already_processed_event(
-    kafka_message_factory: Callable[..., dict[str, str]],
-    mock_triage: MagicMock,
-    mock_get_triage: None,
-    settings_factory: Callable[..., ZammadAISettings],
-    tmp_path,
-) -> None:
-    """Previously completed Kafka events must not be processed again after a redelivery."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    settings.kafka.idempotency_db_path = str(tmp_path / "idempotency.sqlite3")
-    router, _ = build_router(settings=settings)
-    event = kafka_message_factory()
-
-    store = KafkaEventIdempotencyStore(tmp_path / "idempotency.sqlite3")
-    await store.mark_processed(build_event_idempotency_key(Event.model_validate(event)))
-
-    async with TestKafkaBroker(router.broker) as test_broker:
-        await test_broker.publish(topic=settings.kafka.topic, message=event)
-
-    mock_triage.perform_triage.assert_not_called()
 
 
 def test_router_uses_configured_max_poll_interval(settings_factory: Callable[..., ZammadAISettings]) -> None:

@@ -45,6 +45,22 @@ def test_classify_exception_category_wrong_confidence_threshold() -> None:
     assert drop_decision.decision == AckDecision.ACK_DROP
 
 
+def test_classify_exception_commit_failed_error_is_dropped() -> None:
+    """Kafka commit failures should not be retried as business processing errors."""
+    class CommitFailedError(Exception):
+        pass
+
+    CommitFailedError.__module__ = "aiokafka.errors"
+
+    decision = classify_exception(
+        CommitFailedError("commit failed"),
+        category_wrong_retry_confidence_threshold=0.5,
+    )
+
+    assert decision.decision == AckDecision.ACK_DROP
+    assert decision.reason == "commit_failed_drop"
+
+
 def test_classify_provider_error_timeout_and_auth() -> None:
     """Provider error helper should detect timeout and auth failures by class name."""
 
