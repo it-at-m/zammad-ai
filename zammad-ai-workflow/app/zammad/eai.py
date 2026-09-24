@@ -25,6 +25,14 @@ from .base import BaseZammadClient, ZammadConnectionError
 logger: Logger = getLogger("zammad-ai.zammad.eai")
 
 
+def _extract_group_name(data: dict[str, Any]) -> str | None:
+    for key in ("group_name", "groupName", "group"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 class ZammadEAIClient(BaseZammadClient):
     """Zammad EAI client implementation for Zammad AI with OAuth 2.0 support."""
 
@@ -117,7 +125,13 @@ class ZammadEAIClient(BaseZammadClient):
             articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(data.get("articles", []))
         except (KeyError, TypeError, ValidationError) as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
-        return ZammadTicket(id=id, articles=articles, group_id=group_id)
+        return ZammadTicket(
+            id=id,
+            articles=articles,
+            group_id=group_id,
+            group_name=_extract_group_name(data),
+            article_count=len(articles),
+        )
 
     @override
     async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:

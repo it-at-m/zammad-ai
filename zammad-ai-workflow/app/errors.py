@@ -170,6 +170,12 @@ class GuardrailBlockedError(ActionExecutionError):
     """Raised when guardrails block ticket input or a generated response."""
 
 
+class TicketAlreadyProcessedError(AppError):
+    """Raised when a ticket appears to have already been handled by AI or a human."""
+
+    retryable = False
+
+
 class AckDecision(Enum):
     """Enum for classifying exceptions into broker ACK/NACK decisions."""
 

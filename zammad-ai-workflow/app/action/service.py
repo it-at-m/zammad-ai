@@ -18,6 +18,8 @@ from app.utils.logging import getLogger
 from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
 from app.zammad.eai import ZammadEAIClient
+from app.zammad.markers import NO_ANSWER_NOTE_SUBJECT
+from app.zammad.processing import ensure_ticket_not_already_processed
 
 
 class ActionService:
@@ -48,6 +50,8 @@ class ActionService:
             category: str = triage.category.name
             action: str = triage.action.name
             reason: str = triage.reasoning
+
+            await self._ensure_ticket_not_already_processed(ticket_id)
 
             response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
                 ticket_id=ticket_id,
@@ -82,6 +86,7 @@ class ActionService:
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
+                await self._ensure_ticket_not_already_processed(ticket_id)
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
                     text=response.response,
@@ -106,6 +111,7 @@ class ActionService:
                     # Don't fail the action execution if scheduling fails — just log
                     self.logger.error("Failed to schedule pending-close update for ticket.", exc_info=True)
             else:
+                await self._ensure_ticket_not_already_processed(ticket_id)
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
                     text=response.response,
@@ -142,6 +148,7 @@ class ActionService:
     async def _post_no_action_internal_note(self, ticket_id: int, category: str, action: str, reason: str) -> None:
         if not self.settings.triage.no_action_internal_note:
             return
+        await self._ensure_ticket_not_already_processed(ticket_id)
         text: str = _safe_format(
             template=self.settings.triage.no_action_internal_note,
             category=category,
@@ -151,7 +158,7 @@ class ActionService:
         await self.zammad_client.post_answer(
             ticket_id=ticket_id,
             text=text,
-            subject="No answer generation possible",
+            subject=NO_ANSWER_NOTE_SUBJECT,
             internal=True,
         )
         self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
@@ -179,6 +186,10 @@ class ActionService:
     async def _post_feedback_internal_note(
         self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer | NoAnswerPossible
     ) -> None:
+        await self._ensure_ticket_not_already_processed(
+            ticket_id,
+            allow_no_answer_internal_note=isinstance(response, NoAnswerPossible),
+        )
         trace_id: str | None = (
             self.answer_service.langfuse_client.langfuse_handler.last_trace_id
             if self.answer_service.langfuse_client
@@ -226,6 +237,18 @@ class ActionService:
                 subject=note_title,
                 internal=True,  # Post an internal note to document that feedback can be given for the answer suggestion
             )
+
+    async def _ensure_ticket_not_already_processed(
+        self, ticket_id: int, *, allow_no_answer_internal_note: bool = False
+    ) -> None:
+        ticket = await self.zammad_client.get_ticket(id=ticket_id)
+        ensure_ticket_not_already_processed(
+            ticket,
+            ai_group_id=self.settings.zammad.ai_ticket_group_id,
+            ai_group_name=self.settings.zammad.ai_ticket_group_name,
+            ai_ticket_author=self.settings.zammad.ai_ticket_author,
+            allow_no_answer_internal_note=allow_no_answer_internal_note,
+        )
 
     async def get_answer(
         self,

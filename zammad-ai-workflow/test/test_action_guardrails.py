@@ -18,6 +18,9 @@ class _DummyZammadClient:
     def __init__(self, settings) -> None:
         self.settings = settings
 
+    async def get_ticket(self, *args, **kwargs):
+        raise AssertionError("get_ticket should not be called")
+
     async def close(self) -> None:
         return None
 
@@ -109,9 +112,7 @@ async def test_get_answer_rejects_unsafe_input(monkeypatch: pytest.MonkeyPatch, 
 
 
 @pytest.mark.asyncio
-async def test_get_answer_retries_on_input_guardrail_failure(
-    monkeypatch: pytest.MonkeyPatch, settings_factory
-) -> None:
+async def test_get_answer_retries_on_input_guardrail_failure(monkeypatch: pytest.MonkeyPatch, settings_factory) -> None:
     """Guardrail evaluation failures before answer generation should be retryable."""
     guardrail_service = _GuardrailStub(
         GuardrailSettings(enabled=True, block_on_high_risk=True),

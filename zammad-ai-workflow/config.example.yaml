@@ -103,6 +103,8 @@ zammad:
   # eai_url: "https://your-zammad-eai.example.com/api/v1"
   # knowledge_base_id: "1"
   # ai_ticket_group_id: 1 # Optional: set to null to disable AI ticket assignment
+  # ai_ticket_group_name: "AI-System" # Optional: human-readable AI group name used for duplicate-processing checks
+  # ai_ticket_author: "AI-Author" # Optional: exact author name used for AI internal-note detection
   # timeout: 30
   # max_retries: 3
   # http_proxy_url: null

@@ -212,7 +212,7 @@ class FakeZammadClient:
             return ZammadTicket(id=id, articles=[])
         return self.ticket
 
-    async def post_answer(self, ticket_id: str, text: str, internal: bool = False) -> None:
+    async def post_answer(self, ticket_id: str, text: str, subject: str | None = None, internal: bool = False) -> None:
         """Prevent posting an answer during tests by failing if called.
 
         Raises:

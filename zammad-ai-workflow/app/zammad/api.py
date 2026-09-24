@@ -26,6 +26,14 @@ from .base import BaseZammadClient
 logger: Logger = getLogger("zammad-ai.zammad.api")
 
 
+def _extract_group_name(data: dict[str, Any]) -> str | None:
+    for key in ("group_name", "groupName", "group"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 class ZammadAPIClient(BaseZammadClient):
     """Client for interacting with Zammad API to fetch and update ticket information."""
 
@@ -49,12 +57,32 @@ class ZammadAPIClient(BaseZammadClient):
 
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
-        data = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
+        ticket_data = await self._request("GET", f"/api/v1/tickets/{id}")
+        if not isinstance(ticket_data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
         try:
-            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(data)
+            raw_articles = ticket_data.get("articles")
+            if not isinstance(raw_articles, list):
+                raw_articles = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
+            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(raw_articles)
+            raw_group = ticket_data.get("group_id")
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
         except ValidationError as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
-        return ZammadTicket(id=id, articles=articles)
+        return ZammadTicket(
+            id=id,
+            articles=articles,
+            group_id=group_id,
+            group_name=_extract_group_name(ticket_data),
+            article_count=len(articles),
+        )
 
     @override
     async def post_answer(self, ticket_id: int, text: str, subject: str | None = None, internal: bool = False) -> None:

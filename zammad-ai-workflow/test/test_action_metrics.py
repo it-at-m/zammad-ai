@@ -7,10 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.action.service import ActionService
-from app.errors import GuardrailBlockedError
+from app.errors import GuardrailBlockedError, TicketAlreadyProcessedError
 from app.metrics import KAFKA_TICKET_OUTCOMES_TOTAL
 from app.models.answer import NoAnswerPossible, StaticAnswer
 from app.models.triage import TriageResult
+from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
 from app.settings.triage import Action, ActionTypes, Category
 
@@ -62,6 +63,12 @@ def _build_action_service(settings: ZammadAISettings) -> tuple[ActionService, As
     service.guardrail_service = MagicMock()
     service.max_user_text_length = settings.max_user_text_length
     service.zammad_client = MagicMock()
+    service.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=1,
+            articles=[ZammadArticle(id=1, ticket_id=1, text="Frage", internal=False)],
+        )
+    )
     post_answer_mock = AsyncMock()
     post_shared_draft_mock = AsyncMock()
     service.zammad_client.post_answer = post_answer_mock
@@ -254,6 +261,51 @@ async def test_execute_action_counts_manual_metric_for_no_action(
     await service.execute_action(ticket_id=1, triage=triage)
 
     assert _get_outcome_counter_value(category="General", action_type="no_action", outcome="manual") == baseline + 1
+
+
+@pytest.mark.asyncio
+async def test_execute_action_rechecks_ticket_before_posting_answer(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """A ticket that changes to already-processed state after generation must not be posted."""
+    settings = settings_factory()
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    service, post_answer_mock, _ = _build_action_service(settings)
+    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Antwort")))
+    initial_ticket = ZammadTicket(
+        id=1,
+        group_id=31,
+        articles=[
+            ZammadArticle(id=1, ticket_id=1, text="Inhalt des Anliegens", internal=False),
+            ZammadArticle(id=2, ticket_id=1, text="Eingang Ihres Anliegens", internal=False),
+            ZammadArticle(id=3, ticket_id=1, text="Dokumentation von ersten Einstellungen", internal=True),
+            ZammadArticle(id=4, ticket_id=1, text="Interner Artikel für interne Anhänge.", internal=True),
+        ],
+    )
+    processed_ticket = ZammadTicket(
+        id=1,
+        group_id=99,
+        articles=[
+            *initial_ticket.articles,
+            ZammadArticle(
+                id=5, ticket_id=1, text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group", internal=True
+            ),
+        ],
+    )
+    service.zammad_client.get_ticket = AsyncMock(side_effect=[initial_ticket, processed_ticket])
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=True),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    with pytest.raises(TicketAlreadyProcessedError):
+        await service.execute_action(ticket_id=1, triage=triage)
+
+    post_answer_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

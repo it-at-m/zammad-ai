@@ -33,6 +33,7 @@ from app.triage.triage import TriageService, get_triage_service
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
 from app.zammad.base import BaseZammadClient, TicketNotFoundError, ZammadConnectionError, ZammadRetryableError
+from app.zammad.processing import ensure_ticket_not_already_processed
 
 from .security import setup_security
 
@@ -128,6 +129,13 @@ async def _process_ticket_event(
         raise KafkaPayloadError("Failed due to Zammad connection error", retryable=True) from e
 
     original_group_id: int | None = ticket.group_id
+
+    ensure_ticket_not_already_processed(
+        ticket,
+        ai_group_id=settings.zammad.ai_ticket_group_id,
+        ai_group_name=settings.zammad.ai_ticket_group_name,
+        ai_ticket_author=settings.zammad.ai_ticket_author,
+    )
 
     if (
         settings.zammad.type == "eai"
