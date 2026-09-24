@@ -151,6 +151,7 @@ def ensure_ticket_not_already_processed(
     ai_ticket_author: str | None,
     duplicate_detection_enabled: bool = True,
     allow_no_answer_internal_note: bool = False,
+    allow_in_ai_group: bool = False,
 ) -> TicketProcessingState:
     """Raise when a ticket already contains AI or human processing markers."""
     state = build_ticket_processing_state(
@@ -161,6 +162,9 @@ def ensure_ticket_not_already_processed(
     )
     if not duplicate_detection_enabled:
         return state
+    if allow_in_ai_group and state.in_ai_group:
+        if tuple(reason for reason in state.reasons if reason != "already_in_ai_group") == ():
+            return state
     if allow_no_answer_internal_note and state.has_no_answer_internal_note:
         if tuple(reason for reason in state.reasons if reason != "no_answer_internal_note_present") == ():
             return state

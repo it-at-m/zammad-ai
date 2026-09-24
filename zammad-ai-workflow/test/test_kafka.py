@@ -489,6 +489,40 @@ async def test_retry_event_handler_does_not_count_main_event_metric(
 
 
 @pytest.mark.asyncio
+async def test_retry_event_handler_processes_ticket_in_ai_group(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    mock_get_action_service: MagicMock,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retry-topic events should not be dropped just because the ticket is already in the AI group."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, _ = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=3720,
+            group_id=99,
+            group_name="AI-Group",
+            articles=[
+                ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+                ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+            ],
+        )
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.retry_topic,
+            message=kafka_message_factory(),
+            headers={"retry_count": "1"},
+        )
+
+    mock_triage.perform_triage.assert_called_once()
+    cast(AsyncMock, mock_get_action_service.execute_action).assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_event_handler_case_sensitive_request_type(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
