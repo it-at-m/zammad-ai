@@ -1,5 +1,6 @@
 """Helpers for detecting whether a ticket has already been processed by AI or a human."""
 
+import re
 from dataclasses import dataclass
 
 from app.errors import TicketAlreadyProcessedError
@@ -33,7 +34,6 @@ class TicketProcessingState:
             or self.has_shared_draft
             or self.has_ai_internal_note
             or self.has_no_answer_internal_note
-            or self.article_count > 4
         )
 
     @property
@@ -52,8 +52,6 @@ class TicketProcessingState:
             reasons.append("ai_internal_note_present")
         if self.has_no_answer_internal_note:
             reasons.append("no_answer_internal_note_present")
-        if self.article_count > 4:
-            reasons.append(f"article_count={self.article_count}")
         return tuple(reasons)
 
 
@@ -66,7 +64,11 @@ def _is_no_answer_internal_note(article: ZammadArticle) -> bool:
 
 
 def _contains_ai_group_name(text: str, ai_group_name: str | None) -> bool:
-    return bool(ai_group_name and ai_group_name.lower() in text)
+    if not ai_group_name:
+        return False
+    normalized_text = text.lower()
+    normalized_group_name = re.escape(ai_group_name.strip().lower())
+    return bool(re.search(rf"(?<!\\w){normalized_group_name}(?!\\w)", normalized_text))
 
 
 def _is_ai_system_author(author: str | None, expected_author: str | None) -> bool:
@@ -87,16 +89,16 @@ def build_ticket_processing_state(
     """Derive duplicate-processing markers from a ticket payload."""
     articles = ticket.articles
     article_count = len(articles)
-    ai_group_text = ai_group_name.lower() if ai_group_name else None
 
     current_group_name = ticket.group_name
-    current_group_text = (current_group_name or "").lower()
-    in_ai_group = ticket.group_id is not None and ai_group_id is not None and ticket.group_id == ai_group_id
-    if not in_ai_group and ai_group_text and _contains_ai_group_name(current_group_text, ai_group_name):
-        in_ai_group = True
+    in_ai_group = False
+    if ticket.group_id is not None and ai_group_id is not None:
+        in_ai_group = ticket.group_id == ai_group_id
+    elif current_group_name and ai_group_name:
+        in_ai_group = current_group_name.strip().lower() == ai_group_name.strip().lower()
 
     has_ai_group_move_note = any(
-        article.internal and ai_group_text and _contains_ai_group_name(_article_text(article), ai_group_name)
+        article.internal and ai_group_name and _contains_ai_group_name(_article_text(article), ai_group_name)
         for article in articles
     )
     has_feedback_note = any(
@@ -110,12 +112,10 @@ def build_ticket_processing_state(
         for article in articles
     )
     has_shared_draft = any("shared draft" in _article_text(article) for article in articles)
-    has_no_answer_internal_note = any(
-        _is_no_answer_internal_note(article) and _is_ai_system_author(article.author, ai_ticket_author)
-        for article in articles
-    )
+    has_no_answer_internal_note = any(_is_no_answer_internal_note(article) for article in articles)
     has_ai_internal_note = any(
         article.internal
+        and ai_ticket_author
         and _is_ai_system_author(article.author, ai_ticket_author)
         and not _is_no_answer_internal_note(article)
         for article in articles

@@ -126,6 +126,28 @@ async def test_execute_action_counts_posted_shared_draft_metric(
 
 
 @pytest.mark.asyncio
+async def test_execute_action_skips_duplicate_check_when_disabled(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Duplicate detection disabled should avoid ticket re-fetches."""
+    settings = settings_factory()
+    settings.zammad.duplicate_detection_enabled = False
+    service, _, _ = _build_action_service(settings)
+    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Antwort")))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=True),
+        action=Action(name="Static", description="Static", type=ActionTypes.StaticAnswer, answer="Antwort"),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    cast(AsyncMock, service.zammad_client.get_ticket).assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:

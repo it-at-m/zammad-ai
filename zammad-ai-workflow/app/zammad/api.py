@@ -27,10 +27,16 @@ logger: Logger = getLogger("zammad-ai.zammad.api")
 
 
 def _extract_group_name(data: dict[str, Any]) -> str | None:
-    for key in ("group_name", "groupName", "group"):
+    for key in ("group_name", "groupName", "group", "name"):
         value = data.get(key)
         if isinstance(value, str) and value:
             return value
+    group = data.get("group")
+    if isinstance(group, dict):
+        for key in ("group_name", "groupName", "name"):
+            value = group.get(key)
+            if isinstance(value, str) and value:
+                return value
     return None
 
 
@@ -57,7 +63,11 @@ class ZammadAPIClient(BaseZammadClient):
 
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
-        ticket_data = await self._request("GET", f"/api/v1/tickets/{id}")
+        request_kwargs: dict[str, Any] = {}
+        if self.settings.ai_ticket_group_name is not None:
+            request_kwargs["params"] = {"include": "group"}
+
+        ticket_data = await self._request("GET", f"/api/v1/tickets/{id}", **request_kwargs)
         if not isinstance(ticket_data, dict):
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
         try:
@@ -76,11 +86,19 @@ class ZammadAPIClient(BaseZammadClient):
                     raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
         except ValidationError as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
+        group_name = _extract_group_name(ticket_data)
+        if group_name is None and self.settings.ai_ticket_group_name is not None and group_id is not None:
+            try:
+                group_data = await self._request("GET", f"/api/v1/groups/{group_id}")
+            except Exception:
+                group_data = None
+            if isinstance(group_data, dict):
+                group_name = _extract_group_name(group_data)
         return ZammadTicket(
             id=id,
             articles=articles,
             group_id=group_id,
-            group_name=_extract_group_name(ticket_data),
+            group_name=group_name,
             article_count=len(articles),
         )
 

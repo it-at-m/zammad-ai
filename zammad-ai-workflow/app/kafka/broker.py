@@ -129,6 +129,7 @@ async def _process_ticket_event(
         raise KafkaPayloadError("Failed due to Zammad connection error", retryable=True) from e
 
     original_group_id: int | None = ticket.group_id
+    original_group_name: str | None = ticket.group_name
 
     ensure_ticket_not_already_processed(
         ticket,
@@ -185,7 +186,12 @@ async def _process_ticket_event(
             "confidence": result.confidence,
         },
     )
-    await action_service.execute_action(ticket_id=ticket_id, triage=result)
+    await action_service.execute_action(
+        ticket_id=ticket_id,
+        triage=result,
+        original_group_id=original_group_id,
+        original_group_name=original_group_name,
+    )
 
 
 def _get_group_state_str(group_state: dict[str, int | str | None], key: str) -> str | None:
