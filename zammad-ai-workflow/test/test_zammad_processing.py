@@ -183,3 +183,29 @@ def test_ensure_ticket_not_already_processed_allows_only_no_answer_note() -> Non
     )
 
     assert state.has_no_answer_internal_note is True
+
+
+def test_ensure_ticket_not_already_processed_can_be_disabled() -> None:
+    """Duplicate detection can be turned off through settings."""
+    ticket = ZammadTicket(
+        id=6,
+        group_id=99,
+        articles=[
+            ZammadArticle(id=1, ticket_id=6, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=6, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(id=3, ticket_id=6, text="Interner Hinweis", internal=True, author="AI-Author"),
+            ZammadArticle(
+                id=4, ticket_id=6, text="Interner Artikel für interne Anhänge.", internal=True, author="Agent"
+            ),
+        ],
+    )
+
+    state = ensure_ticket_not_already_processed(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+        duplicate_detection_enabled=False,
+    )
+
+    assert state.already_processed is True

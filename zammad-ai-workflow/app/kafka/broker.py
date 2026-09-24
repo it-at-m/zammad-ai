@@ -135,6 +135,7 @@ async def _process_ticket_event(
         ai_group_id=settings.zammad.ai_ticket_group_id,
         ai_group_name=settings.zammad.ai_ticket_group_name,
         ai_ticket_author=settings.zammad.ai_ticket_author,
+        duplicate_detection_enabled=settings.zammad.duplicate_detection_enabled,
     )
 
     if (

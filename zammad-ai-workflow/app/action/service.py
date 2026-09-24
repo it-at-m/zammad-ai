@@ -247,6 +247,7 @@ class ActionService:
             ai_group_id=self.settings.zammad.ai_ticket_group_id,
             ai_group_name=self.settings.zammad.ai_ticket_group_name,
             ai_ticket_author=self.settings.zammad.ai_ticket_author,
+            duplicate_detection_enabled=self.settings.zammad.duplicate_detection_enabled,
             allow_no_answer_internal_note=allow_no_answer_internal_note,
         )
 

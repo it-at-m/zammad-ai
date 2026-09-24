@@ -179,6 +179,10 @@ class BaseZammadSettings(BaseModel, ABC):
         description="Human-readable name of the AI ticket group used for duplicate-processing checks.",
         default=None,
     )
+    duplicate_detection_enabled: bool = Field(
+        description="Whether to block tickets that already look processed by AI or a human.",
+        default=True,
+    )
     ai_ticket_author: str | None = Field(
         description="Exact author name used to identify AI-generated internal notes.",
         default=None,

@@ -237,6 +237,45 @@ async def test_event_handler_ack_on_already_processed_ticket(
 
 
 @pytest.mark.asyncio
+async def test_event_handler_processes_already_processed_ticket_when_duplicate_detection_disabled(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Duplicate detection can be disabled without blocking triage."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    settings.zammad.duplicate_detection_enabled = False
+    router, _ = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=3720,
+            group_id=99,
+            articles=[
+                ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+                ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+                ZammadArticle(id=3, ticket_id=3720, text="Dokumentation von ersten Einstellungen", internal=True),
+                ZammadArticle(id=4, ticket_id=3720, text="Interner Artikel für interne Anhänge.", internal=True),
+                ZammadArticle(
+                    id=5,
+                    ticket_id=3720,
+                    text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group",
+                    internal=True,
+                ),
+            ],
+        )
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        message = kafka_message_factory()
+        await test_broker.publish(topic=settings.kafka.topic, message=message)
+
+    mock_triage.perform_triage.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_event_handler_with_requestType_alias(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
