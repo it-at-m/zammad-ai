@@ -50,6 +50,7 @@ class ActionService:
         session_id: str | None = None,
         original_group_id: int | None = None,
         original_group_name: str | None = None,
+        allow_in_ai_group: bool = False,
     ) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
         try:
@@ -59,12 +60,16 @@ class ActionService:
             reason: str = triage.reasoning
 
             if original_group_id is None:
-                await self._ensure_ticket_not_already_processed(ticket_id)
+                await self._ensure_ticket_not_already_processed(
+                    ticket_id,
+                    allow_in_ai_group=allow_in_ai_group,
+                )
             else:
                 await self._ensure_ticket_not_already_processed(
                     ticket_id,
                     original_group_id=original_group_id,
                     original_group_name=original_group_name,
+                    allow_in_ai_group=allow_in_ai_group,
                 )
 
             response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
@@ -120,12 +125,16 @@ class ActionService:
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
                 if original_group_id is None:
-                    await self._ensure_ticket_not_already_processed(ticket_id)
+                    await self._ensure_ticket_not_already_processed(
+                        ticket_id,
+                        allow_in_ai_group=allow_in_ai_group,
+                    )
                 else:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
+                        allow_in_ai_group=allow_in_ai_group,
                     )
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
@@ -152,12 +161,16 @@ class ActionService:
                     self.logger.error("Failed to schedule pending-close update for ticket.", exc_info=True)
             else:
                 if original_group_id is None:
-                    await self._ensure_ticket_not_already_processed(ticket_id)
+                    await self._ensure_ticket_not_already_processed(
+                        ticket_id,
+                        allow_in_ai_group=allow_in_ai_group,
+                    )
                 else:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
+                        allow_in_ai_group=allow_in_ai_group,
                     )
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
@@ -332,6 +345,7 @@ class ActionService:
         allow_no_answer_internal_note: bool = False,
         original_group_id: int | None = None,
         original_group_name: str | None = None,
+        allow_in_ai_group: bool = False,
     ) -> None:
         if not self.settings.zammad.duplicate_detection_enabled:
             return
@@ -352,6 +366,7 @@ class ActionService:
             ai_ticket_author=self.settings.zammad.ai_ticket_author,
             duplicate_detection_enabled=self.settings.zammad.duplicate_detection_enabled,
             allow_no_answer_internal_note=allow_no_answer_internal_note,
+            allow_in_ai_group=allow_in_ai_group,
         )
 
     async def get_answer(
