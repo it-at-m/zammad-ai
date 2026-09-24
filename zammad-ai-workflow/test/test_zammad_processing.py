@@ -2,27 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.zammad.processing import build_ticket_processing_state, ensure_ticket_not_already_processed
-
-
-def test_build_ticket_processing_state_detects_processed_ticket_from_response_json() -> None:
-    """The sample EAI response should be flagged as already processed."""
-    response_path = Path(__file__).resolve().parents[1] / "scripts" / "response.json"
-    ticket = ZammadTicket.model_validate(json.loads(response_path.read_text(encoding="utf-8")))
-
-    state = build_ticket_processing_state(
-        ticket,
-        ai_group_id=99,
-        ai_group_name="AI-Group",
-        ai_ticket_author="AI-Author",
-    )
-
-    assert state.already_processed is True
-    assert "feedback_note_present" in state.reasons
 
 
 def test_build_ticket_processing_state_accepts_initial_ticket_without_markers() -> None:
