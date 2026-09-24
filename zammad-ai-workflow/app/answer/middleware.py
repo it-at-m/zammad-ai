@@ -13,9 +13,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langfuse import observe, propagate_attributes
 from pydantic import BaseModel, Field, ValidationError
+from qdrant_client.models import Filter, IsEmptyCondition, PayloadField
 
 from app.models.answer import AnswerCandidate
+from app.settings import MultiQuerySettings
 from app.utils.logging import getLogger
+
+from .multiquery_helper import _build_queries, _search_documents_across_queries
 
 logger: Logger = getLogger("zammad-ai.answer.middleware")
 
@@ -94,7 +98,28 @@ async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: 
         return KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
 
     qdrant_client = runtime.context.qdrant_kb_client
-    documents_with_scores = await qdrant_client.asearch_documents(query=query)
+    multi_query_settings = getattr(qdrant_client, "multi_query_settings", None)
+    multi_query_retriever = getattr(qdrant_client, "multi_query_retriever", None)
+    vectorstore = getattr(qdrant_client, "vectorstore", None)
+
+    if isinstance(multi_query_settings, MultiQuerySettings) and multi_query_settings.enabled and vectorstore is not None:
+        queries = await _build_queries(query, multi_query_retriever, multi_query_settings)
+        if len(queries) > 1:
+            qdrant_settings = getattr(qdrant_client, "qdrant_settings", None)
+            retrieval_num_documents = getattr(qdrant_settings, "retrieval_num_documents", 5)
+            search_filter = Filter(must=[IsEmptyCondition(is_empty=PayloadField(key="metadata.law_id"))])
+            documents_with_scores = await _search_documents_across_queries(
+                vectorstore=vectorstore,
+                retrieval_num_documents=retrieval_num_documents,
+                queries=queries,
+                k=retrieval_num_documents,
+                offset=0,
+                search_filter=search_filter,
+            )
+        else:
+            documents_with_scores = await qdrant_client.asearch_documents(query=query)
+    else:
+        documents_with_scores = await qdrant_client.asearch_documents(query=query)
 
     if not documents_with_scores:
         return KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
