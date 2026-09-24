@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from app.models.zammad import ZammadArticle, ZammadTicket
-from app.zammad.processing import build_ticket_processing_state, ensure_ticket_not_already_processed
+from app.zammad.processing import (
+    _contains_ai_group_name,
+    build_ticket_processing_state,
+    ensure_ticket_not_already_processed,
+)
 
 
 def test_build_ticket_processing_state_accepts_initial_ticket_without_markers() -> None:
@@ -117,6 +121,11 @@ def test_build_ticket_processing_state_requires_complete_group_name_match() -> N
     assert state.in_ai_group is False
 
 
+def test_contains_ai_group_name_requires_word_boundaries() -> None:
+    """Embedded names such as FormerAI-Group should not match AI-Group."""
+    assert _contains_ai_group_name("FormerAI-Group", "AI-Group") is False
+
+
 def test_build_ticket_processing_state_detects_configured_ai_author() -> None:
     """The configured AI author should still be recognized exactly."""
     ticket = ZammadTicket(
@@ -147,6 +156,64 @@ def test_build_ticket_processing_state_detects_configured_ai_author() -> None:
 
     assert state.already_processed is True
     assert "ai_internal_note_present" in state.reasons
+
+
+def test_build_ticket_processing_state_ignores_plain_ai_group_mentions_in_internal_notes() -> None:
+    """Only the documented move-note format should trigger the move-note guard."""
+    ticket = ZammadTicket(
+        id=11,
+        group_id=31,
+        articles=[
+            ZammadArticle(id=1, ticket_id=11, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=11, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=11,
+                text="Bitte an AI-Group weiterleiten",
+                internal=True,
+                author="Agent",
+            ),
+        ],
+    )
+
+    state = build_ticket_processing_state(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+    )
+
+    assert state.has_ai_group_move_note is False
+    assert state.already_processed is False
+
+
+def test_build_ticket_processing_state_detects_documented_ai_group_move_note() -> None:
+    """The documented group-change note should still be treated as a move marker."""
+    ticket = ZammadTicket(
+        id=12,
+        group_id=31,
+        articles=[
+            ZammadArticle(id=1, ticket_id=12, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=12, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=12,
+                text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group",
+                internal=True,
+                author="System",
+            ),
+        ],
+    )
+
+    state = build_ticket_processing_state(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+    )
+
+    assert state.has_ai_group_move_note is True
+    assert state.already_processed is True
 
 
 def test_build_ticket_processing_state_detects_no_answer_note() -> None:

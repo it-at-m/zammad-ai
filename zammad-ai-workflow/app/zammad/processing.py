@@ -68,7 +68,18 @@ def _contains_ai_group_name(text: str, ai_group_name: str | None) -> bool:
         return False
     normalized_text = text.lower()
     normalized_group_name = re.escape(ai_group_name.strip().lower())
-    return bool(re.search(rf"(?<!\\w){normalized_group_name}(?!\\w)", normalized_text))
+    return bool(re.search(rf"(?<!\w){normalized_group_name}(?!\w)", normalized_text))
+
+
+def _is_ai_group_move_note(article: ZammadArticle, ai_group_name: str | None) -> bool:
+    if not article.internal or not ai_group_name:
+        return False
+    return bool(
+        re.search(
+            rf"(?s)\bdokumentation von änderungen\b.*\baktuelle gruppe:\s*{re.escape(ai_group_name.strip().lower())}(?!\w)",
+            _article_text(article),
+        )
+    )
 
 
 def _is_ai_system_author(author: str | None, expected_author: str | None) -> bool:
@@ -97,10 +108,7 @@ def build_ticket_processing_state(
     elif current_group_name and ai_group_name:
         in_ai_group = current_group_name.strip().lower() == ai_group_name.strip().lower()
 
-    has_ai_group_move_note = any(
-        article.internal and ai_group_name and _contains_ai_group_name(_article_text(article), ai_group_name)
-        for article in articles
-    )
+    has_ai_group_move_note = any(_is_ai_group_move_note(article, ai_group_name) for article in articles)
     has_feedback_note = any(
         article.internal
         and (
