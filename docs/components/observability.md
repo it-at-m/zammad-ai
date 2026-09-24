@@ -26,6 +26,7 @@ This client handles:
 - callback initialization for LangChain
 - prompt fetching by name and label
 - session tracking via request or Kafka session IDs
+- dedicated feedback traces for `StaticAnswer` and `NoAnswerPossible` responses so internal notes can always point to a Langfuse trace
 
 ### Environment Variables
 
@@ -38,3 +39,7 @@ Langfuse is typically configured using standard environment variables:
 ## Implementation in Triage
 
 The triage and answer flows wrap chain execution in traces when `langfuse_enabled` is true.
+
+For internal feedback notes, the workflow also creates explicit Langfuse traces for static answers and no-answer results. That keeps feedback links available even when no LLM-generated trace exists.
+
+These feedback traces reuse the session ID from the related triage run so categorization and feedback stay grouped together in Langfuse.

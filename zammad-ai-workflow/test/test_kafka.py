@@ -10,7 +10,7 @@ from faststream.kafka import TestKafkaBroker
 from pydantic import HttpUrl, SecretStr
 
 from app.errors import TriageCategoryWrongError, TriageError
-from app.kafka.broker import build_router
+from app.kafka.broker import _process_ticket_event, build_router
 from app.kafka.helper import (
     _handle_processing_exception,
     _republish_retry_event,
@@ -31,7 +31,7 @@ from app.settings.triage import (
     StringTriagePrompts,
     TriageSettings,
 )
-from app.settings.zammad import ZammadAPISettings
+from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
 
 
 class _KafkaSubscriberInspection(Protocol):
@@ -138,6 +138,7 @@ def mock_triage() -> MagicMock:
     triage.zammad_client.get_ticket = AsyncMock(
         return_value=ZammadTicket(id=3720, articles=[ZammadArticle(id=1, ticket_id=3720, text="msg")])
     )
+    triage.zammad_client.update_ticket_group = AsyncMock()
     # Make perform_triage return an async mock that returns a TriageResult
     triage.perform_triage = AsyncMock(
         return_value=TriageResult(
@@ -195,6 +196,144 @@ async def test_event_handler_valid_message(
         assert mock_triage.perform_triage.call_count == 1
         called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
         assert called_ticket is not None and called_ticket.id == 3720
+
+
+@pytest.mark.asyncio
+async def test_event_handler_ack_on_already_processed_ticket(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Tickets already in the AI group should be dropped before triage or writes."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    router, event_handler = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=3720,
+            group_id=99,
+            articles=[
+                ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+                ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+                ZammadArticle(id=3, ticket_id=3720, text="Dokumentation von ersten Einstellungen", internal=True),
+                ZammadArticle(id=4, ticket_id=3720, text="Interner Artikel für interne Anhänge.", internal=True),
+                ZammadArticle(
+                    id=5,
+                    ticket_id=3720,
+                    text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group",
+                    internal=True,
+                ),
+            ],
+        )
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        message = kafka_message_factory()
+        await test_broker.publish(topic=settings.kafka.topic, message=message)
+
+    mock_triage.perform_triage.assert_not_called()
+    mock_triage.zammad_client.update_ticket_group.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_processes_already_processed_ticket_when_duplicate_detection_disabled(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Duplicate detection can be disabled without blocking triage."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    settings.zammad.duplicate_detection_enabled = False
+    router, _ = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=3720,
+            group_id=99,
+            articles=[
+                ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+                ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+                ZammadArticle(id=3, ticket_id=3720, text="Dokumentation von ersten Einstellungen", internal=True),
+                ZammadArticle(id=4, ticket_id=3720, text="Interner Artikel für interne Anhänge.", internal=True),
+                ZammadArticle(
+                    id=5,
+                    ticket_id=3720,
+                    text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group",
+                    internal=True,
+                ),
+            ],
+        )
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        message = kafka_message_factory()
+        await test_broker.publish(topic=settings.kafka.topic, message=message)
+
+    mock_triage.perform_triage.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_passes_original_group_context_for_eai_self_move(
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    mock_get_action_service: MagicMock,
+) -> None:
+    """The EAI flow should preserve the original group when handing off to the action service."""
+    settings = create_mock_settings()
+    settings = settings.model_copy(
+        update={
+            "zammad": ZammadEAISettings(
+                base_url=HttpUrl("https://example.com"),
+                eai_url=HttpUrl("https://example.com/api/v1"),
+                oauth2_client_id="client-id",
+                oauth2_client_secret=SecretStr("client-secret"),
+                oauth2_token_url=HttpUrl("https://example.com/oauth/token"),
+            )
+        }
+    )
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    initial_ticket = ZammadTicket(
+        id=3720,
+        group_id=31,
+        group_name="Sales",
+        articles=[
+            ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+            ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+            ZammadArticle(id=3, ticket_id=3720, text="Dokumentation von ersten Einstellungen", internal=True),
+            ZammadArticle(id=4, ticket_id=3720, text="Interner Artikel für interne Anhänge.", internal=True),
+        ],
+    )
+    moved_ticket = initial_ticket.model_copy(update={"group_id": 99, "group_name": "AI-Group"})
+    mock_triage.zammad_client.get_ticket = AsyncMock(side_effect=[initial_ticket, moved_ticket])
+
+    await _process_ticket_event(
+        settings=settings,
+        triage_service=mock_triage,
+        action_service=mock_get_action_service,
+        event=Event.model_validate(
+            {
+                "action": "created",
+                "ticket": "3720",
+                "status": "new",
+                "statusId": "1",
+                "anliegenart": "technischer Bürgersupport",
+                "lhmExtId": "",
+            }
+        ),
+        group_state={},
+        record_processed_event=False,
+    )
+
+    mock_triage.zammad_client.update_ticket_group.assert_awaited_once_with(ticket_id=3720, group_id=99)
+    cast(AsyncMock, mock_get_action_service.execute_action).assert_awaited_once()
+    kwargs = cast(dict[str, object], mock_get_action_service.execute_action.await_args.kwargs)
+    assert kwargs["original_group_id"] == 31
+    assert kwargs["original_group_name"] == "Sales"
 
 
 @pytest.mark.asyncio

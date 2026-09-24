@@ -40,6 +40,9 @@ Incoming Zammad data and outgoing requests are validated using Pydantic models d
 - `zammad.type`
 - `zammad.base_url` -> Base URL of the Zammad instance. Use it for API calls and to generate links, such as knowledge base articles.
 - `zammad.knowledge_base_id`
+- `zammad.ai_ticket_group_id`
+- `zammad.ai_ticket_group_name`
+- `zammad.ai_ticket_author`
 - `zammad.auth_token` or EAI OAuth fields
 - `zammad.document_parsing`
 - `zammad.eai_url` (if using EAI)

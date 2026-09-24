@@ -170,6 +170,23 @@ class BaseZammadSettings(BaseModel, ABC):
         description="If set, AI auto-published answers will schedule a ticket status update after this many days.",
         default=None,
     )
+    ai_ticket_group_id: PositiveInt | None = Field(
+        description="The ID of the group to which AI-generated tickets should be assigned. If set to None, tickets will not be assigned to any specific group.",
+        examples=[1],
+        default=None,
+    )
+    ai_ticket_group_name: str | None = Field(
+        description="Human-readable name of the AI ticket group used for duplicate-processing checks.",
+        default=None,
+    )
+    duplicate_detection_enabled: bool = Field(
+        description="Whether to block tickets that already look processed by AI or a human.",
+        default=True,
+    )
+    ai_ticket_author: str | None = Field(
+        description="Exact author name used to identify AI-generated internal notes.",
+        default=None,
+    )
     document_parsing: DocumentParsingSettings = Field(
         description="Settings for parsing documents retrieved from Zammad.",
         default_factory=DocumentParsingSettings,
@@ -202,12 +219,6 @@ class ZammadEAISettings(BaseZammadSettings):
     eai_url: HttpUrl = Field(
         description="Zammad EAI API endpoint",
         examples=["https://my-zammad-eai.example.com/api/v1"],
-    )
-
-    ai_ticket_group_id: PositiveInt | None = Field(
-        description="The ID of the group to which AI-generated tickets should be assigned. If set to None, tickets will not be assigned to any specific group.",
-        examples=[1],
-        default=None,
     )
 
     # OAuth 2.0 Client Credentials Flow settings

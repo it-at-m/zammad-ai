@@ -18,6 +18,8 @@ from app.utils.logging import getLogger
 from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
 from app.zammad.eai import ZammadEAIClient
+from app.zammad.markers import NO_ANSWER_NOTE_SUBJECT
+from app.zammad.processing import ensure_ticket_not_already_processed
 
 
 class ActionService:
@@ -41,13 +43,29 @@ class ActionService:
         else:
             raise ActionExecutionError("Invalid type for Zammad settings in configuration", retryable=False)
 
-    async def execute_action(self, ticket_id: int, triage: TriageResult, session_id: str | None = None) -> None:
+    async def execute_action(
+        self,
+        ticket_id: int,
+        triage: TriageResult,
+        session_id: str | None = None,
+        original_group_id: int | None = None,
+        original_group_name: str | None = None,
+    ) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
         try:
             effective_session_id: str | None = session_id or triage.session_id
             category: str = triage.category.name
             action: str = triage.action.name
             reason: str = triage.reasoning
+
+            if original_group_id is None:
+                await self._ensure_ticket_not_already_processed(ticket_id)
+            else:
+                await self._ensure_ticket_not_already_processed(
+                    ticket_id,
+                    original_group_id=original_group_id,
+                    original_group_name=original_group_name,
+                )
 
             response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
                 ticket_id=ticket_id,
@@ -62,26 +80,53 @@ class ActionService:
 
             if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
-                await self._post_no_action_internal_note(
-                    ticket_id=ticket_id,
-                    category=category,
-                    action=action,
-                    reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
-                )
+                if original_group_id is None:
+                    await self._post_no_action_internal_note(
+                        ticket_id=ticket_id,
+                        category=category,
+                        action=action,
+                        reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
+                    )
+                else:
+                    await self._post_no_action_internal_note(
+                        ticket_id=ticket_id,
+                        category=category,
+                        action=action,
+                        reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
+                        original_group_id=original_group_id,
+                        original_group_name=original_group_name,
+                    )
                 if self.settings.frontend.feedback.post_internal_note:
                     self._create_feedback_trace(
                         user_text=triage.user_text[: self.max_user_text_length],
                         response=response,
                         session_id=effective_session_id,
                     )
-                    await self._post_feedback_internal_note(
-                        ticket_id=ticket_id,
-                        user_text=triage.user_text[: self.max_user_text_length],
-                        response=response,
-                    )
+                    if original_group_id is None:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=response,
+                        )
+                    else:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=response,
+                            original_group_id=original_group_id,
+                            original_group_name=original_group_name,
+                        )
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
+                if original_group_id is None:
+                    await self._ensure_ticket_not_already_processed(ticket_id)
+                else:
+                    await self._ensure_ticket_not_already_processed(
+                        ticket_id,
+                        original_group_id=original_group_id,
+                        original_group_name=original_group_name,
+                    )
                 await self.zammad_client.post_answer(
                     ticket_id=ticket_id,
                     text=response.response,
@@ -106,6 +151,14 @@ class ActionService:
                     # Don't fail the action execution if scheduling fails — just log
                     self.logger.error("Failed to schedule pending-close update for ticket.", exc_info=True)
             else:
+                if original_group_id is None:
+                    await self._ensure_ticket_not_already_processed(ticket_id)
+                else:
+                    await self._ensure_ticket_not_already_processed(
+                        ticket_id,
+                        original_group_id=original_group_id,
+                        original_group_name=original_group_name,
+                    )
                 await self.zammad_client.post_shared_draft(
                     ticket_id=ticket_id,
                     text=response.response,
@@ -119,17 +172,38 @@ class ActionService:
                 if self.settings.frontend.feedback.post_internal_note and isinstance(
                     response, (AnswerCandidate, StaticAnswer)
                 ):
-                    await self._post_feedback_internal_note(
-                        ticket_id=ticket_id, user_text=triage.user_text[: self.max_user_text_length], response=response
-                    )
+                    if original_group_id is None:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=response,
+                        )
+                    else:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=response,
+                            original_group_id=original_group_id,
+                            original_group_name=original_group_name,
+                        )
         except GuardrailBlockedError as e:
             try:
-                await self._post_no_action_internal_note(
-                    ticket_id=ticket_id,
-                    category=triage.category.name,
-                    action=triage.action.name,
-                    reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
-                )
+                if original_group_id is None:
+                    await self._post_no_action_internal_note(
+                        ticket_id=ticket_id,
+                        category=triage.category.name,
+                        action=triage.action.name,
+                        reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                    )
+                else:
+                    await self._post_no_action_internal_note(
+                        ticket_id=ticket_id,
+                        category=triage.category.name,
+                        action=triage.action.name,
+                        reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                        original_group_id=original_group_id,
+                        original_group_name=original_group_name,
+                    )
             except Exception:
                 self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
             raise
@@ -139,9 +213,22 @@ class ActionService:
             self.logger.error("Action execution failed.", exc_info=True)
             raise ActionExecutionError("Action execution failed", retryable=True) from e
 
-    async def _post_no_action_internal_note(self, ticket_id: int, category: str, action: str, reason: str) -> None:
+    async def _post_no_action_internal_note(
+        self,
+        ticket_id: int,
+        category: str,
+        action: str,
+        reason: str,
+        original_group_id: int | None = None,
+        original_group_name: str | None = None,
+    ) -> None:
         if not self.settings.triage.no_action_internal_note:
             return
+        await self._ensure_ticket_not_already_processed(
+            ticket_id,
+            original_group_id=original_group_id,
+            original_group_name=original_group_name,
+        )
         text: str = _safe_format(
             template=self.settings.triage.no_action_internal_note,
             category=category,
@@ -151,7 +238,7 @@ class ActionService:
         await self.zammad_client.post_answer(
             ticket_id=ticket_id,
             text=text,
-            subject="No answer generation possible",
+            subject=NO_ANSWER_NOTE_SUBJECT,
             internal=True,
         )
         self.logger.info(f"Posted internal note for ticket {ticket_id} with category {category}")
@@ -177,8 +264,19 @@ class ActionService:
             self.logger.error("Failed to create Langfuse trace for feedback note.", exc_info=True)
 
     async def _post_feedback_internal_note(
-        self, ticket_id: int, user_text: str, response: AnswerCandidate | StaticAnswer | NoAnswerPossible
+        self,
+        ticket_id: int,
+        user_text: str,
+        response: AnswerCandidate | StaticAnswer | NoAnswerPossible,
+        original_group_id: int | None = None,
+        original_group_name: str | None = None,
     ) -> None:
+        await self._ensure_ticket_not_already_processed(
+            ticket_id,
+            allow_no_answer_internal_note=isinstance(response, NoAnswerPossible),
+            original_group_id=original_group_id,
+            original_group_name=original_group_name,
+        )
         trace_id: str | None = (
             self.answer_service.langfuse_client.langfuse_handler.last_trace_id
             if self.answer_service.langfuse_client
@@ -226,6 +324,35 @@ class ActionService:
                 subject=note_title,
                 internal=True,  # Post an internal note to document that feedback can be given for the answer suggestion
             )
+
+    async def _ensure_ticket_not_already_processed(
+        self,
+        ticket_id: int,
+        *,
+        allow_no_answer_internal_note: bool = False,
+        original_group_id: int | None = None,
+        original_group_name: str | None = None,
+    ) -> None:
+        if not self.settings.zammad.duplicate_detection_enabled:
+            return
+
+        ticket = await self.zammad_client.get_ticket(id=ticket_id)
+        if (
+            self.settings.zammad.type == "eai"
+            and self.settings.zammad.ai_ticket_group_id is not None
+            and original_group_id is not None
+            and ticket.group_id == self.settings.zammad.ai_ticket_group_id
+            and original_group_id != self.settings.zammad.ai_ticket_group_id
+        ):
+            ticket = ticket.model_copy(update={"group_id": original_group_id, "group_name": original_group_name})
+        ensure_ticket_not_already_processed(
+            ticket,
+            ai_group_id=self.settings.zammad.ai_ticket_group_id,
+            ai_group_name=self.settings.zammad.ai_ticket_group_name,
+            ai_ticket_author=self.settings.zammad.ai_ticket_author,
+            duplicate_detection_enabled=self.settings.zammad.duplicate_detection_enabled,
+            allow_no_answer_internal_note=allow_no_answer_internal_note,
+        )
 
     async def get_answer(
         self,

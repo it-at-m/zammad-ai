@@ -14,6 +14,14 @@ class ZammadTicket(BaseModel):
         description="ID of the group assigned to the ticket",
         default=None,
     )
+    group_name: str | None = Field(
+        description="Human-readable name of the group assigned to the ticket",
+        default=None,
+    )
+    article_count: int | None = Field(
+        description="Number of articles currently attached to the ticket",
+        default=None,
+    )
     articles: list["ZammadArticle"] = Field(
         description="List of articles associated with the ticket",
         default_factory=list,
@@ -54,6 +62,7 @@ class ZammadArticle(BaseModel):
     )
     author: str = Field(
         description="Author of the article",
+        validation_alias=AliasChoices("created_by", "from", "sender", "author"),
         default="-",
     )
     subject: str | None = Field(

@@ -26,6 +26,20 @@ from .base import BaseZammadClient
 logger: Logger = getLogger("zammad-ai.zammad.api")
 
 
+def _extract_group_name(data: dict[str, Any]) -> str | None:
+    for key in ("group_name", "groupName", "group", "name"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    group = data.get("group")
+    if isinstance(group, dict):
+        for key in ("group_name", "groupName", "name"):
+            value = group.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
 class ZammadAPIClient(BaseZammadClient):
     """Client for interacting with Zammad API to fetch and update ticket information."""
 
@@ -49,12 +63,44 @@ class ZammadAPIClient(BaseZammadClient):
 
     @override
     async def get_ticket(self, id: int) -> ZammadTicket:
-        data = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
+        request_kwargs: dict[str, Any] = {}
+        if self.settings.ai_ticket_group_name is not None:
+            request_kwargs["params"] = {"include": "group"}
+
+        ticket_data = await self._request("GET", f"/api/v1/tickets/{id}", **request_kwargs)
+        if not isinstance(ticket_data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
         try:
-            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(data)
+            raw_articles = ticket_data.get("articles")
+            if not isinstance(raw_articles, list):
+                raw_articles = await self._request("GET", f"/api/v1/ticket_articles/by_ticket/{id}")
+            articles: list[ZammadArticle] = TypeAdapter(list[ZammadArticle]).validate_python(raw_articles)
+            raw_group = ticket_data.get("group_id")
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
         except ValidationError as e:
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
-        return ZammadTicket(id=id, articles=articles)
+        group_name = _extract_group_name(ticket_data)
+        if group_name is None and self.settings.ai_ticket_group_name is not None and group_id is not None:
+            try:
+                group_data = await self._request("GET", f"/api/v1/groups/{group_id}")
+            except Exception:
+                group_data = None
+            if isinstance(group_data, dict):
+                group_name = _extract_group_name(group_data)
+        return ZammadTicket(
+            id=id,
+            articles=articles,
+            group_id=group_id,
+            group_name=group_name,
+            article_count=len(articles),
+        )
 
     @override
     async def post_answer(self, ticket_id: int, text: str, subject: str | None = None, internal: bool = False) -> None:
