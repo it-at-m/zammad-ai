@@ -216,6 +216,35 @@ def test_build_ticket_processing_state_detects_documented_ai_group_move_note() -
     assert state.already_processed is True
 
 
+def test_build_ticket_processing_state_rejects_ai_group_name_suffix_in_move_note() -> None:
+    """A move note naming AI-Group-Archive must not match AI-Group."""
+    ticket = ZammadTicket(
+        id=13,
+        group_id=31,
+        articles=[
+            ZammadArticle(id=1, ticket_id=13, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=13, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=13,
+                text="Dokumentation von Änderungen\naktuelle Gruppe: AI-Group-Archive",
+                internal=True,
+                author="System",
+            ),
+        ],
+    )
+
+    state = build_ticket_processing_state(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+    )
+
+    assert state.has_ai_group_move_note is False
+    assert state.already_processed is False
+
+
 def test_build_ticket_processing_state_detects_no_answer_note() -> None:
     """A no-answer note should be recognized as a dedicated marker."""
     ticket = ZammadTicket(

@@ -74,12 +74,12 @@ def _contains_ai_group_name(text: str, ai_group_name: str | None) -> bool:
 def _is_ai_group_move_note(article: ZammadArticle, ai_group_name: str | None) -> bool:
     if not article.internal or not ai_group_name:
         return False
-    return bool(
-        re.search(
-            rf"(?s)\bdokumentation von änderungen\b.*\baktuelle gruppe:\s*{re.escape(ai_group_name.strip().lower())}(?!\w)",
-            _article_text(article),
-        )
+    normalized_ai_group_name = ai_group_name.strip().lower()
+    match = re.search(
+        r"(?is)\bdokumentation von änderungen\b.*?\baktuelle gruppe:\s*(?P<group>.+?)\s*$",
+        _article_text(article),
     )
+    return bool(match and match.group("group").strip().lower() == normalized_ai_group_name)
 
 
 def _is_ai_system_author(author: str | None, expected_author: str | None) -> bool:
