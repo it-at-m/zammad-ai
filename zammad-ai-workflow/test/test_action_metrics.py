@@ -168,7 +168,10 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
     await service.execute_action(ticket_id=1, triage=triage)
 
     feedback_note_mock.assert_awaited_once_with(
-        ticket_id=1, user_text="Frage", response=StaticAnswer(response="Standardantwort")
+        ticket_id=1,
+        user_text="Frage",
+        response=StaticAnswer(response="Standardantwort"),
+        allow_in_ai_group=False,
     )
 
 
@@ -202,6 +205,38 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
     await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)
     post_answer_mock.assert_awaited_once()
     assert "trace_id=fresh-trace-id" in cast(Any, post_answer_mock).await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_post_feedback_internal_note_allows_ticket_already_in_ai_group(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retry processing in the AI group should still allow posting the feedback note."""
+    settings = settings_factory()
+    settings.frontend.base_url = "https://example.com"
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    service, post_answer_mock, _ = _build_action_service(settings)
+    delattr(service, "_post_feedback_internal_note")
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient("fresh-trace-id")
+    service.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=1,
+            group_id=99,
+            group_name="AI-Group",
+            articles=[ZammadArticle(id=1, ticket_id=1, text="Frage", internal=False)],
+        )
+    )
+
+    await service._post_feedback_internal_note(
+        ticket_id=1,
+        user_text="Frage",
+        response=StaticAnswer(response="Antwort"),
+        allow_in_ai_group=True,
+    )
+
+    post_answer_mock.assert_awaited_once()
+    assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
 
 
 @pytest.mark.asyncio
@@ -361,7 +396,12 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
     post_answer_mock.assert_awaited_once()
     assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
     assert "No answer possible" in cast(Any, post_answer_mock).await_args.kwargs["text"]
-    feedback_note_mock.assert_awaited_once_with(ticket_id=1, user_text="Frage", response=response)
+    feedback_note_mock.assert_awaited_once_with(
+        ticket_id=1,
+        user_text="Frage",
+        response=response,
+        allow_in_ai_group=False,
+    )
     assert answer_service.langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
 
 
