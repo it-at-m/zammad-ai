@@ -5,7 +5,7 @@ services:
   # ============= Kafka =============
   #
   kafka:
-    image: confluentinc/cp-kafka:8.3.1@sha256:0ad069035863aa1b090f4d9af47bfd2c08dc32864f3575d7d8579e3155c2586d
+    image: confluentinc/cp-kafka:8.3.2@sha256:5e8f3ab5b4977c9a8fd6137d26af2caad878aca316f24c55f08206217e3cec48
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -62,7 +62,7 @@ services:
     security_opt: *security_settings
 
   init-kafka:
-    image: confluentinc/cp-kafka:8.3.1@sha256:0ad069035863aa1b090f4d9af47bfd2c08dc32864f3575d7d8579e3155c2586d
+    image: confluentinc/cp-kafka:8.3.2@sha256:5e8f3ab5b4977c9a8fd6137d26af2caad878aca316f24c55f08206217e3cec48
     depends_on:
       kafka:
         condition: service_healthy
@@ -87,7 +87,7 @@ services:
   # ============= Mail =============
   #
   mailpit:
-    image: axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     ports:
       - "1025:1025" # SMTP Server
       - "8025:8025" # UI
@@ -116,7 +116,7 @@ services:
     security_opt: *security_settings
 
   init-qdrant:
-    image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
     depends_on:
       - qdrant
     entrypoint: ["/bin/sh", "-ceu"]

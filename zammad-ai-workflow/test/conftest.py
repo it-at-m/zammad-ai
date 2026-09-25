@@ -428,7 +428,7 @@ def test_client(
 
     import app.api.backend as backend_module
 
-    backend_module = importlib.reload(backend_module)  # type: ignore
+    backend_module = importlib.reload(backend_module)
     monkeypatch.setattr(backend_module, "get_triage_service", lambda settings=None: triage_stub)
 
     with TestClient(backend_module.backend) as client:
