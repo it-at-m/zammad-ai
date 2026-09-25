@@ -5,11 +5,11 @@ description = "Indexing job for Zammad AI"
 readme = "README.md"
 requires-python = "==3.14.7"
 dependencies = [
-    "fastembed==0.8.0",
+    "fastembed==0.8.1",
     "feedparser==6.0.14",
-    "langchain==1.4.0",
-    "langchain-core==1.6.3",
-    "langchain-openai==1.6.2",
+    "langchain==1.4.2",
+    "langchain-core==1.6.5",
+    "langchain-openai==1.6.6",
     "langchain-qdrant==1.1.0",
     "langchain-text-splitters==1.1.2",
     "markdownify==1.2.3",
@@ -19,12 +19,12 @@ dependencies = [
     "stamina==26.1.0",
     "structlog==26.1.0",
     "truststore==0.10.4",
-    "qdrant-client==1.19.0",
+    "qdrant-client==1.19.1",
 ]
 
 [dependency-groups]
-dev = ["pre-commit==4.6.2", "ruff==0.16.7", "ty==0.0.80"]
-kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.10.3"]
+dev = ["pre-commit==4.6.2", "ruff==0.16.9", "ty==0.0.84"]
+kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.10.4"]
 
 [tool.semantic_release]
 tag_format = "zammad-ai-index-{version}"
