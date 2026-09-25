@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from app.errors import TicketAlreadyProcessedError
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.zammad.processing import (
     _contains_ai_group_name,
@@ -361,6 +364,71 @@ def test_ensure_ticket_not_already_processed_allows_only_no_answer_note() -> Non
     )
 
     assert state.has_no_answer_internal_note is True
+
+
+def test_ensure_ticket_not_already_processed_allows_no_answer_note_and_ai_group_together() -> None:
+    """Combined permitted markers should pass when both allow flags are enabled."""
+    ticket = ZammadTicket(
+        id=14,
+        group_id=99,
+        group_name="AI-Group",
+        articles=[
+            ZammadArticle(id=1, ticket_id=14, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=14, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=14,
+                text="No answer possible. Explanation: insufficient data.",
+                internal=True,
+                author="AI-Author",
+                subject="No answer generation possible",
+            ),
+        ],
+    )
+
+    state = ensure_ticket_not_already_processed(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+        allow_no_answer_internal_note=True,
+        allow_in_ai_group=True,
+    )
+
+    assert state.in_ai_group is True
+    assert state.has_no_answer_internal_note is True
+
+
+def test_ensure_ticket_not_already_processed_rejects_unpermitted_marker_with_permitted_ones() -> None:
+    """Any extra unpermitted marker must still fail duplicate detection."""
+    ticket = ZammadTicket(
+        id=15,
+        group_id=99,
+        group_name="AI-Group",
+        articles=[
+            ZammadArticle(id=1, ticket_id=15, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=15, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=15,
+                text="No answer possible. Explanation: insufficient data.",
+                internal=True,
+                author="AI-Author",
+                subject="No answer generation possible",
+            ),
+            ZammadArticle(id=4, ticket_id=15, text="shared draft has been created", internal=True, author="System"),
+        ],
+    )
+
+    with pytest.raises(TicketAlreadyProcessedError):
+        ensure_ticket_not_already_processed(
+            ticket,
+            ai_group_id=99,
+            ai_group_name="AI-Group",
+            ai_ticket_author="AI-Author",
+            allow_no_answer_internal_note=True,
+            allow_in_ai_group=True,
+        )
 
 
 def test_ensure_ticket_not_already_processed_can_be_disabled() -> None:

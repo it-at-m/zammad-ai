@@ -91,6 +91,7 @@ class ActionService:
                         category=category,
                         action=action,
                         reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
+                        allow_in_ai_group=allow_in_ai_group,
                     )
                 else:
                     await self._post_no_action_internal_note(
@@ -100,6 +101,7 @@ class ActionService:
                         reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
+                        allow_in_ai_group=allow_in_ai_group,
                     )
                 if self.settings.frontend.feedback.post_internal_note:
                     self._create_feedback_trace(
@@ -112,6 +114,7 @@ class ActionService:
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            allow_in_ai_group=allow_in_ai_group,
                         )
                     else:
                         await self._post_feedback_internal_note(
@@ -120,6 +123,7 @@ class ActionService:
                             response=response,
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
+                            allow_in_ai_group=allow_in_ai_group,
                         )
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
@@ -190,6 +194,7 @@ class ActionService:
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            allow_in_ai_group=allow_in_ai_group,
                         )
                     else:
                         await self._post_feedback_internal_note(
@@ -198,6 +203,7 @@ class ActionService:
                             response=response,
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
+                            allow_in_ai_group=allow_in_ai_group,
                         )
         except GuardrailBlockedError as e:
             try:
@@ -207,6 +213,7 @@ class ActionService:
                         category=triage.category.name,
                         action=triage.action.name,
                         reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                        allow_in_ai_group=allow_in_ai_group,
                     )
                 else:
                     await self._post_no_action_internal_note(
@@ -216,6 +223,7 @@ class ActionService:
                         reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
+                        allow_in_ai_group=allow_in_ai_group,
                     )
             except Exception:
                 self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
@@ -234,6 +242,7 @@ class ActionService:
         reason: str,
         original_group_id: int | None = None,
         original_group_name: str | None = None,
+        allow_in_ai_group: bool = False,
     ) -> None:
         if not self.settings.triage.no_action_internal_note:
             return
@@ -241,6 +250,7 @@ class ActionService:
             ticket_id,
             original_group_id=original_group_id,
             original_group_name=original_group_name,
+            allow_in_ai_group=allow_in_ai_group,
         )
         text: str = _safe_format(
             template=self.settings.triage.no_action_internal_note,
@@ -283,12 +293,14 @@ class ActionService:
         response: AnswerCandidate | StaticAnswer | NoAnswerPossible,
         original_group_id: int | None = None,
         original_group_name: str | None = None,
+        allow_in_ai_group: bool = False,
     ) -> None:
         await self._ensure_ticket_not_already_processed(
             ticket_id,
             allow_no_answer_internal_note=isinstance(response, NoAnswerPossible),
             original_group_id=original_group_id,
             original_group_name=original_group_name,
+            allow_in_ai_group=allow_in_ai_group,
         )
         trace_id: str | None = (
             self.answer_service.langfuse_client.langfuse_handler.last_trace_id

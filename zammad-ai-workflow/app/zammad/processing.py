@@ -162,12 +162,13 @@ def ensure_ticket_not_already_processed(
     )
     if not duplicate_detection_enabled:
         return state
-    if allow_in_ai_group and state.in_ai_group:
-        if tuple(reason for reason in state.reasons if reason != "already_in_ai_group") == ():
-            return state
-    if allow_no_answer_internal_note and state.has_no_answer_internal_note:
-        if tuple(reason for reason in state.reasons if reason != "no_answer_internal_note_present") == ():
-            return state
+    allowed_reasons: set[str] = set()
+    if allow_in_ai_group:
+        allowed_reasons.add("already_in_ai_group")
+    if allow_no_answer_internal_note:
+        allowed_reasons.add("no_answer_internal_note_present")
+    if allowed_reasons and set(state.reasons).issubset(allowed_reasons):
+        return state
     if state.already_processed:
         raise TicketAlreadyProcessedError(
             "Ticket appears to have already been processed: " + ", ".join(state.reasons),
