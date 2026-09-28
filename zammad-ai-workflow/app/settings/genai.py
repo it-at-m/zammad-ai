@@ -21,6 +21,10 @@ class BaseGenAISettings(BaseModel):
         description="Maximum number of tokens to request from the LLM SDK",
         default=8192,
     )
+    timeout: PositiveInt = Field(
+        description="Request timeout in seconds for the LLM SDK",
+        default=600,
+    )
 
     # Chat model configuration with fallbacks
     chat_model: str = Field(
