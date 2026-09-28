@@ -112,6 +112,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: ChatRole):
                     reasoning_effort=reasoning,
                     http_socket_options=genai_settings.http_socket_options,
                     use_responses_api=genai_settings.use_responses_api,
+                    timeout=genai_settings.timeout,
                 )
                 return chat
             except ImportError:
@@ -129,6 +130,7 @@ def get_chat_model(genai_settings: GenAIProviderSettings, role: ChatRole):
                     max_retries=max_retries,
                     thinking=thinking.model_dump() if thinking is not None else None,
                     effort=effort,
+                    timeout=genai_settings.timeout,
                 )
                 return chat
             except ImportError:

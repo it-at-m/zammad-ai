@@ -43,6 +43,7 @@ def test_get_chat_model_openai(monkeypatch):
     settings = GenAIOpenAISettings(
         chat_model="gpt-test",
         max_tokens=1234,
+        timeout=42,
         answer_reasoning_effort="medium",
         http_socket_options=[{"family": 0}],
         use_responses_api=True,
@@ -54,6 +55,7 @@ def test_get_chat_model_openai(monkeypatch):
     assert model._init_kwargs["http_socket_options"] == [{"family": 0}]
     assert model._init_kwargs["use_responses_api"] is True
     assert model._init_kwargs["max_tokens"] == 1234
+    assert model._init_kwargs["timeout"] == 42
 
     sys.modules.pop("app.utils.genai_provider", None)
 
@@ -66,6 +68,7 @@ def test_get_chat_model_anthropic(monkeypatch):
         chat_model="claude-test",
         answer_thinking=ThinkingConfig(budget_tokens=1024),
         answer_effort="high",
+        timeout=42,
     )
     model = provider.get_chat_model(settings_with_reasoning, "answer")
 
@@ -73,5 +76,6 @@ def test_get_chat_model_anthropic(monkeypatch):
     assert model._init_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 1024}
     assert model._init_kwargs["effort"] == "high"
     assert model._init_kwargs["max_tokens"] == 8192
+    assert model._init_kwargs["timeout"] == 42
 
     sys.modules.pop("app.utils.genai_provider", None)
