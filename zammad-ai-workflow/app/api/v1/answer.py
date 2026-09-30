@@ -60,13 +60,14 @@ async def answer(
         # Preparse input text via shared helper
         user_text = get_preparsed_text(request, input.text)
 
-        response: AnswerCandidate | StaticAnswer | NoAnswerPossible = await service.get_answer(
+        answer_result = await service.get_answer(
             ticket_id=input.ticket_id,
             category_name=input.category,
             action_name=input.action,
             user_text=user_text,
             session_id=input.session_id,
         )
+        response: AnswerCandidate | StaticAnswer | NoAnswerPossible = answer_result.response
         if isinstance(response, NoAnswerPossible):
             return AnswerOutput(
                 response=response.reasoning,

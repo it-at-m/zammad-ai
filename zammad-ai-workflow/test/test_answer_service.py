@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -11,7 +12,7 @@ from langchain.messages import HumanMessage
 from app.answer import service as answer_module
 from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
-from app.models.answer import AnswerCandidate, DocumentDict
+from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict
 from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, StringPromptConfig
 
@@ -40,7 +41,10 @@ class FakeLangfuseClient:
 
     def __init__(self) -> None:
         """Initialize fake prompt tracking state."""
+        self.current_trace_id = "trace-id"
         self.last_langfuse_prompt: object | None = None
+        self.langfuse = SimpleNamespace(get_current_trace_id=lambda: self.current_trace_id)
+        self.langfuse_handler = SimpleNamespace(last_trace_id="stale-trace-id")
 
     def generate_session_id(self) -> str:
         """Return a deterministic session id."""
@@ -126,8 +130,9 @@ async def test_generate_answer_in_progress_gauge_returns_to_baseline_on_success(
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
     service.agent_langfuse_prompt = object()  # ty: ignore
 
-    await service.generate_answer(user_text="hello", category="general")
+    result = await service.generate_answer(user_text="hello", category="general")
 
+    assert result.trace_id == "trace-id"
     assert _get_answer_runs_in_progress_value() == baseline
     assert getattr(service.langfuse_client, "last_langfuse_prompt") is service.agent_langfuse_prompt
 
@@ -152,8 +157,9 @@ async def test_generate_answer_in_progress_gauge_increments_while_running(
 
     service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
 
-    await service.generate_answer(user_text="hello", category="general")
+    result = await service.generate_answer(user_text="hello", category="general")
 
+    assert result.trace_id == "trace-id"
     assert _get_answer_runs_in_progress_value() == baseline
 
 
@@ -181,8 +187,10 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
 
     result = await service.generate_answer(user_text="hello", category="general")
 
-    assert isinstance(result, AnswerCandidate)
-    assert result.response == VALID_RESPONSE
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.response == VALID_RESPONSE
+    assert result.trace_id == "trace-id"
 
 
 @pytest.mark.asyncio
@@ -226,8 +234,10 @@ async def test_generate_answer_repairs_when_judge_fails() -> None:
 
     result = await service.generate_answer(user_text="hello", category="general")
 
-    assert isinstance(result, AnswerCandidate)
-    assert result.response == REPAIRED_RESPONSE
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.response == REPAIRED_RESPONSE
+    assert result.trace_id == "trace-id"
     assert len(calls) == 2
 
 

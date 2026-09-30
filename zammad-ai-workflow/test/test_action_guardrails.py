@@ -8,7 +8,7 @@ import pytest
 import app.action.service as action_module
 from app.errors import ActionExecutionError, GuardrailEvaluationError
 from app.guardrails import GuardrailService
-from app.models.answer import AnswerCandidate
+from app.models.answer import AnswerCandidate, AnswerResult
 from app.models.triage import Action
 from app.settings.guardrails import GuardrailSettings
 from app.settings.triage import ActionTypes
@@ -77,10 +77,13 @@ def _build_action_service(
     settings.triage.actions = [*settings.triage.actions, ai_action]
     answer_service = AsyncMock()
     answer_service.generate_answer = AsyncMock(
-        return_value=AnswerCandidate(
-            subject="S" * 50,
-            response="R" * 200,
-            documents=[],
+        return_value=AnswerResult(
+            response=AnswerCandidate(
+                subject="S" * 50,
+                response="R" * 200,
+                documents=[],
+            ),
+            trace_id="trace-id",
         )
     )
     return action_module.ActionService(

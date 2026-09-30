@@ -8,7 +8,7 @@ from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError, GuardrailBlockedError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
 from app.metrics import record_kafka_ticket_outcome
-from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
+from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible, StaticAnswer
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
 from app.settings.triage import ActionTypes
@@ -58,6 +58,7 @@ class ActionService:
             category: str = triage.category.name
             action: str = triage.action.name
             reason: str = triage.reasoning
+            feedback_trace_id: str | None = None
 
             if original_group_id is None:
                 await self._ensure_ticket_not_already_processed(
@@ -72,13 +73,19 @@ class ActionService:
                     allow_in_ai_group=allow_in_ai_group,
                 )
 
-            response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
+            answer_result = await self.get_answer(  # TODO what to do with documents here? Internal Note?
                 ticket_id=ticket_id,
                 category_name=category,
                 action_name=action,
                 user_text=triage.user_text,
                 session_id=effective_session_id,
             )
+            if isinstance(answer_result, AnswerResult):
+                response = answer_result.response
+                feedback_trace_id = answer_result.trace_id
+            else:
+                response = answer_result
+                feedback_trace_id = None
 
             if triage.action.type == ActionTypes.NoAction:
                 record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
@@ -104,7 +111,7 @@ class ActionService:
                         allow_in_ai_group=allow_in_ai_group,
                     )
                 if self.settings.frontend.feedback.post_internal_note:
-                    self._create_feedback_trace(
+                    feedback_trace_id = self._create_feedback_trace(
                         user_text=triage.user_text[: self.max_user_text_length],
                         response=response,
                         session_id=effective_session_id,
@@ -114,6 +121,7 @@ class ActionService:
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            trace_id=feedback_trace_id,
                             allow_in_ai_group=allow_in_ai_group,
                         )
                     else:
@@ -121,6 +129,7 @@ class ActionService:
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            trace_id=feedback_trace_id,
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
@@ -189,11 +198,18 @@ class ActionService:
                 if self.settings.frontend.feedback.post_internal_note and isinstance(
                     response, (AnswerCandidate, StaticAnswer)
                 ):
+                    if isinstance(response, StaticAnswer):
+                        feedback_trace_id = self._create_feedback_trace(
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=response,
+                            session_id=effective_session_id,
+                        )
                     if original_group_id is None:
                         await self._post_feedback_internal_note(
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            trace_id=feedback_trace_id,
                             allow_in_ai_group=allow_in_ai_group,
                         )
                     else:
@@ -201,6 +217,7 @@ class ActionService:
                             ticket_id=ticket_id,
                             user_text=triage.user_text[: self.max_user_text_length],
                             response=response,
+                            trace_id=feedback_trace_id,
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
@@ -268,9 +285,9 @@ class ActionService:
 
     def _create_feedback_trace(
         self, user_text: str, response: StaticAnswer | NoAnswerPossible, session_id: str | None = None
-    ) -> None:
+    ) -> str | None:
         if self.answer_service.langfuse_client is None:
-            return
+            return None
 
         langfuse_client = self.answer_service.langfuse_client
         langfuse_client.langfuse_handler.last_trace_id = None
@@ -283,14 +300,17 @@ class ActionService:
                 ) as observation:
                     observation.update(output=output_text)
                     langfuse_client.langfuse_handler.last_trace_id = observation.trace_id
+                    return observation.trace_id
         except Exception:
             self.logger.error("Failed to create Langfuse trace for feedback note.", exc_info=True)
+        return None
 
     async def _post_feedback_internal_note(
         self,
         ticket_id: int,
         user_text: str,
         response: AnswerCandidate | StaticAnswer | NoAnswerPossible,
+        trace_id: str | None = None,
         original_group_id: int | None = None,
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
@@ -301,11 +321,6 @@ class ActionService:
             original_group_id=original_group_id,
             original_group_name=original_group_name,
             allow_in_ai_group=allow_in_ai_group,
-        )
-        trace_id: str | None = (
-            self.answer_service.langfuse_client.langfuse_handler.last_trace_id
-            if self.answer_service.langfuse_client
-            else None
         )
         if trace_id and self.settings.frontend.base_url:
             # Generate a per-link token using the trace IO and the configured salt
@@ -388,7 +403,7 @@ class ActionService:
         action_name: str,
         user_text: str,
         session_id: str | None,
-    ) -> AnswerCandidate | StaticAnswer | NoAnswerPossible:
+    ) -> AnswerResult:
         """Resolve an answer payload for the given action and category.
 
         Performs guardrail checks on user text before answer generation.
@@ -439,6 +454,7 @@ class ActionService:
         )
 
         response: AnswerCandidate | StaticAnswer | NoAnswerPossible
+        feedback_trace_id: str | None = None
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
@@ -452,9 +468,11 @@ class ActionService:
                 )
             )
         elif action.type == ActionTypes.AIAnswer:
-            response = await self.answer_service.generate_answer(
+            generated_answer = await self.answer_service.generate_answer(
                 user_text=user_text, category=category_name, session_id=session_id
             )
+            response = generated_answer.response
+            feedback_trace_id = generated_answer.trace_id
         elif action.type == ActionTypes.StaticAnswer:
             # The settings validator ensures that if the type is StaticAnswer, the answer field is not None, so we can safely access it here
             if not action.answer:
@@ -462,7 +480,6 @@ class ActionService:
                     f"StaticAnswer action {action.name} is missing the 'answer' field", retryable=False
                 )
             response = StaticAnswer(response=action.answer)
-            self._create_feedback_trace(user_text=user_text, response=response, session_id=session_id)
         else:
             raise ActionExecutionError(f"Unknown action type: {action.type}", retryable=False)
 
@@ -499,7 +516,7 @@ class ActionService:
                 )
                 raise GuardrailBlockedError("Generated response failed safety checks", retryable=False)
 
-        return response
+        return AnswerResult(response=response, trace_id=feedback_trace_id)
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
