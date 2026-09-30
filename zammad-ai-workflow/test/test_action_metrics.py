@@ -9,7 +9,7 @@ import pytest
 from app.action.service import ActionService
 from app.errors import GuardrailBlockedError, TicketAlreadyProcessedError
 from app.metrics import KAFKA_TICKET_OUTCOMES_TOTAL
-from app.models.answer import NoAnswerPossible, StaticAnswer
+from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
@@ -156,6 +156,7 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
     settings.frontend.feedback.post_internal_note = True
     service, _, _ = _build_action_service(settings)
     feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(None)
     setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Standardantwort")))
     triage = TriageResult(
         user_text="Frage",
@@ -171,6 +172,54 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
         ticket_id=1,
         user_text="Frage",
         response=StaticAnswer(response="Standardantwort"),
+        trace_id="fresh-trace-id",
+        allow_in_ai_group=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_action_posts_feedback_note_for_ai_shared_draft_with_captured_trace_id(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """AI shared drafts should forward the trace captured before posting the draft."""
+    settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    service, _, _ = _build_action_service(settings)
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    answer_service = cast(Any, service.answer_service)
+    answer_service.langfuse_client = _FakeLangfuseClient("fresh-trace-id")
+    setattr(
+        service,
+        "get_answer",
+        AsyncMock(
+            return_value=AnswerCandidate(
+                subject="S" * 50,
+                response="A" * 200,
+                documents=[],
+                auto_publish=False,
+            )
+        ),
+    )
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    feedback_note_mock.assert_awaited_once_with(
+        ticket_id=1,
+        user_text="Frage",
+        response=AnswerCandidate(
+            subject="S" * 50,
+            response="A" * 200,
+            documents=[],
+            auto_publish=False,
+        ),
+        trace_id="fresh-trace-id",
         allow_in_ai_group=False,
     )
 
@@ -180,7 +229,7 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
 async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace(
     settings_factory: Callable[..., ZammadAISettings], last_trace_id: str | None
 ) -> None:
-    """Static answers should use a new trace instead of skipping or reusing feedback links."""
+    """Static answers should create a fresh trace when posting feedback links."""
     settings = settings_factory()
     settings.frontend.feedback.post_internal_note = True
     settings.frontend.base_url = "https://example.com"
@@ -201,8 +250,20 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
         session_id="categorization-session",
     )
     langfuse_client = cast(Any, service.answer_service).langfuse_client
-    assert langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
-    await service._post_feedback_internal_note(ticket_id=1, user_text="Frage", response=response)
+    assert langfuse_client.langfuse_handler.last_trace_id == last_trace_id
+    assert type(response) is StaticAnswer or type(response) is NoAnswerPossible
+    trace_id = service._create_feedback_trace(
+        user_text="Frage",
+        response=response,
+        session_id="categorization-session",
+    )
+    assert trace_id == "fresh-trace-id"
+    await service._post_feedback_internal_note(
+        ticket_id=1,
+        user_text="Frage",
+        response=response,
+        trace_id=trace_id,
+    )
     post_answer_mock.assert_awaited_once()
     assert "trace_id=fresh-trace-id" in cast(Any, post_answer_mock).await_args.kwargs["text"]
 
@@ -232,6 +293,7 @@ async def test_post_feedback_internal_note_allows_ticket_already_in_ai_group(
         ticket_id=1,
         user_text="Frage",
         response=StaticAnswer(response="Antwort"),
+        trace_id="fresh-trace-id",
         allow_in_ai_group=True,
     )
 
@@ -400,6 +462,7 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
         ticket_id=1,
         user_text="Frage",
         response=response,
+        trace_id="fresh-trace-id",
         allow_in_ai_group=False,
     )
     assert answer_service.langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
