@@ -1,5 +1,7 @@
 """API response and agent output models for the answer workflow."""
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
 
@@ -56,3 +58,11 @@ class JudgeResult(BaseModel):
     repair_instructions: str | None = Field(
         description="Instructions for repairing the answer, if applicable.", default=None
     )
+
+
+@dataclass(slots=True)
+class AnswerResult:
+    """Resolved answer payload and its request-local Langfuse trace id."""
+
+    response: AnswerCandidate | StaticAnswer | NoAnswerPossible
+    trace_id: str | None = None

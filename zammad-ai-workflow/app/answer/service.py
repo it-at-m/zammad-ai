@@ -15,7 +15,7 @@ from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
 from app.guardrails.http_client import GuardrailService
-from app.models.answer import AnswerCandidate, NoAnswerPossible
+from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
 from app.settings.answer import (
@@ -153,7 +153,7 @@ class AnswerService:
         user_text: str,
         category: str,
         session_id: str | None = None,
-    ) -> AnswerCandidate | NoAnswerPossible:
+    ) -> AnswerResult:
         """Generate a structured answer for the given user text and category, optionally associating the request with a provided Langfuse session.
 
         Parameters:
@@ -171,6 +171,7 @@ class AnswerService:
         try:
             if session_id is None and self.langfuse_client is not None:
                 session_id = self.langfuse_client.generate_session_id()
+            trace_id: str | None = None
             agent_langfuse_prompt = getattr(self, "agent_langfuse_prompt", None)
             user_message = HumanMessage(
                 content=self.user_message_template.format(
@@ -211,6 +212,8 @@ class AnswerService:
                     config=with_recursion_limit(config),
                     context=per_request_context,
                 )
+            if self.langfuse_client is not None:
+                trace_id = self.langfuse_client.langfuse_handler.last_trace_id
 
             agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
                 agent_result,
@@ -266,7 +269,7 @@ class AnswerService:
                 if self.settings.answer.ai_answer_disclaimer:
                     structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
                 outcome = "success"
-            return structured_response
+            return AnswerResult(response=structured_response, trace_id=trace_id)
         except AppError:
             raise
         except Exception as e:

@@ -9,7 +9,7 @@ import pytest
 from app.action.service import ActionService
 from app.errors import GuardrailBlockedError, TicketAlreadyProcessedError
 from app.metrics import KAFKA_TICKET_OUTCOMES_TOTAL
-from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
+from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible, StaticAnswer
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
@@ -77,13 +77,20 @@ def _build_action_service(settings: ZammadAISettings) -> tuple[ActionService, As
     return service, post_answer_mock, post_shared_draft_mock
 
 
+def _answer_result(
+    response: AnswerCandidate | StaticAnswer | NoAnswerPossible,
+    trace_id: str | None = None,
+) -> AnswerResult:
+    return AnswerResult(response=response, trace_id=trace_id)
+
+
 @pytest.mark.asyncio
 async def test_execute_action_counts_posted_answer_metric(settings_factory: Callable[..., ZammadAISettings]) -> None:
     """Posted answers should increment the Kafka answered counter."""
     baseline = _get_outcome_counter_value(category="General", action_type="static_answer", outcome="answer")
     settings = settings_factory()
     service, post_answer_mock, _ = _build_action_service(settings)
-    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Antwort")))
+    setattr(service, "get_answer", AsyncMock(return_value=_answer_result(StaticAnswer(response="Antwort"))))
     triage = TriageResult(
         user_text="Frage",
         category=Category(name="General", auto_publish=True),
@@ -107,7 +114,7 @@ async def test_execute_action_counts_posted_shared_draft_metric(
     settings = settings_factory()
     settings.frontend.feedback.post_internal_note = False
     service, _, post_shared_draft_mock = _build_action_service(settings)
-    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Entwurf")))
+    setattr(service, "get_answer", AsyncMock(return_value=_answer_result(StaticAnswer(response="Entwurf"))))
     triage = TriageResult(
         user_text="Frage",
         session_id="categorization-session",
@@ -133,7 +140,7 @@ async def test_execute_action_skips_duplicate_check_when_disabled(
     settings = settings_factory()
     settings.zammad.duplicate_detection_enabled = False
     service, _, _ = _build_action_service(settings)
-    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Antwort")))
+    setattr(service, "get_answer", AsyncMock(return_value=_answer_result(StaticAnswer(response="Antwort"))))
     triage = TriageResult(
         user_text="Frage",
         category=Category(name="General", auto_publish=True),
@@ -157,7 +164,11 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
     service, _, _ = _build_action_service(settings)
     feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
     cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(None)
-    setattr(service, "get_answer", AsyncMock(return_value=StaticAnswer(response="Standardantwort")))
+    setattr(
+        service,
+        "get_answer",
+        AsyncMock(return_value=_answer_result(StaticAnswer(response="Standardantwort"), trace_id="fresh-trace-id")),
+    )
     triage = TriageResult(
         user_text="Frage",
         category=Category(name="General", auto_publish=False),
@@ -192,11 +203,14 @@ async def test_execute_action_posts_feedback_note_for_ai_shared_draft_with_captu
         service,
         "get_answer",
         AsyncMock(
-            return_value=AnswerCandidate(
-                subject="S" * 50,
-                response="A" * 200,
-                documents=[],
-                auto_publish=False,
+            return_value=_answer_result(
+                AnswerCandidate(
+                    subject="S" * 50,
+                    response="A" * 200,
+                    documents=[],
+                    auto_publish=False,
+                ),
+                trace_id="fresh-trace-id",
             )
         ),
     )
@@ -242,19 +256,20 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
         Action(name="Standard", description="Standard", type=ActionTypes.StaticAnswer, answer="Standardantwort")
     ]
 
-    response = await service.get_answer(
+    answer_result = await service.get_answer(
         ticket_id=1,
         category_name="General",
         action_name="Standard",
         user_text="Frage",
         session_id="categorization-session",
     )
+    response = answer_result.response
     langfuse_client = cast(Any, service.answer_service).langfuse_client
     assert langfuse_client.langfuse_handler.last_trace_id == last_trace_id
-    assert type(response) is StaticAnswer or type(response) is NoAnswerPossible
+    assert isinstance(response, StaticAnswer) or isinstance(response, NoAnswerPossible)
     trace_id = service._create_feedback_trace(
         user_text="Frage",
-        response=response,
+        response=cast(StaticAnswer, response),
         session_id="categorization-session",
     )
     assert trace_id == "fresh-trace-id"
@@ -347,7 +362,9 @@ async def test_get_answer_does_not_count_manual_metric_for_no_action(
         session_id=None,
     )
 
-    assert isinstance(result, NoAnswerPossible)
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, NoAnswerPossible)
+    assert result.trace_id is None
     assert _get_outcome_counter_value(category="General", action_type="no_action", outcome="manual") == baseline
 
 

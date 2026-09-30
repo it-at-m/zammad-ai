@@ -8,7 +8,7 @@ from app.answer.service import AnswerService, get_answer_service
 from app.errors import ActionExecutionError, AppError, GuardrailBlockedError, GuardrailEvaluationError
 from app.guardrails import GuardrailService, reset_guardrail_service
 from app.metrics import record_kafka_ticket_outcome
-from app.models.answer import AnswerCandidate, NoAnswerPossible, StaticAnswer
+from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible, StaticAnswer
 from app.models.triage import Action
 from app.settings.settings import ZammadAISettings
 from app.settings.triage import ActionTypes
@@ -73,15 +73,19 @@ class ActionService:
                     allow_in_ai_group=allow_in_ai_group,
                 )
 
-            response = await self.get_answer(  # TODO what to do with documents here? Internal Note?
+            answer_result = await self.get_answer(  # TODO what to do with documents here? Internal Note?
                 ticket_id=ticket_id,
                 category_name=category,
                 action_name=action,
                 user_text=triage.user_text,
                 session_id=effective_session_id,
             )
-            if isinstance(response, AnswerCandidate) and self.answer_service.langfuse_client is not None:
-                feedback_trace_id = self.answer_service.langfuse_client.langfuse_handler.last_trace_id
+            if isinstance(answer_result, AnswerResult):
+                response = answer_result.response
+                feedback_trace_id = answer_result.trace_id
+            else:
+                response = answer_result
+                feedback_trace_id = None
 
             if triage.action.type == ActionTypes.NoAction:
                 record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
@@ -399,7 +403,7 @@ class ActionService:
         action_name: str,
         user_text: str,
         session_id: str | None,
-    ) -> AnswerCandidate | StaticAnswer | NoAnswerPossible:
+    ) -> AnswerResult:
         """Resolve an answer payload for the given action and category.
 
         Performs guardrail checks on user text before answer generation.
@@ -450,6 +454,7 @@ class ActionService:
         )
 
         response: AnswerCandidate | StaticAnswer | NoAnswerPossible
+        feedback_trace_id: str | None = None
         if action is None:
             raise ActionExecutionError(f"No action found with name: {action_name}", retryable=False)
         elif action.type == ActionTypes.NoAction:
@@ -463,9 +468,11 @@ class ActionService:
                 )
             )
         elif action.type == ActionTypes.AIAnswer:
-            response = await self.answer_service.generate_answer(
+            generated_answer = await self.answer_service.generate_answer(
                 user_text=user_text, category=category_name, session_id=session_id
             )
+            response = generated_answer.response
+            feedback_trace_id = generated_answer.trace_id
         elif action.type == ActionTypes.StaticAnswer:
             # The settings validator ensures that if the type is StaticAnswer, the answer field is not None, so we can safely access it here
             if not action.answer:
@@ -509,7 +516,7 @@ class ActionService:
                 )
                 raise GuardrailBlockedError("Generated response failed safety checks", retryable=False)
 
-        return response
+        return AnswerResult(response=response, trace_id=feedback_trace_id)
 
     async def cleanup(self) -> None:
         """Close internal clients and reset the module-level service reference.
