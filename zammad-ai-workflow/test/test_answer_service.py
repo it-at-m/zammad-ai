@@ -41,8 +41,10 @@ class FakeLangfuseClient:
 
     def __init__(self) -> None:
         """Initialize fake prompt tracking state."""
+        self.current_trace_id = "trace-id"
         self.last_langfuse_prompt: object | None = None
-        self.langfuse_handler = SimpleNamespace(last_trace_id="trace-id")
+        self.langfuse = SimpleNamespace(get_current_trace_id=lambda: self.current_trace_id)
+        self.langfuse_handler = SimpleNamespace(last_trace_id="stale-trace-id")
 
     def generate_session_id(self) -> str:
         """Return a deterministic session id."""

@@ -213,7 +213,7 @@ class AnswerService:
                     context=per_request_context,
                 )
             if self.langfuse_client is not None:
-                trace_id = self.langfuse_client.langfuse_handler.last_trace_id
+                trace_id = self.langfuse_client.langfuse.get_current_trace_id()
 
             agent_structured_response: AnswerCandidate | NoAnswerPossible = extract_structured_response(
                 agent_result,
