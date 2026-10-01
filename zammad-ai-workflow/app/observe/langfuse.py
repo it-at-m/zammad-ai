@@ -228,26 +228,31 @@ class LangfuseClient:
 
             input_data = trace_dict.get("input") if isinstance(trace_dict, dict) else None
             if isinstance(input_data, str):
-                inp_str = input_data
+                inp_str: str = input_data
             else:
-                inp_str = _nested_get(input_data, "kwargs", "user_text") if input_data is not None else ""
+                inp_str = str(_nested_get(input_data, "kwargs", "user_text")) if input_data is not None else ""
 
             output_data = trace_dict.get("output") if isinstance(trace_dict, dict) else None
             if isinstance(output_data, str):
-                subject = ""
-                response = output_data
+                subject: str = ""
+                response: str = output_data
                 documents_data: list[DocumentDict] = []
             else:
+                output_payload: object | None = output_data
+                if isinstance(output_data, dict) and isinstance(output_data.get("response"), dict):
+                    output_payload = output_data["response"]
                 answer_data: AnswerCandidate | None = (
-                    AnswerCandidate.model_validate(output_data) if output_data is not None else None
+                    AnswerCandidate.model_validate(output_payload) if output_payload is not None else None
                 )
-                subject = answer_data.subject if answer_data is not None else ""
-                response = answer_data.response if answer_data is not None else ""
+                subject = (
+                    str(answer_data.subject) if answer_data is not None and answer_data.subject is not None else ""
+                )
+                response = str(answer_data.response) if answer_data is not None else ""
                 documents_data = answer_data.documents if answer_data is not None else []
-            used_documents = ""
+            used_documents: str = ""
             for doc in documents_data:
                 used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
-            out_str = (subject + "\n\n" + response) if subject and response else (subject or response or "")
+            out_str: str = (subject + "\n\n" + response) if subject and response else (subject or response or "")
             out_str = out_str.replace("<br>", "\n").strip()
 
             logger.debug(

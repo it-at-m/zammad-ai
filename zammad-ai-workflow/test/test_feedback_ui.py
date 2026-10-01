@@ -1,7 +1,7 @@
 """Tests for the feedback frontend helpers."""
 
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import gradio as gr
 import pytest
@@ -55,14 +55,45 @@ def test_get_trace_io_supports_static_answer_string_output() -> None:
             assert fields == "core,io"
             return {"input": "Eine Anfrage", "output": "Eine statische Antwort"}
 
-    client = LangfuseClient.__new__(LangfuseClient)
-    client.langfuse = SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI()))  # ty: ignore
+    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
+    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
 
     input_text, output_text, used_documents = client.get_trace_io(trace_id="static-trace")
 
     assert input_text == "Eine Anfrage"
     assert output_text == "Eine statische Antwort"
     assert used_documents == ""
+
+
+def test_get_trace_io_supports_nested_answer_output() -> None:
+    """Feedback loading should accept Langfuse output wrapped in a response object."""
+
+    class DummyTraceAPI:
+        def get(self, trace_id: str, fields: str) -> dict[str, dict[str, object]]:
+            assert trace_id == "answer-trace"
+            assert fields == "core,io"
+            return {
+                "input": {"kwargs": {"user_text": "Eine Anfrage"}},
+                "output": {
+                    "response": {
+                        "subject": "Ein sehr langer Antwortbetreff, der die Mindestlänge erfüllt und hier endet",
+                        "response": "Eine ausführliche Antwort mit genügend Inhalt, um die Modellvalidierung zu erfüllen. Es muss mindestens 200 Zeichen lang sein, damit die Validierung der Antwort erfolgreich ist. Daher wird hier zusätzlicher Text hinzugefügt, um diese Anforderung zu erfüllen.",
+                        "documents": [{"title": "Dokument 1", "url": "https://example.com/doc1"}],
+                        "auto_publish": True,
+                    }
+                },
+            }
+
+    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
+    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
+
+    input_text, output_text, used_documents = client.get_trace_io(trace_id="answer-trace")
+
+    assert output_text is not None
+    assert input_text == "Eine Anfrage"
+    assert "Ein sehr langer Antwortbetreff" in output_text
+    assert "Eine ausführliche Antwort" in output_text
+    assert used_documents == "- [Dokument 1](https://example.com/doc1)\n"
 
 
 def test_resolve_feedback_request_rejects_blank_query_values(german_translations: dict[str, str]) -> None:
@@ -225,7 +256,7 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", ""
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             raise LangfuseError("lookup failed")
@@ -351,7 +382,7 @@ def test_submit_feedback_rejects_invalid_submission(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", ""
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -397,7 +428,7 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world"
+            return "hello", "world", ""
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             raise LangfuseError("lookup failed")
