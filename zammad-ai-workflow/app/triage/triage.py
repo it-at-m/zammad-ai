@@ -349,7 +349,12 @@ class TriageService:
             and not guardrail_result
         ):
             logger.warning("Categorization blocked by guardrails")
-            raise TriageError("Input failed safety checks", retryable=False)
+            return CategorizationResult(
+                category=self.no_category,
+                reasoning=("Guardrails blocked the input, so no categorization was performed."),
+                confidence=0.0,
+                extracted_values=None,
+            )
 
         if len(message) > self.max_user_text_length:
             logger.warning(

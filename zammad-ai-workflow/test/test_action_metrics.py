@@ -317,14 +317,18 @@ async def test_post_feedback_internal_note_allows_ticket_already_in_ai_group(
 
 
 @pytest.mark.asyncio
-async def test_execute_action_reraises_guardrail_block_when_note_post_fails(
+async def test_execute_action_swallows_guardrail_block_when_note_post_fails(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """A failed guardrail note must not change the non-retryable block error."""
+    """Guardrail blocks should not abort even when the internal note fails."""
     settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    settings.frontend.base_url = "https://example.com"
     settings.triage.no_action_internal_note = "Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
     post_answer_mock.side_effect = RuntimeError("note failed")
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(None)
     blocked_error = GuardrailBlockedError("Input failed safety checks")
     setattr(service, "get_answer", AsyncMock(side_effect=blocked_error))
     triage = TriageResult(
@@ -336,10 +340,10 @@ async def test_execute_action_reraises_guardrail_block_when_note_post_fails(
         confidence=1.0,
     )
 
-    with pytest.raises(GuardrailBlockedError) as error:
-        await service.execute_action(ticket_id=1, triage=triage)
+    await service.execute_action(ticket_id=1, triage=triage)
 
-    assert error.value is blocked_error
+    post_answer_mock.assert_awaited_once()
+    feedback_note_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -491,8 +495,12 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
 ) -> None:
     """Guardrail blocks should document the skipped answer internally."""
     settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    settings.frontend.base_url = "https://example.com"
     settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(None)
     setattr(service, "get_answer", AsyncMock(side_effect=GuardrailBlockedError("Input failed safety checks")))
     triage = TriageResult(
         user_text="Frage",
@@ -502,9 +510,19 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
         confidence=1.0,
     )
 
-    with pytest.raises(GuardrailBlockedError):
-        await service.execute_action(ticket_id=1, triage=triage)
+    await service.execute_action(ticket_id=1, triage=triage)
 
     post_answer_mock.assert_awaited_once()
     assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
     assert "Input failed safety checks" in cast(Any, post_answer_mock).await_args.kwargs["text"]
+    blocked_reasoning = (
+        "Guardrails blocked the input, so no automated answer could be generated. "
+        "The request is therefore treated as no-answer."
+    )
+    feedback_note_mock.assert_awaited_once_with(
+        ticket_id=1,
+        user_text="Frage",
+        response=NoAnswerPossible(reasoning=blocked_reasoning),
+        trace_id="fresh-trace-id",
+        allow_in_ai_group=False,
+    )

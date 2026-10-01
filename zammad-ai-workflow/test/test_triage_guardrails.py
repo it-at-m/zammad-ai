@@ -4,6 +4,7 @@ import pytest
 
 import app.triage.triage as triage_module
 from app.errors import GuardrailEvaluationError
+from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings.guardrails import GuardrailSettings
 from app.triage.triage import TriageError, TriageService
 
@@ -24,6 +25,7 @@ class _DummyPreparserService:
 class _DummyGenAIHandler:
     def __init__(self, *args, **kwargs) -> None:
         del args, kwargs
+        self.langfuse_client = type("_LangfuseStub", (), {"generate_session_id": staticmethod(lambda: "session-id")})()
 
     async def categorize_ticket(self, *args, **kwargs):
         del args, kwargs
@@ -70,24 +72,44 @@ def _build_triage_service(
 
 
 @pytest.mark.asyncio
-async def test_predict_category_rejects_unsafe_input(monkeypatch: pytest.MonkeyPatch, settings_factory) -> None:
-    """Unsafe input should raise a non-retryable triage error."""
+async def test_predict_category_returns_no_category_for_unsafe_input(
+    monkeypatch: pytest.MonkeyPatch, settings_factory
+) -> None:
+    """Unsafe input should fall back to the no-category result."""
     guardrail_service = _GuardrailStub(
         GuardrailSettings(enabled=True, block_on_high_risk=True),
         evaluate_result=False,
     )
     service = _build_triage_service(monkeypatch, settings_factory, guardrail_service)
 
-    with pytest.raises(TriageError) as exc_info:
-        await service.predict_category(message="x", session_id="session-id")
+    result = await service.predict_category(message="x", session_id="session-id")
 
-    assert exc_info.value.retryable is False
+    assert result.category == service.no_category
+    assert result.confidence == 0.0
+    assert result.reasoning == "Guardrails blocked the input, so no categorization was performed."
 
 
 @pytest.mark.asyncio
-async def test_predict_category_retries_on_guardrail_failure(
+async def test_perform_triage_returns_no_action_for_unsafe_input(
     monkeypatch: pytest.MonkeyPatch, settings_factory
 ) -> None:
+    """Unsafe input should flow through to a no-action triage result."""
+    guardrail_service = _GuardrailStub(
+        GuardrailSettings(enabled=True, block_on_high_risk=True),
+        evaluate_result=False,
+    )
+    service = _build_triage_service(monkeypatch, settings_factory, guardrail_service)
+
+    result = await service.perform_triage(
+        ticket=ZammadTicket(id=1, articles=[ZammadArticle(id=1, ticket_id=1, text="x", internal=False)])
+    )
+
+    assert result.category == service.no_category
+    assert result.action == service.no_action
+
+
+@pytest.mark.asyncio
+async def test_predict_category_retries_on_guardrail_failure(monkeypatch: pytest.MonkeyPatch, settings_factory) -> None:
     """Guardrail evaluation failures should be retryable."""
     guardrail_service = _GuardrailStub(
         GuardrailSettings(enabled=True, block_on_high_risk=True),

@@ -53,8 +53,8 @@ class ActionService:
         allow_in_ai_group: bool = False,
     ) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
+        effective_session_id: str | None = session_id or triage.session_id
         try:
-            effective_session_id: str | None = session_id or triage.session_id
             category: str = triage.category.name
             action: str = triage.action.name
             reason: str = triage.reasoning
@@ -223,13 +223,18 @@ class ActionService:
                             allow_in_ai_group=allow_in_ai_group,
                         )
         except GuardrailBlockedError as e:
+            blocked_reasoning = (
+                "Guardrails blocked the input, so no automated answer could be generated. "
+                "The request is therefore treated as no-answer."
+            )
+            blocked_response = NoAnswerPossible(reasoning=blocked_reasoning)
             try:
                 if original_group_id is None:
                     await self._post_no_action_internal_note(
                         ticket_id=ticket_id,
                         category=triage.category.name,
                         action=triage.action.name,
-                        reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                        reason=f"{triage.reasoning}\n\n{blocked_reasoning}\n{e}",
                         allow_in_ai_group=allow_in_ai_group,
                     )
                 else:
@@ -237,14 +242,40 @@ class ActionService:
                         ticket_id=ticket_id,
                         category=triage.category.name,
                         action=triage.action.name,
-                        reason=triage.reasoning + "\n\nNo answer possible. Explanation:\n" + str(e),
+                        reason=f"{triage.reasoning}\n\n{blocked_reasoning}\n{e}",
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
                         allow_in_ai_group=allow_in_ai_group,
                     )
             except Exception:
                 self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
-            raise
+            if self.settings.frontend.feedback.post_internal_note:
+                feedback_trace_id = self._create_feedback_trace(
+                    user_text=triage.user_text[: self.max_user_text_length],
+                    response=blocked_response,
+                    session_id=effective_session_id,
+                )
+                try:
+                    if original_group_id is None:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=blocked_response,
+                            trace_id=feedback_trace_id,
+                            allow_in_ai_group=allow_in_ai_group,
+                        )
+                    else:
+                        await self._post_feedback_internal_note(
+                            ticket_id=ticket_id,
+                            user_text=triage.user_text[: self.max_user_text_length],
+                            response=blocked_response,
+                            trace_id=feedback_trace_id,
+                            original_group_id=original_group_id,
+                            original_group_name=original_group_name,
+                            allow_in_ai_group=allow_in_ai_group,
+                        )
+                except Exception:
+                    self.logger.error("Failed to post feedback note for blocked answer.", exc_info=True)
         except AppError:
             raise
         except Exception as e:
