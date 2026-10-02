@@ -115,7 +115,7 @@ async def _process_ticket_event(
     try:
         ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
     except TicketNotFoundError as e:
-        logger.info(
+        logger.warning(
             "Ticket no longer exists in Zammad",
             extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
             exc_info=True,
@@ -228,6 +228,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         bootstrap_servers=settings.kafka.broker_url,
         client_id=settings.kafka.client_id,
         logger=logger,
+        log_level=settings.kafka.log_level,
         security=security,
         middlewares=(
             KafkaPrometheusMiddleware(

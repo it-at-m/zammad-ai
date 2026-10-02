@@ -22,6 +22,19 @@ from app.utils.logging import getLogger
 logger = getLogger("zammad-ai.base")
 
 
+def _response_body_preview(response: Any, *, max_length: int = 2000) -> str:
+    """Return a bounded, human-readable preview of an HTTP response body."""
+    try:
+        body = response.text
+    except Exception:
+        body = response.content.decode("utf-8", errors="replace")
+
+    body = body.strip()
+    if len(body) <= max_length:
+        return body
+    return body[:max_length] + "..."
+
+
 class BaseZammadClient(ABC):
     """Abstract base class for Zammad API clients."""
 
@@ -159,6 +172,7 @@ class BaseZammadClient(ABC):
                         response.raise_for_status()
                     except HTTPStatusError as e:
                         status_code = e.response.status_code
+                        response_body = _response_body_preview(e.response)
                         if status_code == 429 or status_code >= 500:
                             if should_retry:
                                 raise TimeoutException("Transient HTTP error") from e
@@ -167,7 +181,11 @@ class BaseZammadClient(ABC):
                             raise ZammadAuthError(f"Zammad auth failed for {method} {url}") from e
                         if status_code == 404:
                             raise TicketNotFoundError(f"Zammad resource not found for {method} {url}") from e
-                        raise ZammadPermanentError(f"Zammad request failed for {method} {url}") from e
+                        raise ZammadPermanentError(
+                            f"Zammad request failed for {method} {url}",
+                            status_code=status_code,
+                            response_body=response_body or None,
+                        ) from e
 
                     content_type = response.headers.get("Content-Type", "").lower()
                     if content_type.startswith("application/json"):
@@ -187,11 +205,21 @@ class BaseZammadClient(ABC):
         except ZammadRetryableError:
             logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
             raise
+        except ZammadPermanentError as e:
+            log_extra: dict[str, Any] = {}
+            if e.status_code is not None:
+                log_extra["status_code"] = e.status_code
+            if e.response_body:
+                log_extra["response_body"] = e.response_body
+            if log_extra:
+                logger.error(f"Zammad request failed for {method} {url}.", exc_info=True, extra=log_extra)
+            else:
+                logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
+            raise
         except (
             TicketNotFoundError,
             ZammadAuthError,
             ZammadPayloadParseError,
-            ZammadPermanentError,
         ):
             logger.error(f"Zammad request failed for {method} {url}.", exc_info=True)
             raise
