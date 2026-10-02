@@ -1,5 +1,6 @@
 """Settings for Kafka connectivity and security."""
 
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveInt, model_validator
@@ -66,6 +67,27 @@ class KafkaSettings(BaseModel):
         description="Maximum time between Kafka poll calls before the consumer is considered dead.",
         default=300_000,
     )
+    log_level: int = Field(
+        description="Log level the Kafka broker will use.",
+        default=logging.INFO,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def turn_log_level_into_int(cls, data: Any) -> Any:
+        """Convert log level string to integer if needed."""
+        if not isinstance(data, dict):
+            return data
+
+        log_level = data.get("log_level")
+        if isinstance(log_level, str):
+            try:
+                level_name = log_level.upper()
+
+                data["log_level"] = logging.getLevelNamesMapping()[level_name]
+            except ValueError:
+                pass  # Keep the original value if conversion fails
+        return data
 
     @model_validator(mode="before")
     @classmethod

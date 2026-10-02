@@ -11,6 +11,8 @@ filters:
     (): app.utils.logging.HealthFilter
   gradio_filter:
     (): app.utils.logging.GradioFilter
+  static_asset_filter:
+    (): app.utils.logging.StaticAssetFilter
 handlers:
   console:
     class: logging.StreamHandler
@@ -29,6 +31,8 @@ loggers:
   uvicorn.access:
     level: INFO
     handlers: [console]
+    filters:
+      - static_asset_filter
     propagate: no
   uvicorn.error:
     level: INFO

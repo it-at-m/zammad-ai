@@ -164,3 +164,17 @@ class GradioFilter(logging.Filter):
             and (record.getMessage().find("/theme.css") == -1)
             and (record.getMessage().find("/login") == -1)
         )
+
+
+class StaticAssetFilter(logging.Filter):
+    """Filter out static asset access logs for frontend and feedback mounts."""
+
+    def filter(self, record):
+        """Return True for non-static requests and False for asset fetches."""
+        message = record.getMessage()
+        return (
+            (message.find("GET /assets/") == -1)
+            and (message.find("GET /feedback/assets/") == -1)
+            and (message.find("GET /feedback/static/") == -1)
+            and (message.find("GET /static/") == -1)
+        )

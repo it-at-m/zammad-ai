@@ -368,7 +368,7 @@ async def test_event_handler_invalid_request_type(
 ) -> None:
     """Verify that messages whose request type is not listed in the configured valid_request_types are skipped by the event handler.
 
-    When a message contains an invalid request type, the handler logs an informational "Skipping" message and does not invoke the triage service.
+    When a message contains an invalid request type, the handler stays quiet at info level and does not invoke the triage service.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
     router, _ = build_router(settings=settings)
@@ -377,7 +377,7 @@ async def test_event_handler_invalid_request_type(
         message["anliegenart"] = "invalid_request_type"
         with caplog.at_level("INFO"):
             await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping" in caplog.text
+        assert "Skipping" not in caplog.text
         # Verify triage was NOT called for invalid request types
         mock_triage.perform_triage.assert_not_called()
 
@@ -537,7 +537,7 @@ async def test_event_handler_case_sensitive_request_type(
         message = kafka_message_factory(anliegenart="TECHNISCHER BÜRGERSUPPORT")
         with caplog.at_level("INFO"):
             await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping event" in caplog.text
+        assert "Skipping event" not in caplog.text
         # Verify triage was NOT called for case mismatch
         mock_triage.perform_triage.assert_not_called()
 
