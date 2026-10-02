@@ -352,7 +352,7 @@ class TriageService:
             return CategorizationResult(
                 category=self.no_category,
                 reasoning=("Guardrails blocked the input, so no categorization was performed."),
-                confidence=0.0,
+                confidence=1.0,
                 extracted_values=None,
             )
 

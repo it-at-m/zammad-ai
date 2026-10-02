@@ -85,7 +85,7 @@ async def test_predict_category_returns_no_category_for_unsafe_input(
     result = await service.predict_category(message="x", session_id="session-id")
 
     assert result.category == service.no_category
-    assert result.confidence == 0.0
+    assert result.confidence == 1.0
     assert result.reasoning == "Guardrails blocked the input, so no categorization was performed."
 
 
