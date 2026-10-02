@@ -139,4 +139,4 @@ def test_get_log_config_reduces_faststream_noise(
 
     log_config = get_log_config()
 
-    assert log_config["loggers"]["faststream"]["level"] == "WARNING"
+    assert log_config["loggers"]["faststream"]["level"] == "INFO"

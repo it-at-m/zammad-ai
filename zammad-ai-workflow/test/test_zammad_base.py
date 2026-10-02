@@ -50,7 +50,7 @@ async def test_permanent_zammad_errors_include_response_body_in_logs(caplog: pyt
         assert "Missing required field" in excinfo.value.response_body
 
         record = next(record for record in caplog.records if record.name == "zammad-ai.base")
-        assert record.status_code == 422
-        assert json.loads(record.response_body)["detail"] == "Missing required field"
+        assert record.status_code == 422  # ty: ignore
+        assert json.loads(record.response_body)["detail"] == "Missing required field"  # ty: ignore
     finally:
         await client.close()

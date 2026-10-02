@@ -1,5 +1,6 @@
 """Tests for Kafka event routing and triage invocation."""
 
+import logging
 from collections.abc import Callable
 from typing import Protocol, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -368,16 +369,17 @@ async def test_event_handler_invalid_request_type(
 ) -> None:
     """Verify that messages whose request type is not listed in the configured valid_request_types are skipped by the event handler.
 
-    When a message contains an invalid request type, the handler stays quiet at info level and does not invoke the triage service.
+    When a message contains an invalid request type, the handler emits the broker's unsupported-request-type INFO log and does not invoke the triage service.
     """
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.log_level = logging.INFO
     router, _ = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="invalid_request_type")
         message["anliegenart"] = "invalid_request_type"
         with caplog.at_level("INFO"):
             await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping" not in caplog.text
+        assert "Skipping event with unsupported request type" in caplog.text
         # Verify triage was NOT called for invalid request types
         mock_triage.perform_triage.assert_not_called()
 
@@ -532,12 +534,13 @@ async def test_event_handler_case_sensitive_request_type(
 ) -> None:
     """Test that request type validation is case sensitive."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.log_level = logging.INFO
     router, event_handler = build_router(settings=settings)
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="TECHNISCHER BÜRGERSUPPORT")
         with caplog.at_level("INFO"):
             await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping event" not in caplog.text
+        assert "Skipping event with unsupported request type" in caplog.text
         # Verify triage was NOT called for case mismatch
         mock_triage.perform_triage.assert_not_called()
 
