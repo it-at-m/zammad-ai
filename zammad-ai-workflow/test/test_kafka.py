@@ -744,6 +744,9 @@ async def test_retry_limit_restores_original_group(
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
+    zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
     event = Event.model_validate(kafka_message_factory())
 
     with pytest.raises(AckMessage):
@@ -759,7 +762,11 @@ async def test_retry_limit_restores_original_group(
             retry_count=1,
         )
 
-    zammad_client.update_ticket_group.assert_awaited_once_with(ticket_id=3720, group_id=17)
+    zammad_client.update_ticket_group.assert_awaited_once_with(
+        ticket_id=3720,
+        group_id=17,
+        pending_time="2026-10-05T07:35:41.000Z",
+    )
     broker.publish.assert_not_awaited()
 
 

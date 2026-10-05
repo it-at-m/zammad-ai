@@ -99,6 +99,7 @@ class ZammadAPIClient(BaseZammadClient):
             articles=articles,
             group_id=group_id,
             group_name=group_name,
+            pending_time=ticket_data.get("pending_time"),
             article_count=len(articles),
         )
 
@@ -109,8 +110,10 @@ class ZammadAPIClient(BaseZammadClient):
         logger.info(f"Posted answer to ticket {ticket_id}")
 
     @override
-    async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:
-        payload = {"group_id": group_id, "id": ticket_id}
+    async def update_ticket_group(self, ticket_id: int, group_id: int, pending_time: str | None = None) -> None:
+        payload: dict[str, Any] = {"group_id": group_id, "id": ticket_id}
+        if pending_time is not None:
+            payload["pending_time"] = pending_time
         await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
         logger.info(f"Updated ticket {ticket_id} group to {group_id}")
 

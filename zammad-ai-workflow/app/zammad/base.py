@@ -59,12 +59,14 @@ class BaseZammadClient(ABC):
         self,
         ticket_id: int,
         group_id: int,
+        pending_time: str | None = None,
     ) -> None:
         """Update the group assignment for a specified Zammad ticket.
 
         Args:
             ticket_id: ID of the ticket to update.
             group_id: ID of the new group to assign to the ticket.
+            pending_time: Optional pending time to preserve when the ticket is already pending close.
         """
         ...
 
