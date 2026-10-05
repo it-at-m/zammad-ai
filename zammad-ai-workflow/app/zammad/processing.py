@@ -22,6 +22,7 @@ class TicketProcessingState:
     has_feedback_note: bool
     has_shared_draft: bool
     has_ai_internal_note: bool
+    has_ai_public_note: bool
     has_no_answer_internal_note: bool
 
     @property
@@ -33,6 +34,7 @@ class TicketProcessingState:
             or self.has_feedback_note
             or self.has_shared_draft
             or self.has_ai_internal_note
+            or self.has_ai_public_note
             or self.has_no_answer_internal_note
         )
 
@@ -50,6 +52,8 @@ class TicketProcessingState:
             reasons.append("shared_draft_present")
         if self.has_ai_internal_note:
             reasons.append("ai_internal_note_present")
+        if self.has_ai_public_note:
+            reasons.append("ai_public_note_present")
         if self.has_no_answer_internal_note:
             reasons.append("no_answer_internal_note_present")
         return tuple(reasons)
@@ -128,6 +132,10 @@ def build_ticket_processing_state(
         and not _is_no_answer_internal_note(article)
         for article in articles
     )
+    has_ai_public_note = any(
+        not article.internal and ai_ticket_author and _is_ai_system_author(article.author, ai_ticket_author)
+        for article in articles
+    )
 
     return TicketProcessingState(
         ticket_id=ticket.id,
@@ -139,6 +147,7 @@ def build_ticket_processing_state(
         has_feedback_note=has_feedback_note,
         has_shared_draft=has_shared_draft,
         has_ai_internal_note=has_ai_internal_note,
+        has_ai_public_note=has_ai_public_note,
         has_no_answer_internal_note=has_no_answer_internal_note,
     )
 

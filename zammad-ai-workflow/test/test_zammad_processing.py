@@ -161,6 +161,35 @@ def test_build_ticket_processing_state_detects_configured_ai_author() -> None:
     assert "ai_internal_note_present" in state.reasons
 
 
+def test_build_ticket_processing_state_detects_configured_ai_public_note() -> None:
+    """A published AI answer should also count as already processed."""
+    ticket = ZammadTicket(
+        id=16,
+        group_id=31,
+        articles=[
+            ZammadArticle(id=1, ticket_id=16, text="Inhalt des Anliegens", internal=False, author="Customer"),
+            ZammadArticle(id=2, ticket_id=16, text="Eingang Ihres Anliegens", internal=False, author="System"),
+            ZammadArticle(
+                id=3,
+                ticket_id=16,
+                text="Das ist die Antwort",
+                internal=False,
+                author="AI-Author",
+            ),
+        ],
+    )
+
+    state = build_ticket_processing_state(
+        ticket,
+        ai_group_id=99,
+        ai_group_name="AI-Group",
+        ai_ticket_author="AI-Author",
+    )
+
+    assert state.already_processed is True
+    assert "ai_public_note_present" in state.reasons
+
+
 def test_build_ticket_processing_state_ignores_plain_ai_group_mentions_in_internal_notes() -> None:
     """Only the documented move-note format should trigger the move-note guard."""
     ticket = ZammadTicket(
