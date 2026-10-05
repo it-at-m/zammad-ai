@@ -135,6 +135,32 @@ class ZammadEAIClient(BaseZammadClient):
         )
 
     @override
+    async def get_ticket_metadata(self, id: int) -> ZammadTicket:
+        data = await self._request("GET", f"/tickets/byId/{id}")
+        if not isinstance(data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
+        try:
+            raw_group = data.get("group_id", None)
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
+        except (KeyError, TypeError, ValidationError) as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
+        return ZammadTicket(
+            id=id,
+            articles=[],
+            group_id=group_id,
+            group_name=_extract_group_name(data),
+            pending_time=data.get("pending_time"),
+            article_count=0,
+        )
+
+    @override
     async def update_ticket_group(self, ticket_id: int, group_id: int, pending_time: str | None = None) -> None:
         payload: dict[str, Any] = {"group_id": group_id, "id": ticket_id}
         if pending_time is not None:

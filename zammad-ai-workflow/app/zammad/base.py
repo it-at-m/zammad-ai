@@ -55,6 +55,22 @@ class BaseZammadClient(ABC):
         ...
 
     @abstractmethod
+    async def get_ticket_metadata(
+        self,
+        id: int,
+    ) -> ZammadTicket:
+        """Fetch only ticket metadata needed for restoration.
+
+        Args:
+            id: Zammad ticket ID to retrieve.
+
+        Returns:
+            ZammadTicket: Ticket metadata without article validation.
+
+        """
+        ...
+
+    @abstractmethod
     async def update_ticket_group(
         self,
         ticket_id: int,

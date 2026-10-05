@@ -104,6 +104,32 @@ class ZammadAPIClient(BaseZammadClient):
         )
 
     @override
+    async def get_ticket_metadata(self, id: int) -> ZammadTicket:
+        data = await self._request("GET", f"/api/v1/tickets/{id}", params={"include": "group"})
+        if not isinstance(data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
+        try:
+            raw_group = data.get("group_id")
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
+        except ValidationError as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
+        return ZammadTicket(
+            id=id,
+            articles=[],
+            group_id=group_id,
+            group_name=_extract_group_name(data),
+            pending_time=data.get("pending_time"),
+            article_count=0,
+        )
+
+    @override
     async def post_answer(self, ticket_id: int, text: str, subject: str | None = None, internal: bool = False) -> None:
         payload = ZammadAnswer(ticket_id=ticket_id, body=text, internal=internal, subject=subject)
         await self._request("POST", "/api/v1/ticket_articles", json=payload.model_dump())

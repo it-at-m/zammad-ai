@@ -188,7 +188,7 @@ async def _restore_ticket_group(
 ) -> None:
     """Move a ticket back to its original group."""
     try:
-        ticket = await zammad_client.get_ticket(ticket_id)
+        ticket = await zammad_client.get_ticket_metadata(ticket_id)
         await zammad_client.update_ticket_group(
             ticket_id=ticket_id,
             group_id=group_id,

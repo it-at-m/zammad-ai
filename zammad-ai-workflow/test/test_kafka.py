@@ -16,6 +16,7 @@ from app.kafka.helper import (
     _handle_processing_exception,
     _republish_retry_event,
     _reschedule_retry_event,
+    _restore_ticket_group,
     _sleep_until_retry_after,
 )
 from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL
@@ -744,7 +745,7 @@ async def test_retry_limit_restores_original_group(
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
-    zammad_client.get_ticket = AsyncMock(
+    zammad_client.get_ticket_metadata = AsyncMock(
         return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
     )
     event = Event.model_validate(kafka_message_factory())
@@ -768,6 +769,32 @@ async def test_retry_limit_restores_original_group(
         pending_time="2026-10-05T07:35:41.000Z",
     )
     broker.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_restore_ticket_group_uses_metadata_without_articles() -> None:
+    """Restoration should not depend on article retrieval when metadata is sufficient."""
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket = AsyncMock(side_effect=AssertionError("get_ticket should not be called"))
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+
+    await _restore_ticket_group(
+        zammad_client=zammad_client,
+        ticket_id=3720,
+        group_id=17,
+        handler_stage="restore_ticket_group",
+        log_message="Moved ticket back to original group",
+    )
+
+    zammad_client.get_ticket_metadata.assert_awaited_once_with(3720)
+    zammad_client.get_ticket.assert_not_awaited()
+    zammad_client.update_ticket_group.assert_awaited_once_with(
+        ticket_id=3720,
+        group_id=17,
+        pending_time="2026-10-05T07:35:41.000Z",
+    )
 
 
 @pytest.mark.asyncio
