@@ -99,7 +99,34 @@ class ZammadAPIClient(BaseZammadClient):
             articles=articles,
             group_id=group_id,
             group_name=group_name,
+            pending_time=ticket_data.get("pending_time"),
             article_count=len(articles),
+        )
+
+    @override
+    async def get_ticket_metadata(self, id: int) -> ZammadTicket:
+        data = await self._request("GET", f"/api/v1/tickets/{id}", params={"include": "group"})
+        if not isinstance(data, dict):
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}")
+        try:
+            raw_group = data.get("group_id")
+            group_id: int | None
+            if raw_group in (None, ""):
+                group_id = None
+            else:
+                try:
+                    group_id = int(raw_group)
+                except (TypeError, ValueError) as e:
+                    raise ZammadPayloadParseError(f"Invalid group_id value for ticket {id}") from e
+        except ValidationError as e:
+            raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
+        return ZammadTicket(
+            id=id,
+            articles=[],
+            group_id=group_id,
+            group_name=_extract_group_name(data),
+            pending_time=data.get("pending_time"),
+            article_count=0,
         )
 
     @override
@@ -109,8 +136,10 @@ class ZammadAPIClient(BaseZammadClient):
         logger.info(f"Posted answer to ticket {ticket_id}")
 
     @override
-    async def update_ticket_group(self, ticket_id: int, group_id: int) -> None:
-        payload = {"group_id": group_id, "id": ticket_id}
+    async def update_ticket_group(self, ticket_id: int, group_id: int, pending_time: str | None = None) -> None:
+        payload: dict[str, Any] = {"group_id": group_id, "id": ticket_id}
+        if pending_time is not None:
+            payload["pending_time"] = pending_time
         await self._request("PUT", f"/api/v1/tickets/{ticket_id}", json=payload)
         logger.info(f"Updated ticket {ticket_id} group to {group_id}")
 

@@ -18,6 +18,10 @@ class ZammadTicket(BaseModel):
         description="Human-readable name of the group assigned to the ticket",
         default=None,
     )
+    pending_time: str | None = Field(
+        description="Pending time assigned to the ticket",
+        default=None,
+    )
     article_count: int | None = Field(
         description="Number of articles currently attached to the ticket",
         default=None,
