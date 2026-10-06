@@ -8,11 +8,12 @@ description = "GenAI-powered agent for Zammad"
 readme = "README.md"
 requires-python = "==3.14.8"
 authors = [
-    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
-    { name = "Paul Ilitz", email = "paul.ilitz@muenchen.de" },
+    { name = "freinold", email = "fabian.reinold@muenchen.de" },
+    { name = "nharbig", email = "nico.harbig@muenchen.de" },
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
 ]
 maintainers = [
-    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
 ]
 
 dependencies = [
