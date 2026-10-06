@@ -32,12 +32,18 @@ class LangfuseClient:
         self.langfuse_handler: CallbackHandler = CallbackHandler()
         self.langfuse: Langfuse = Langfuse()  # Assumes Langfuse is configured via environment variables or other means
 
-    def get_prompt(self, prompt_name: str, prompt_label: str = "production") -> tuple[str, int]:
+    def get_prompt(
+        self,
+        prompt_name: str,
+        prompt_label: str = "production",
+        prompt_version: int | None = None,
+    ) -> tuple[str, int]:
         """Retrieve a prompt template from Langfuse by name and label.
 
         Parameters:
             prompt_name (str): Name of the prompt to fetch.
-            prompt_label (str): Label or version of the prompt to fetch (default: "production").
+            prompt_label (str): Label of the prompt to fetch (default: "production").
+            prompt_version (int | None): Explicit version of the prompt to fetch.
 
         Returns:
             tuple[str, int]: A tuple containing the text content of the fetched prompt template and its version.
@@ -45,60 +51,73 @@ class LangfuseClient:
         Raises:
             LangfuseError: If fetching the prompt from Langfuse fails for any reason or if the returned prompt is not a string.
         """
-        logger.debug(f"Fetching Langfuse prompt '{prompt_name}' with label '{prompt_label}'.")
+        logger.debug(
+            f"Fetching Langfuse prompt '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'."
+        )
         try:
-            res: TextPromptClient = self.langfuse.get_prompt(
-                name=prompt_name,
-                label=prompt_label,
-                type="text",
-            )
+            if prompt_version is not None:
+                res: TextPromptClient = self.langfuse.get_prompt(name=prompt_name, version=prompt_version)
+            else:
+                res = self.langfuse.get_prompt(name=prompt_name, label=prompt_label)
             if not isinstance(res.prompt, str):
                 raise LangfuseError(f"Prompt '{prompt_name}' is not of type text.")
             return res.prompt, res.version
         except Exception as e:
             if isinstance(e, LangfuseError):
                 raise e
-            logger.error(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'", exc_info=True)
-            raise LangfuseError(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'.") from e
+            logger.error(
+                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'",
+                exc_info=True,
+            )
+            raise LangfuseError(
+                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'."
+            ) from e
 
-    def get_prompt_reference(self, prompt_name: str, prompt_label: str = "production") -> PromptClient:
+    def get_prompt_reference(
+        self,
+        prompt_name: str,
+        prompt_label: str = "production",
+        prompt_version: int | None = None,
+    ) -> PromptClient:
         """Retrieve a Langfuse prompt object for trace linkage."""
         try:
-            return self.langfuse.get_prompt(
-                name=prompt_name,
-                label=prompt_label,
-                type="text",
-            )
+            if prompt_version is not None:
+                return self.langfuse.get_prompt(name=prompt_name, version=prompt_version)
+            return self.langfuse.get_prompt(name=prompt_name, label=prompt_label)
         except Exception as e:
             if isinstance(e, LangfuseError):
                 raise e
             logger.error(
-                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}'",
+                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'",
                 exc_info=True,
             )
             raise LangfuseError(
-                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}'."
+                f"Failed to fetch Langfuse prompt reference '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'."
             ) from e
 
     def get_prompt_with_reference(
-        self, prompt_name: str, prompt_label: str = "production"
+        self,
+        prompt_name: str,
+        prompt_label: str = "production",
+        prompt_version: int | None = None,
     ) -> tuple[str, int, PromptClient]:
         """Retrieve both the prompt text and the Langfuse prompt object."""
         try:
-            res: TextPromptClient = self.langfuse.get_prompt(
-                name=prompt_name,
-                label=prompt_label,
-                type="text",
-            )
+            if prompt_version is not None:
+                res: TextPromptClient = self.langfuse.get_prompt(name=prompt_name, version=prompt_version)
+            else:
+                res = self.langfuse.get_prompt(name=prompt_name, label=prompt_label)
             return res.prompt, res.version, res
         except Exception as e:
             if isinstance(e, LangfuseError):
                 raise e
             logger.error(
-                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'",
+                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'",
                 exc_info=True,
             )
-            raise LangfuseError(f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}'.") from e
+            raise LangfuseError(
+                f"Failed to fetch Langfuse prompt '{prompt_name}' with label '{prompt_label}' and version '{prompt_version}'."
+            ) from e
 
     def build_config(
         self, session_id: str | None = None, langfuse_prompt: PromptClient | None = None

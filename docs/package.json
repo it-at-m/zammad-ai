@@ -15,8 +15,9 @@
     "mermaid": "12.1.0",
     "vitepress": "1.6.4",
     "vitepress-plugin-lightbox": "1.0.3",
-    "vitepress-plugin-llms": "1.13.5",
-    "vuetify": "4.1.12",
-    "vue": "3.5.42"
+    "vitepress-plugin-llms": "1.14.0",
+    "vite": "6.4.3",
+    "vuetify": "4.2.3",
+    "vue": "3.5.43"
   }
 }

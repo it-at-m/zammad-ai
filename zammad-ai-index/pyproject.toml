@@ -3,7 +3,15 @@ name = "zammad-ai-index"
 version = "0.4.1"
 description = "Indexing job for Zammad AI"
 readme = "README.md"
-requires-python = "==3.14.7"
+requires-python = "==3.14.8"
+authors = [
+    { name = "freinold", email = "fabian.reinold@muenchen.de" },
+    { name = "nharbig", email = "nico.harbig@muenchen.de" },
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
+]
+maintainers = [
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
+]
 dependencies = [
     "fastembed==0.8.1",
     "feedparser==6.0.14",

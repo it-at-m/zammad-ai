@@ -373,6 +373,7 @@ class AnswerService:
                     template_content, version, langfuse_prompt_ref = self.langfuse_client.get_prompt_with_reference(
                         prompt_name=langfuse_prompt_info.name,
                         prompt_label=langfuse_prompt_info.label,
+                        prompt_version=langfuse_prompt_info.version,
                     )
                     return template_content, version, langfuse_prompt_ref
                 except LangfuseError as e:
