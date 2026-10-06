@@ -26,7 +26,7 @@ dependencies = [
     "prometheus_client==0.26.0",
     "gliner2==2.0.0",
     "gliclass==0.1.20",
-    "torch==2.14.1+cpu",
+    "torch==2.14.1+cpu; sys_platform == 'linux'",
     "transformers==5.18.0",
     "setuptools==84.0.0",
     "peft==0.21.2",
