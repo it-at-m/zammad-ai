@@ -8,6 +8,8 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, FilePath, model_validator
 
+from .langfuse import LangfusePrompt
+
 
 class TriageSettings(BaseModel):
     """Settings for triage categories, actions, rules, and prompts."""
@@ -243,19 +245,6 @@ class LangfuseTriagePrompts(BaseModel):
     type: Literal["langfuse"] = "langfuse"
     prompt_map: dict[TriagePrompt, "LangfusePrompt"] = Field(
         description="Prompts for the triage process as LangfusePrompt objects. The keys should be 'categories', 'examples', and 'role'.",
-    )
-
-
-class LangfusePrompt(BaseModel):
-    """Reference to a Langfuse prompt by name and label."""
-
-    label: str = Field(
-        description="Label of the prompt in Langfuse",
-        default="production",
-    )
-    name: str = Field(
-        description="Name of the prompt in Langfuse",
-        examples=["use_case/triage/prompt_name"],
     )
 
 
