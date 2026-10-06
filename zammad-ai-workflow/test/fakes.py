@@ -190,6 +190,8 @@ class FakeZammadClient:
         self.settings = settings
         self.ticket: ZammadTicket | None = None
         self.raise_connection_error: bool = False
+        self.search_results: list[int] | None = None
+        self.search_calls: list[dict] = []
 
     async def get_ticket(self, id: int) -> ZammadTicket:
         """Retrieve a ticket by id, raising a fake connection error when configured.
@@ -211,6 +213,28 @@ class FakeZammadClient:
         if self.ticket is None:
             return ZammadTicket(id=id, articles=[])
         return self.ticket
+
+    async def search_tickets(self, query: str, page: int = 1, per_page: int = 50) -> list[int]:
+        """Fail the test if code attempts to search tickets without configuring results.
+
+        Parameters:
+            query (str): Zammad search query string; recorded for assertions.
+            page (int): Page number for pagination (1-based); recorded for assertions.
+            per_page (int): Number of results per page; recorded for assertions.
+
+        Returns:
+            list[int]: The configured `search_results` list of ticket ids.
+
+        Raises:
+            FakeZammadConnectionError: If the client is configured to simulate a connection error.
+            AssertionError: If `search_results` was not configured for the current test.
+        """
+        if self.raise_connection_error:
+            raise FakeZammadConnectionError("Fake connection error")
+        if self.search_results is None:
+            raise AssertionError("search_tickets should not be called in these tests")
+        self.search_calls.append({"query": query, "page": page, "per_page": per_page})
+        return self.search_results
 
     async def get_ticket_metadata(self, id: int) -> ZammadTicket:
         """Retrieve only the metadata needed for ticket restoration."""
