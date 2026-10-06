@@ -126,6 +126,12 @@ answer:
     prompt: "prompts/answer/agent.prompt.md"
     # Prompts can use Jinja2 syntax! Variables like {{ available_tools }}, {{ knowledge_base_enabled }},
     # {{ dlf_enabled }} are automatically available.
+    # For type: "langfuse", use:
+    # type: "langfuse"
+    # prompt:
+    #   version: 17
+    #   label: "latest"
+    #   name: "your-usecase/answer-agent"
   qdrant:
     url: "https://your-qdrant-instance.example.com"
     api_key: null # Set in .env: ZAMMAD_AI_ANSWER__QDRANT__API_KEY
@@ -152,6 +158,12 @@ answer:
       prompt: "prompts/judge/judge.prompt.md"
       # Prompts can use Jinja2 syntax! Variables like {{ repair_enabled }} and
       # {{ max_repairs }} are automatically available.
+      # For type: "langfuse", use:
+      # type: "langfuse"
+      # prompt:
+      #   version: 18
+      #   label: "latest"
+      #   name: "your-usecase/judge"
     repair_prompt:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/answer/repair.prompt.md"
@@ -287,14 +299,18 @@ triage:
 
     # For type: "langfuse" (prompts from Langfuse), use:
     # type: "langfuse"
+    # Note: if both are set, `version` wins over `label`.
     # prompt_map:
     #   categories:
+    #     version: 17
     #     label: "latest"
     #     name: "your-usecase/categories"
     #   examples:
+    #     version: 18
     #     label: "latest"
     #     name: "your-usecase/examples"
     #   role:
+    #     version: 19
     #     label: "latest"
     #     name: "your-usecase/role"
 

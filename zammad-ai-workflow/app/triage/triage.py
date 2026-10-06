@@ -110,6 +110,7 @@ class TriageService:
                             langfuse_client.get_prompt_with_reference(
                                 prompt_name=prompt.name,
                                 prompt_label=prompt.label,
+                                prompt_version=prompt.version,
                             )
                         )
                         self.prompts[name] = (categories_prompt, version)
@@ -117,6 +118,7 @@ class TriageService:
                         self.prompts[name] = langfuse_client.get_prompt(
                             prompt_name=prompt.name,
                             prompt_label=prompt.label,
+                            prompt_version=prompt.version,
                         )
                 except LangfuseError as e:
                     logger.error(

@@ -2,17 +2,18 @@
 name = "zammad-ai-workflow"
 license = "MIT"
 
-version = "0.4.19"
+version = "0.4.20"
 
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
 requires-python = "==3.14.8"
 authors = [
-    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
-    { name = "Paul Ilitz", email = "paul.ilitz@muenchen.de" },
+    { name = "freinold", email = "fabian.reinold@muenchen.de" },
+    { name = "nharbig", email = "nico.harbig@muenchen.de" },
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
 ]
 maintainers = [
-    { name = "Fabian Reinold", email = "fabian.reinold@muenchen.de" },
+    { name = "pilitz", email = "paul.ilitz@muenchen.de" },
 ]
 
 dependencies = [
@@ -43,6 +44,8 @@ dependencies = [
     "fastembed==0.8.1",
     "langchain-classic==1.0.8",
     "qdrant-client==1.19.1",
+    "urllib3==2.8.0",
+    "tornado==6.5.10",
 ]
 
 [dependency-groups]
@@ -53,6 +56,7 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.16.10",
     "ty==0.0.84",
+    "virtualenv==21.14.5",
 ]
 kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.10.4"]
 
