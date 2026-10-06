@@ -654,11 +654,35 @@ async def test_triage_links_categories_prompt_reference(
     class _FakeLangfuseClient:
         def __init__(self) -> None:
             self.categories_prompt = object()
+            self.prompt_versions: dict[str, int | None] = {}
+
+        def get_prompt(
+            self,
+            *,
+            prompt_name: str,
+            prompt_label: str = "production",
+            prompt_version: int | None = None,
+        ) -> tuple[str, int]:
+            del prompt_label
+            self.prompt_versions[prompt_name] = prompt_version
+            return "role prompt", 1
+
+        def get_prompt_with_reference(
+            self,
+            *,
+            prompt_name: str,
+            prompt_label: str = "production",
+            prompt_version: int | None = None,
+        ) -> tuple[str, int, object]:
+            del prompt_label
+            self.prompt_versions[prompt_name] = prompt_version
+            return "categories prompt", 2, self.categories_prompt
 
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
         return fake_genai_handler
 
+    monkeypatch.setattr("app.observe.LangfuseClient", _FakeLangfuseClient)
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
     monkeypatch.setattr(triage_module, "ZammadAPIClient", lambda *args, **kwargs: fake_zammad_client)
     monkeypatch.setattr(triage_module, "ZammadConnectionError", FakeZammadConnectionError)
