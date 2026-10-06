@@ -627,9 +627,9 @@ def test_langfuse_prompt_map_values_are_typed() -> None:
         {
             "type": "langfuse",
             "prompt_map": {
-                "categories": {"name": "drivers-licence/categories", "label": "latest"},
-                "examples": {"name": "drivers-licence/examples", "label": "latest"},
-                "role": {"name": "drivers-licence/role", "label": "latest"},
+                "categories": {"name": "drivers-licence/categories", "label": "latest", "version": 1},
+                "examples": {"name": "drivers-licence/examples", "label": "latest", "version": 2},
+                "role": {"name": "drivers-licence/role", "label": "latest", "version": 3},
             },
         }
     )
@@ -637,6 +637,9 @@ def test_langfuse_prompt_map_values_are_typed() -> None:
     assert isinstance(prompts.prompt_map["categories"], LangfusePrompt)
     assert isinstance(prompts.prompt_map["examples"], LangfusePrompt)
     assert isinstance(prompts.prompt_map["role"], LangfusePrompt)
+    assert prompts.prompt_map["categories"].version == 1
+    assert prompts.prompt_map["examples"].version == 2
+    assert prompts.prompt_map["role"].version == 3
 
 
 @pytest.mark.asyncio
@@ -652,21 +655,10 @@ async def test_triage_links_categories_prompt_reference(
         def __init__(self) -> None:
             self.categories_prompt = object()
 
-        def get_prompt(self, *, prompt_name: str, prompt_label: str = "production") -> tuple[str, int]:
-            del prompt_name, prompt_label
-            return "role prompt", 1
-
-        def get_prompt_with_reference(
-            self, *, prompt_name: str, prompt_label: str = "production"
-        ) -> tuple[str, int, object]:
-            del prompt_name, prompt_label
-            return "categories prompt", 2, self.categories_prompt
-
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
         return fake_genai_handler
 
-    monkeypatch.setattr("app.observe.LangfuseClient", _FakeLangfuseClient)
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
     monkeypatch.setattr(triage_module, "ZammadAPIClient", lambda *args, **kwargs: fake_zammad_client)
     monkeypatch.setattr(triage_module, "ZammadConnectionError", FakeZammadConnectionError)
@@ -677,9 +669,9 @@ async def test_triage_links_categories_prompt_reference(
                 "prompts": {
                     "type": "langfuse",
                     "prompt_map": {
-                        "categories": {"name": "triage/categories", "label": "production"},
-                        "examples": {"name": "triage/examples", "label": "production"},
-                        "role": {"name": "triage/role", "label": "production"},
+                        "categories": {"name": "triage/categories", "label": "production", "version": 13},
+                        "examples": {"name": "triage/examples", "label": "production", "version": 14},
+                        "role": {"name": "triage/role", "label": "production", "version": 15},
                     },
                 },
             },

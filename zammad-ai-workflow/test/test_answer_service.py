@@ -14,7 +14,8 @@ from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
 from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict
 from app.settings import ZammadAISettings
-from app.settings.answer import JudgeSettings, StringPromptConfig
+from app.settings.answer import JudgeSettings, LangfusePromptConfig, StringPromptConfig
+from app.settings.langfuse import LangfusePrompt
 
 VALID_RESPONSE = (
     "Dies ist eine ausreichend lange Testantwort fuer die Antwortgenerierung. "
@@ -43,6 +44,7 @@ class FakeLangfuseClient:
         """Initialize fake prompt tracking state."""
         self.current_trace_id = "trace-id"
         self.last_langfuse_prompt: object | None = None
+        self.last_prompt_version: int | None = None
         self.langfuse = SimpleNamespace(get_current_trace_id=lambda: self.current_trace_id)
         self.langfuse_handler = SimpleNamespace(last_trace_id="stale-trace-id")
 
@@ -50,9 +52,15 @@ class FakeLangfuseClient:
         """Return a deterministic session id."""
         return "session-id"
 
-    def build_config(self, session_id: str | None = None, langfuse_prompt: object | None = None) -> dict:
+    def build_config(
+        self,
+        session_id: str | None = None,
+        langfuse_prompt: object | None = None,
+        prompt_version: int | None = None,
+    ) -> dict:
         """Return a deterministic config payload for LangChain invocation."""
         self.last_langfuse_prompt = langfuse_prompt
+        self.last_prompt_version = prompt_version
         return {"session_id": session_id}
 
 
@@ -191,6 +199,40 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
     assert isinstance(result.response, AnswerCandidate)
     assert result.response.response == VALID_RESPONSE
     assert result.trace_id == "trace-id"
+
+
+@pytest.mark.asyncio
+async def test_resolve_prompt_uses_explicit_langfuse_version() -> None:
+    """Langfuse prompt configs should pass an explicit version to the client."""
+
+    class _FakeLangfuseClient(FakeLangfuseClient):
+        def get_prompt_with_reference(
+            self,
+            *,
+            prompt_name: str,
+            prompt_label: str = "production",
+            prompt_version: int | None = None,
+        ) -> tuple[str, int, object]:
+            self.last_prompt_version = prompt_version
+            del prompt_name, prompt_label
+            return "Resolved prompt", 7, object()
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {}
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=ZammadAISettings)
+    fake_langfuse_client = _FakeLangfuseClient()
+    cast(Any, service).langfuse_client = fake_langfuse_client
+
+    template, version, prompt_ref = service._resolve_prompt(
+        prompt_config=LangfusePromptConfig(prompt=LangfusePrompt(name="answer/agent", label="latest", version=17)),
+        prompt_source_name="agent system prompt",
+    )
+
+    assert template == "Resolved prompt"
+    assert version == 7
+    assert prompt_ref is not None
+    assert fake_langfuse_client.last_prompt_version == 17
 
 
 @pytest.mark.asyncio

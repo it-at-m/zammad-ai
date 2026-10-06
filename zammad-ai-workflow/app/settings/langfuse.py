@@ -4,7 +4,13 @@ from pydantic import BaseModel, Field
 
 
 class LangfusePrompt(BaseModel):
-    """Langfuse prompt identifier and label."""
+    """Langfuse prompt identifier, label, and optional version."""
+
+    version: int | None = Field(
+        description="Explicit version of the prompt in Langfuse",
+        default=None,
+        ge=1,
+    )
 
     label: str = Field(
         description="Label of the prompt in Langfuse",
