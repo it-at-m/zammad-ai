@@ -18,6 +18,7 @@ from app.answer import get_answer_service
 from app.frontend import mount_feedback_frontend, mount_frontend
 from app.guardrails.http_client import get_guardrail_service
 from app.models.api_v1 import HealthCheckResponse
+from app.polling.service import get_polling_service, reset_polling_service
 from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
 from app.triage import get_triage_service
@@ -115,6 +116,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
+        app.state.preparser_service = get_preparser_service(settings=settings.preparser)
+
+        if settings.polling.enabled:
+            if settings.zammad.type == "eai":
+                logger.error("Polling is configured but the Zammad EAI client does not support polling.")
+                raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
+            if kafka_router is not None:
+                logger.warning("Both Kafka and polling-based ticket intake are active.")
+            app.state.polling_service = get_polling_service(
+                settings=settings,
+                triage_service=app.state.triage_service,
+                action_service=app.state.action_service,
+            )
+            app.state.polling_service.start()
+            logger.info(
+                f"Polling-based ticket intake active: query '{settings.polling.search_query}' every {settings.polling.interval_seconds} seconds."
+            )
+
         if kafka_router is None:
             set_status("ready")
 
@@ -122,6 +141,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         logger.info("Shutting down shared Triage, Answer and Action services")
         set_status("shutdown")
+        polling_service = getattr(app.state, "polling_service", None)
+        if polling_service is not None:
+            try:
+                await polling_service.cleanup()
+            except Exception:
+                logger.error("Failed to clean up polling service during shutdown.", exc_info=True)
+            reset_polling_service()
         try:
             await app.state.triage_service.cleanup()
             await app.state.answer_service.cleanup()
@@ -143,6 +169,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 settings: ZammadAISettings = get_settings()
+
+if settings.polling.enabled and settings.zammad.type == "eai":
+    raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
 
 kafka_router = None
 if _is_kafka_reachable(settings.kafka.broker_url):
