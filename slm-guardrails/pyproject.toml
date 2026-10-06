@@ -15,25 +15,25 @@ maintainers = [
 ]
 
 dependencies = [
-    "fastapi==0.141.1",
+    "fastapi==0.142.2",
     "httpx==0.28.1",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
-    "python-dotenv==1.2.3",
+    "python-dotenv==1.2.4",
     "structlog==26.1.0",
     "truststore==0.10.4",
-    "uvicorn==0.53.0",
+    "uvicorn==0.54.0",
     "prometheus_client==0.26.0",
     "gliner2==2.0.0",
     "gliclass==0.1.20",
-    "torch==2.14.0",
-    "transformers==5.17.0",
+    "torch==2.14.1+cpu",
+    "transformers==5.18.0",
     "setuptools==84.0.0",
-    "peft==0.21.0",
+    "peft==0.21.2",
 ]
 
 [dependency-groups]
-dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.9", "ty==0.0.84"]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.16.10", "ty==0.0.84"]
 
 [tool.uv]
 add-bounds = "exact"
