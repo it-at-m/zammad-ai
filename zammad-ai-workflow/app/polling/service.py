@@ -21,7 +21,7 @@ from app.triage.triage import TriageService
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
 from app.zammad.api import ZammadAPIClient
-from app.zammad.base import BaseZammadClient, ZammadConnectionError, ZammadRetryableError
+from app.zammad.base import BaseZammadClient
 from app.zammad.processing import ensure_ticket_not_already_processed
 
 logger: Logger = getLogger("zammad-ai.polling.service")
@@ -158,21 +158,6 @@ class PollingService:
         zammad_client: BaseZammadClient = self.triage_service.zammad_client
         try:
             ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
-        except TicketNotFoundError:
-            logger.info(
-                "Ticket no longer exists in Zammad.",
-                extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
-            )
-            return "not_found"
-        except (ZammadRetryableError, ZammadConnectionError) as e:
-            logger.error(
-                "Error connecting to Zammad during polling.",
-                extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
-                exc_info=True,
-            )
-            raise PollingRetryableError("Failed to fetch ticket from Zammad during polling") from e
-
-        try:
             ensure_ticket_not_already_processed(
                 ticket,
                 ai_group_id=self.settings.zammad.ai_ticket_group_id,
@@ -181,6 +166,12 @@ class PollingService:
                 duplicate_detection_enabled=self.settings.zammad.duplicate_detection_enabled,
                 allow_in_ai_group=False,
             )
+        except TicketNotFoundError:
+            logger.info(
+                "Ticket no longer exists in Zammad.",
+                extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
+            )
+            return "not_found"
         except TicketAlreadyProcessedError:
             logger.info(
                 "Skipping ticket that was already processed.",
@@ -188,6 +179,26 @@ class PollingService:
             )
             self._processed[ticket_id] = monotonic()
             return "skipped_already_processed"
+        except Exception as e:
+            decision: ExceptionDecision = classify_exception(
+                e,
+                category_wrong_retry_confidence_threshold=self.settings.triage.category_wrong_retry_confidence_threshold,
+            )
+            if decision.decision == AckDecision.ACK_DROP:
+                logger.error(
+                    "Polling ticket lookup failed permanently.",
+                    extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
+                    exc_info=True,
+                )
+                self._processed[ticket_id] = monotonic()
+                record_polling_ticket_outcome(category=None, action_type=None, outcome="aborted_with_error")
+                return "error_permanent"
+            logger.error(
+                "Error connecting to Zammad during polling.",
+                extra={"handler_stage": "ticket_lookup", "ticket_id": ticket_id},
+                exc_info=True,
+            )
+            raise PollingRetryableError("Failed to fetch ticket from Zammad during polling") from e
 
         result: TriageResult | None = None
         try:

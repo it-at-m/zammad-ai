@@ -9,7 +9,12 @@ import pytest
 from pydantic import HttpUrl, SecretStr
 
 import app.polling.service as polling_service_module
-from app.errors import TicketAlreadyProcessedError, TicketNotFoundError, TriageError
+from app.errors import (
+    TicketAlreadyProcessedError,
+    TicketNotFoundError,
+    TriageError,
+    ZammadPayloadParseError,
+)
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
 from app.polling.service import (
@@ -22,6 +27,7 @@ from app.settings import ZammadAISettings
 from app.settings.polling import PollingSettings
 from app.settings.triage import Action, ActionTypes, Category
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.zammad.base import ZammadAuthError, ZammadPermanentError, ZammadRetryableError
 from test.fakes import FakeZammadClient
 
 
@@ -144,6 +150,46 @@ async def test_ticket_not_found_does_not_raise(settings_factory: Callable[..., Z
 
     perform_triage.assert_not_awaited()
     execute_action.assert_not_awaited()
+    assert 1 not in service._processed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lookup_error",
+    [
+        ZammadAuthError("auth failed"),
+        ZammadPermanentError("bad request"),
+        ZammadPayloadParseError("unparseable payload"),
+    ],
+)
+async def test_permanent_lookup_error_marks_processed(
+    settings_factory: Callable[..., ZammadAISettings], lookup_error: Exception
+) -> None:
+    """Permanent lookup failures must mark the ticket so later cycles skip it."""
+    settings = _make_settings(settings_factory)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(side_effect=lookup_error)
+    service, perform_triage, _ = _build_service(settings, client)
+
+    await service._run_cycle()
+
+    perform_triage.assert_not_awaited()
+    assert 1 in service._processed
+
+    await service._run_cycle()
+    assert client.get_ticket.await_count == 1  # not retried in later cycles
+
+
+@pytest.mark.asyncio
+async def test_retryable_lookup_error_not_marked(settings_factory: Callable[..., ZammadAISettings]) -> None:
+    """Retryable lookup failures must leave the ticket eligible for a later cycle."""
+    settings = _make_settings(settings_factory)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(side_effect=ZammadRetryableError("transient"))
+    service, perform_triage, _ = _build_service(settings, client)
+
+    await service._run_cycle()
+
     assert 1 not in service._processed
 
 
