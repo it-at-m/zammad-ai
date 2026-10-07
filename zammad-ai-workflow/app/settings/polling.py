@@ -4,7 +4,11 @@ from pydantic import BaseModel, Field, PositiveInt
 
 
 class PollingSettings(BaseModel):
-    """Settings for polling the Zammad API as an alternative intake to Kafka."""
+    """Settings for polling the Zammad API as an alternative intake to Kafka.
+
+    Polling must run as a single replica per search query: deduplication is
+    in-memory, so multiple instances would process the same tickets in parallel.
+    """
 
     enabled: bool = Field(
         description="Whether to enable polling-based ticket intake. Defaults to False.",

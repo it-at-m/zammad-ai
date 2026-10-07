@@ -124,6 +124,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
             if kafka_router is not None:
                 logger.warning("Both Kafka and polling-based ticket intake are active.")
+            logger.warning(
+                "Polling-based ticket intake uses in-memory deduplication and must run as a single replica. "
+                "Multiple instances would process the same tickets in parallel."
+            )
             app.state.polling_service = get_polling_service(
                 settings=settings,
                 triage_service=app.state.triage_service,

@@ -213,7 +213,11 @@ kafka:
 # matching tickets through the triage/action pipeline. Intended for vanilla
 # Zammad instances without the Kafka messagebus architecture (API client only,
 # not supported with zammad.type: "eai").
-# In-memory deduplication prevents reprocessing tickets within the TTL window.
+# IMPORTANT: Run at most ONE replica per search query. Deduplication is
+# in-memory, so multiple instances would process the same tickets in parallel
+# (Zammad-side duplicate markers prevent double-posting, but the LLM work
+# would still be duplicated). See the follow-up issue on distributed
+# deduplication for future multi-replica support.
 polling:
   enabled: false # Set to true to enable polling-based ticket intake
   interval_seconds: 60 # Seconds between polling cycles
