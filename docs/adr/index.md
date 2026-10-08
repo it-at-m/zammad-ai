@@ -10,7 +10,7 @@ If you don't know if you should create an ADR, the answer is probably "yes".
 - [ADR 03: Vector Database Selection](03-vector-database.md)
 - [ADR 04: Knowledge Management System Selection](04-knowledge-management-system.md)
 - [ADR 05: Knowledge Base Indexing Strategy](05-kb-index-job.md)
-- [ADR 06: Multi-Usecase System Architecture](06-system-architecture-more-usecases.md)
+- [ADR 06: Multi-Usecase System Architecture](06-system-architecture-multiple-usecases.md)
 
 ## Background
 
