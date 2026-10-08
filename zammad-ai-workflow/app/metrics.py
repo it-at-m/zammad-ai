@@ -15,6 +15,18 @@ KAFKA_TICKET_OUTCOMES_TOTAL = Counter(
     labelnames=("category", "action_type", "outcome"),
 )
 
+POLLING_CYCLES_TOTAL = Counter(
+    name="zammad_ai_polling_cycles_total",
+    documentation="Total polling cycles by outcome.",
+    labelnames=("outcome",),
+)
+
+POLLING_TICKET_OUTCOMES_TOTAL = Counter(
+    name="zammad_ai_polling_ticket_outcomes_total",
+    documentation="Total polling-driven ticket outcomes by triage category, action type, and outcome.",
+    labelnames=("category", "action_type", "outcome"),
+)
+
 
 def record_processed_main_kafka_event() -> None:
     """Count a main-topic Kafka event once it passes filtering and enters processing."""
@@ -41,3 +53,17 @@ def _normalize_action_type(action_type: ActionTypes | str | None) -> str:
     if isinstance(action_type, str) and action_type.strip():
         return action_type.strip().lower()
     return "unknown"
+
+
+def record_polling_cycle(*, outcome: str) -> None:
+    """Count a polling cycle with its outcome."""
+    POLLING_CYCLES_TOTAL.labels(outcome=outcome).inc()
+
+
+def record_polling_ticket_outcome(*, category: str | None, action_type: ActionTypes | str | None, outcome: str) -> None:
+    """Count a polling-driven ticket outcome with normalized labels."""
+    POLLING_TICKET_OUTCOMES_TOTAL.labels(
+        category=(category or "unknown").strip() or "unknown",
+        action_type=_normalize_action_type(action_type),
+        outcome=outcome,
+    ).inc()

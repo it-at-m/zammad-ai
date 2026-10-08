@@ -191,6 +191,10 @@ class ZammadEAIClient(BaseZammadClient):
     async def add_tag_to_ticket(self, ticket_id: int, tag: str) -> None:
         raise NotImplementedError("Adding tag is not implemented yet.")
 
+    async def search_tickets(self, query: str, page: int = 1, per_page: int = 50) -> list[int]:
+        """Search for tickets. Not supported by the EAI client."""
+        raise NotImplementedError("Searching tickets is not supported by the EAI client.")
+
     @override
     async def fetch_ticket_attachment_data(
         self,
