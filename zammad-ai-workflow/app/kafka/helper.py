@@ -313,4 +313,9 @@ async def _handle_processing_exception(
                 handler_stage="restore_ticket_group",
                 log_message="Moved ticket back to original group",
             )
+    record_kafka_ticket_outcome(
+        category=category,
+        action_type=action_type,
+        outcome="dropped",
+    )
     raise AckMessage()

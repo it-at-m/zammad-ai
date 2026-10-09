@@ -87,10 +87,8 @@ class ActionService:
                 response = answer_result
                 feedback_trace_id = None
 
-            if triage.action.type == ActionTypes.NoAction:
-                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
-
             if isinstance(response, NoAnswerPossible):
+                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if original_group_id is None:
                     await self._post_no_action_internal_note(
@@ -134,6 +132,8 @@ class ActionService:
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
                         )
+            elif triage.action.type == ActionTypes.NoAction:
+                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
@@ -276,6 +276,11 @@ class ActionService:
                         )
                 except Exception:
                     self.logger.error("Failed to post feedback note for blocked answer.", exc_info=True)
+            record_kafka_ticket_outcome(
+                category=triage.category.name,
+                action_type=triage.action.type,
+                outcome="manual",
+            )
         except AppError:
             raise
         except Exception as e:
