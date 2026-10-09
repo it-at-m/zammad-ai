@@ -1,11 +1,11 @@
 # ADR 06: Multi-Usecase System Architecture
 
-| Status   | proposed                               |
+| Status   | accepted                               |
 | -------- | -------------------------------------- |
 | Author   | @pilitz                                |
 | Voters   | @freinold, @l0renor, @nharbig, @pilitz |
 | Drafted  | 2026-10-08                             |
-| Accepted | TBD                                    |
+| Accepted | 2026-10-09                             |
 
 Related: [ADR 01: System Architecture](01-system-architecture.md)
 
