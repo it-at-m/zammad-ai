@@ -899,6 +899,8 @@ async def test_event_handler_ack_on_permanent_typed_error(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Permanent typed triage errors must be dropped with ACK."""
+    labels = {"category": "unknown", "action_type": "unknown", "outcome": "dropped"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
     router, event_handler = build_router(settings=settings)
     mock_triage.perform_triage.side_effect = TriageError("permanent triage", retryable=False)
@@ -906,6 +908,10 @@ async def test_event_handler_ack_on_permanent_typed_error(
     event = Event.model_validate(kafka_message_factory())
     with pytest.raises(AckMessage):
         await event_handler(event=event)
+
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline + 1
+    )
 
 
 @pytest.mark.asyncio

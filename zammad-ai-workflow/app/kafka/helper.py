@@ -303,6 +303,11 @@ async def _handle_processing_exception(
         raise AckMessage()
 
     # If the decision is to acknowledge the message without retrying, restore the ticket group if applicable and acknowledge the message.
+    record_kafka_ticket_outcome(
+        category=category,
+        action_type=action_type,
+        outcome="dropped",
+    )
     if original_group_id is not None:
         restored_ticket_id = ticket_id if ticket_id is not None else _safe_ticket_id(event.ticket)
         if restored_ticket_id is not None:
