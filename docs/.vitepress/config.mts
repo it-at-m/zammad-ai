@@ -46,6 +46,14 @@ export default defineConfig({
             text: "04: Knowledge management system",
             link: "/adr/04-knowledge-management-system",
           },
+          {
+            text: "05: Knowledgebase index job",
+            link: "/adr/05-kb-index-job",
+          },
+          {
+            text: "06: Multiple Usecases",
+            link: "/adr/06-system-architecture-multiple-usecases",
+          },
         ],
       },
       {
