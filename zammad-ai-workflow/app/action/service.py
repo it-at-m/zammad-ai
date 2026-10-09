@@ -228,11 +228,6 @@ class ActionService:
                 "The request is therefore treated as no-answer."
             )
             blocked_response = NoAnswerPossible(reasoning=blocked_reasoning)
-            record_kafka_ticket_outcome(
-                category=triage.category.name,
-                action_type=triage.action.type,
-                outcome="manual",
-            )
             try:
                 if original_group_id is None:
                     await self._post_no_action_internal_note(
@@ -281,6 +276,11 @@ class ActionService:
                         )
                 except Exception:
                     self.logger.error("Failed to post feedback note for blocked answer.", exc_info=True)
+            record_kafka_ticket_outcome(
+                category=triage.category.name,
+                action_type=triage.action.type,
+                outcome="manual",
+            )
         except AppError:
             raise
         except Exception as e:
