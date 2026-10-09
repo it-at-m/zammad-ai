@@ -1,6 +1,6 @@
 # ADR 06: Multi-Usecase System Architecture
 
-| Status   | accepted                              |
+| Status   | accepted                               |
 | -------- | -------------------------------------- |
 | Author   | @pilitz                                |
 | Voters   | @freinold, @l0renor, @nharbig, @pilitz |
