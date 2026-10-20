@@ -29,7 +29,7 @@ def action_dependency(request: Request) -> ActionService:
         ActionService: The ActionService instance found at request.app.state.action_service.
     """
     registry = getattr(request.app.state, "usecase_registry", None)
-    if registry is not None and len(registry.runtimes) > 1:
+    if registry is not None:
         return next(iter(registry.runtimes.values())).action_service
     return request.app.state.action_service
 
@@ -59,15 +59,14 @@ async def answer(
         logger.warning("Unauthorized answer request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    if input.usecase:
-        registry = getattr(request.app.state, "usecase_registry", None)
-        if registry is not None:
+    registry = getattr(request.app.state, "usecase_registry", None)
+    if registry is not None:
+        if input.usecase:
             try:
                 service = registry.get(input.usecase).action_service
             except KeyError as e:
                 raise HTTPException(status_code=422, detail="Unknown usecase") from e
-    elif getattr(request.app.state, "usecase_registry", None) is not None:
-        if len(request.app.state.usecase_registry.runtimes) > 1:
+        elif len(registry.runtimes) > 1:
             raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
 
     try:

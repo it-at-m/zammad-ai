@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         logger.info("Initializing usecase runtimes and shared services")
         app.state.guardrail_service = get_guardrail_service(settings=settings.guardrails)
-        if len(settings.usecases) > 1:
+        if settings.usecases:
             app.state.usecase_registry = usecase_registry or UseCaseRegistry(settings, app.state.guardrail_service)
         else:
             app.state.triage_service = get_triage_service(settings=settings)
@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
         if settings.polling.enabled or (
-            len(settings.usecases) > 1
+            settings.usecases
             and any(
                 registry_runtime.settings.polling.enabled
                 for registry_runtime in app.state.usecase_registry.runtimes.values()
@@ -142,12 +142,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Polling-based ticket intake uses in-memory deduplication and must run as a single replica. "
                 "Multiple instances would process the same tickets in parallel."
             )
-            if len(settings.usecases) > 1:
+            if settings.usecases:
                 app.state.polling_services = [
                     PollingService(
                         settings=runtime.settings,
                         triage_service=runtime.triage_service,
                         action_service=runtime.action_service,
+                        resolver=app.state.usecase_registry.resolver,
                         polling_match=runtime.settings.usecase.polling_match,
                     )
                     for runtime in app.state.usecase_registry.runtimes.values()
@@ -213,7 +214,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 settings: ZammadAISettings = get_settings()
 usecase_registry: UseCaseRegistry | None = None
-if len(settings.usecases) > 1:
+if settings.usecases:
     usecase_registry = UseCaseRegistry(settings, get_guardrail_service(settings=settings.guardrails))
 
 if settings.polling.enabled and settings.zammad.type == "eai":

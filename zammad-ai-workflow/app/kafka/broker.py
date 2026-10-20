@@ -32,7 +32,7 @@ from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
 from app.settings import ZammadAISettings
 from app.triage.triage import TriageService, get_triage_service
-from app.usecases.registry import UseCaseRegistry, UseCaseRuntime
+from app.usecases.registry import UseCaseRegistry
 from app.usecases.resolver import UseCaseResolver
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
@@ -242,7 +242,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             ),
         ),
     )
-    multi_usecase = len(settings.usecases) > 1
+    multi_usecase = bool(settings.usecases)
     if multi_usecase and registry is None:
         registry = UseCaseRegistry(settings, get_guardrail_service(settings=settings.guardrails))
     guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
@@ -260,8 +260,8 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             return settings, triage_service, action_service, settings.usecase.name
         try:
             parsed = Event.model_validate(event)
-        except ValidationError:
-            return settings, triage_service, action_service, settings.usecase.name
+        except ValidationError as e:
+            raise KafkaPayloadError("Kafka event payload could not be resolved to a usecase") from e
         definition = resolver.resolve_event(parsed)
         if definition is None:
             match settings.router.unmatched_policy:
@@ -280,7 +280,9 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     raise KafkaPayloadError("Kafka event did not match a configured usecase")
             if definition is None:
                 raise KafkaPayloadError("No usecase could be resolved for Kafka event")
-        runtime: UseCaseRuntime = registry.get(definition.name)
+        runtime = registry.runtimes.get(definition.name)
+        if runtime is None:
+            raise KafkaPayloadError("Resolved Kafka usecase runtime is not available")
         return runtime.settings, runtime.triage_service, runtime.action_service, definition.name
 
     broker = router.broker
@@ -327,6 +329,9 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         )
             except AckMessage:
                 raise
+            except KafkaPayloadError as e:
+                logger.error("Dropping Kafka event with an invalid payload.", exc_info=True)
+                raise AckMessage() from e
             except Exception as e:
                 await _handle_processing_exception(
                     e,
@@ -367,14 +372,26 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             active_action = action_service
             if multi_usecase and registry is not None:
                 usecase_name = _parse_usecase(usecase_header)
-                if usecase_name is None:
-                    raise AckMessage()
-                runtime = registry.get(usecase_name)
-                active_settings, active_triage, active_action = (
-                    runtime.settings,
-                    runtime.triage_service,
-                    runtime.action_service,
-                )
+                runtime = registry.runtimes.get(usecase_name) if usecase_name is not None else None
+                if runtime is None:
+                    if usecase_name is None:
+                        logger.warning("Kafka retry is missing a usecase header; resolving from its payload.")
+                    else:
+                        logger.warning(
+                            "Kafka retry has an unknown usecase header; resolving from its payload.",
+                            extra={"usecase": usecase_name},
+                        )
+                    try:
+                        active_settings, active_triage, active_action, _ = runtime_for_event(event)
+                    except KafkaPayloadError as e:
+                        logger.error("Dropping Kafka retry with an unresolved payload.", exc_info=True)
+                        raise AckMessage() from e
+                else:
+                    active_settings, active_triage, active_action = (
+                        runtime.settings,
+                        runtime.triage_service,
+                        runtime.action_service,
+                    )
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
             remaining_delay_seconds = await _sleep_until_retry_after(

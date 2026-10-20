@@ -25,6 +25,8 @@ class UseCaseResolver:
 
     def resolve_ticket(self, ticket: ZammadTicket) -> UseCaseSettings | None:
         """Return the usecase matching polling ticket metadata, if any."""
+        if len(self.usecases) == 1 and not self.usecases[0].polling_match:
+            return self.usecases[0]
         for usecase in self.usecases:
             if any(
                 (match.group_id is None or match.group_id == ticket.group_id)
