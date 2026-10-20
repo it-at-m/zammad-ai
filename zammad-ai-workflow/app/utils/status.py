@@ -1,6 +1,6 @@
 """Application lifecycle and activity status tracking helpers."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from prometheus_client import Enum
@@ -23,7 +23,7 @@ def set_status(state: str) -> None:
 
 
 @asynccontextmanager
-async def track_activity() -> AsyncIterator[None]:
+async def track_activity() -> AsyncGenerator[None, None]:
     """Track in-flight requests and update active/idle status accordingly."""
     global _requests_in_flight
 

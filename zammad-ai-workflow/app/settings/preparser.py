@@ -10,16 +10,14 @@ from pydantic import BaseModel, Field, model_validator
 class BasePreparserConfig(BaseModel):
     """Base config for Preparsers."""
 
-    type: str
+    pass
 
 
 class TablePreparserConfig(BasePreparserConfig):
     """Config for TablePreparser."""
 
-    type: Literal["table"] = Field(
-        default="table",
-        description="Table preparser type",
-    )
+    type: Literal["table"] = "table"
+
     keep_rows: list[str] = Field(
         default_factory=list,
         description="List of rows titles to keep",
@@ -38,7 +36,10 @@ class TablePreparserConfig(BasePreparserConfig):
     )
 
 
-PreparserConfigTypes = Annotated[TablePreparserConfig, Field(discriminator="type")]
+PreparserConfigTypes = Annotated[
+    TablePreparserConfig,
+    Field(discriminator="type"),
+]
 
 
 class PreparserSettings(BaseModel):
