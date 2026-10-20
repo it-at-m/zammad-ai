@@ -88,7 +88,6 @@ class ActionService:
                 feedback_trace_id = None
 
             if isinstance(response, NoAnswerPossible):
-                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
                 if original_group_id is None:
                     await self._post_no_action_internal_note(
@@ -132,6 +131,7 @@ class ActionService:
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
                         )
+                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
             elif triage.action.type == ActionTypes.NoAction:
                 record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
             elif triage.category.auto_publish and (
