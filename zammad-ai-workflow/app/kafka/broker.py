@@ -303,6 +303,13 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             active_action = action_service
             try:
                 active_settings, active_triage, active_action, usecase = runtime_for_event(event)
+            except AckMessage:
+                raise
+            except KafkaPayloadError as e:
+                logger.error("Dropping Kafka event with an unresolvable usecase.", exc_info=True)
+                raise AckMessage() from e
+
+            try:
                 logger.debug("Resolved Kafka event usecase", extra={"usecase": usecase})
                 await _process_ticket_event(
                     settings=active_settings,
@@ -329,9 +336,6 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         )
             except AckMessage:
                 raise
-            except KafkaPayloadError as e:
-                logger.error("Dropping Kafka event with an invalid payload.", exc_info=True)
-                raise AckMessage() from e
             except Exception as e:
                 await _handle_processing_exception(
                     e,

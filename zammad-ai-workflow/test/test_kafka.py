@@ -34,6 +34,7 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.zammad.base import ZammadConnectionError
 
 
 class _KafkaSubscriberInspection(Protocol):
@@ -606,6 +607,37 @@ async def test_event_handler_republishes_retryable_error_to_configured_retry_top
     assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
     assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
     assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_event_handler_republishes_retryable_payload_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retryable Kafka payload errors from processing should still go through retry handling."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    router, event_handler = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket.side_effect = ZammadConnectionError("temporary outage")
+    publish_mock = AsyncMock()
+    fixed_now = 1_000.0
+    expected_retry_after = str(int((fixed_now + settings.kafka.retry_delay_seconds) * 1000))
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args is not None
+    assert publish_mock.await_args.kwargs["topic"] == settings.kafka.retry_topic
+    assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
+    assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
+    assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+    mock_triage.perform_triage.assert_not_called()
 
 
 @pytest.mark.asyncio
