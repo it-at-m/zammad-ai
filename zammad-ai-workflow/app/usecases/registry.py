@@ -67,6 +67,7 @@ class UseCaseRegistry:
             "polling_match": [match.model_dump() for match in definition.polling_match],
         }
         _deep_merge(payload, deepcopy(definition.config))
+        payload["usecase"]["name"] = definition.name
         return ZammadAISettings.model_validate(payload)
 
     def get(self, name: str) -> UseCaseRuntime:
