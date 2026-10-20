@@ -19,6 +19,7 @@ from .genai import GenAIOpenAISettings, GenAIProviderSettings
 from .guardrails import GuardrailSettings
 from .kafka import KafkaSettings
 from .logging import LoggingSettings
+from .polling import PollingSettings
 from .preparser import PreparserSettings
 from .prometheus import PrometheusSettings
 from .triage import TriageSettings
@@ -93,6 +94,11 @@ class ZammadAISettings(BaseSettings):
     kafka: KafkaSettings = Field(
         description="Settings for Kafka integration, including broker URL, topic, and security configuration.",
         default_factory=lambda: KafkaSettings(),
+    )
+
+    polling: PollingSettings = Field(
+        description="Settings for polling-based ticket intake, an alternative to Kafka for vanilla Zammad instances.",
+        default_factory=lambda: PollingSettings(),
     )
 
     triage: TriageSettings = Field(

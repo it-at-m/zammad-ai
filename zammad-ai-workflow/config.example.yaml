@@ -206,6 +206,26 @@ kafka:
 
 # Note: `valid_request_types` moved under `kafka.event_processing.valid_request_types`
 
+# ============================================================================
+# Polling Configuration (alternative ticket intake to Kafka)
+# ============================================================================
+# Polling queries the Zammad search API in a fixed interval and processes all
+# matching tickets through the triage/action pipeline. Intended for vanilla
+# Zammad instances without the Kafka messagebus architecture (API client only,
+# not supported with zammad.type: "eai").
+# IMPORTANT: Run at most ONE replica per search query. Deduplication is
+# in-memory, so multiple instances would process the same tickets in parallel
+# (Zammad-side duplicate markers prevent double-posting, but the LLM work
+# would still be duplicated). See the follow-up issue on distributed
+# deduplication for future multi-replica support.
+polling:
+  enabled: false # Set to true to enable polling-based ticket intake
+  interval_seconds: 60 # Seconds between polling cycles
+  search_query: "state.name:(new OR open)" # Zammad search query selecting tickets to process
+  processed_ttl_seconds: 3600 # Deduplication window; processed tickets are skipped within this time
+  per_page: 50 # Search results per page (Zammad caps the ticket search at 200)
+  max_pages: 1 # Maximum search result pages fetched per cycle
+
 # Maximum combined article and attachment text length accepted for triage/answer processing.
 max_user_text_length: 2000
 

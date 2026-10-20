@@ -7,6 +7,7 @@ from pydantic import SecretStr, ValidationError
 
 from app.settings.api import APISettings
 from app.settings.frontend import FeedbackSettings
+from app.settings.polling import PollingSettings
 from app.settings.settings import ZammadAISettings, get_settings
 
 
@@ -92,3 +93,47 @@ def test_max_user_text_length_rejects_non_positive_int(monkeypatch, value: int) 
     finally:
         get_settings.cache_clear()
         monkeypatch.delenv("ZAMMAD_AI_MAX_USER_TEXT_LENGTH", raising=False)
+
+
+def test_polling_settings_defaults() -> None:
+    """PollingSettings should provide safe defaults with polling disabled."""
+    settings = PollingSettings()
+
+    assert settings.enabled is False
+    assert settings.interval_seconds == 60
+    assert settings.search_query == "state.name:(new OR open)"
+    assert settings.processed_ttl_seconds == 3600
+    assert settings.per_page == 50
+    assert settings.max_pages == 1
+
+
+@pytest.mark.parametrize("value", [0, 201, -1])
+def test_polling_settings_rejects_out_of_range_per_page(value: int) -> None:
+    """PollingSettings should reject per_page values outside 1..200."""
+    with pytest.raises(ValidationError):
+        PollingSettings(per_page=value)
+
+
+def test_polling_settings_rejects_non_positive_interval() -> None:
+    """PollingSettings should reject a non-positive polling interval."""
+    with pytest.raises(ValidationError):
+        PollingSettings(interval_seconds=0)
+
+
+def test_polling_settings_rejects_non_positive_max_pages() -> None:
+    """PollingSettings should reject a non-positive page limit."""
+    with pytest.raises(ValidationError):
+        PollingSettings(max_pages=0)
+
+
+def test_polling_settings_rejects_non_positive_ttl() -> None:
+    """PollingSettings should reject a non-positive deduplication TTL."""
+    with pytest.raises(ValidationError):
+        PollingSettings(processed_ttl_seconds=0)
+
+
+def test_zammad_ai_settings_includes_polling_defaults() -> None:
+    """ZammadAISettings should include polling settings and default to disabled."""
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.polling.enabled is False

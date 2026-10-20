@@ -40,6 +40,30 @@ def _extract_group_name(data: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_ticket_ids(data: Any, *, context: str) -> list[int]:
+    """Extract ticket IDs from a Zammad search response.
+
+    Supports current Zammad (6.5+) response shapes: a plain list of ticket
+    objects or a dict containing the standardized `record_ids` key.
+    """
+    ticket_ids: list[int] = []
+    if isinstance(data, list):
+        raw_ids = data
+    elif isinstance(data, dict):
+        raw_ids = data.get("record_ids")
+        if raw_ids is None:
+            raise ZammadPayloadParseError(f"Unexpected ticket search response shape for {context}")
+    else:
+        raise ZammadPayloadParseError(f"Unexpected ticket search response shape for {context}")
+
+    for item in raw_ids:
+        ticket_id = item.get("id") if isinstance(item, dict) else item
+        if not isinstance(ticket_id, int) or isinstance(ticket_id, bool):
+            raise ZammadPayloadParseError(f"Invalid ticket id in search response for {context}")
+        ticket_ids.append(ticket_id)
+    return ticket_ids
+
+
 class ZammadAPIClient(BaseZammadClient):
     """Client for interacting with Zammad API to fetch and update ticket information."""
 
@@ -102,6 +126,28 @@ class ZammadAPIClient(BaseZammadClient):
             pending_time=ticket_data.get("pending_time"),
             article_count=len(articles),
         )
+
+    async def search_tickets(self, query: str, page: int = 1, per_page: int = 50) -> list[int]:
+        """Search for tickets using the Zammad search API.
+
+        Args:
+            query: Zammad search query string (e.g. "state.name:(new OR open)").
+            page: Page number for pagination (1-based).
+            per_page: Number of results per page (Zammad search caps this at 200).
+
+        Returns:
+            list[int]: Ticket IDs matching the search query.
+
+        Raises:
+            ZammadPayloadParseError: If the response payload has an unexpected shape.
+
+        """
+        data = await self._request(
+            "GET",
+            "/api/v1/tickets/search",
+            params={"query": query, "page": page, "per_page": per_page},
+        )
+        return _extract_ticket_ids(data, context=f"ticket search query '{query}'")
 
     @override
     async def get_ticket_metadata(self, id: int) -> ZammadTicket:
