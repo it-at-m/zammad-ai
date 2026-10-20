@@ -32,6 +32,9 @@ def triage_dependency(request: Request) -> TriageService:
     Returns:
         TriageService: The TriageService instance stored at request.app.state.triage_service.
     """
+    registry = getattr(request.app.state, "usecase_registry", None)
+    if registry is not None and len(registry.runtimes) > 1:
+        return next(iter(registry.runtimes.values())).triage_service
     return request.app.state.triage_service
 
 
@@ -59,6 +62,17 @@ async def triage(
     if not check_api_key(credentials):
         logger.warning("Unauthorized triage request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if input.usecase:
+        registry = getattr(request.app.state, "usecase_registry", None)
+        if registry is not None:
+            try:
+                service = registry.get(input.usecase).triage_service
+            except KeyError as e:
+                raise HTTPException(status_code=422, detail="Unknown usecase") from e
+    elif getattr(request.app.state, "usecase_registry", None) is not None:
+        if len(request.app.state.usecase_registry.runtimes) > 1:
+            raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
 
     try:
         if not input.session_id:

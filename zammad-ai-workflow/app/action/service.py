@@ -17,6 +17,7 @@ from app.triage.triage import TriageResult
 from app.utils.logging import getLogger
 from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
+from app.zammad.base import BaseZammadClient
 from app.zammad.eai import ZammadEAIClient
 from app.zammad.markers import NO_ANSWER_NOTE_SUBJECT
 from app.zammad.processing import ensure_ticket_not_already_processed
@@ -28,18 +29,29 @@ class ActionService:
     logger: Logger = getLogger("zammad-ai.action.service")
 
     def __init__(
-        self, settings: ZammadAISettings, answer_service: AnswerService, guardrail_service: GuardrailService
+        self,
+        settings: ZammadAISettings,
+        answer_service: AnswerService,
+        guardrail_service: GuardrailService,
+        zammad_client: BaseZammadClient | None = None,
+        owns_guardrail_service: bool = True,
     ) -> None:
         """Initialize action execution with settings, answer service, guardrail service, and Zammad client."""
         self.settings: ZammadAISettings = settings
         self.answer_service: AnswerService = answer_service
         self.guardrail_service: GuardrailService = guardrail_service
+        self._owns_guardrail_service = owns_guardrail_service
         self.max_user_text_length: int = settings.max_user_text_length
         # Zammad client setup
-        if isinstance(self.settings.zammad, ZammadAPISettings):
+        if zammad_client is not None:
+            self.zammad_client: BaseZammadClient = zammad_client
+            self._owns_zammad_client = False
+        elif isinstance(self.settings.zammad, ZammadAPISettings):
             self.zammad_client = ZammadAPIClient(settings=self.settings.zammad)
+            self._owns_zammad_client = True
         elif isinstance(self.settings.zammad, ZammadEAISettings):
             self.zammad_client = ZammadEAIClient(settings=self.settings.zammad)
+            self._owns_zammad_client = True
         else:
             raise ActionExecutionError("Invalid type for Zammad settings in configuration", retryable=False)
 
@@ -88,7 +100,12 @@ class ActionService:
                 feedback_trace_id = None
 
             if triage.action.type == ActionTypes.NoAction:
-                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
+                record_kafka_ticket_outcome(
+                    category=category,
+                    action_type=triage.action.type,
+                    outcome="manual",
+                    usecase=self.settings.usecase.name,
+                )
 
             if isinstance(response, NoAnswerPossible):
                 self.logger.info(f"No answer generated for ticket {ticket_id} with category {category}")
@@ -159,6 +176,7 @@ class ActionService:
                     category=triage.category.name,
                     action_type=triage.action.type,
                     outcome="answer",
+                    usecase=self.settings.usecase.name,
                 )
                 self.logger.info(f"Posted answer for ticket {ticket_id} with category {category}")
                 # Optionally schedule the ticket to be moved to a pending-close state after configured days
@@ -193,6 +211,7 @@ class ActionService:
                     category=triage.category.name,
                     action_type=triage.action.type,
                     outcome="shared_draft",
+                    usecase=self.settings.usecase.name,
                 )
                 self.logger.info(f"Posted shared draft for ticket {ticket_id} with category {category}")
                 if self.settings.frontend.feedback.post_internal_note and isinstance(
@@ -556,20 +575,23 @@ class ActionService:
         """
         first_error: Exception | None = None
         try:
-            try:
-                await self.guardrail_service.close()
-            except Exception as e:
-                first_error = e
-                self.logger.error("Failed to close guardrail service during action cleanup", exc_info=True)
-
-            try:
-                await self.zammad_client.close()
-            except Exception as e:
-                if first_error is None:
+            if self._owns_guardrail_service:
+                try:
+                    await self.guardrail_service.close()
+                except Exception as e:
                     first_error = e
-                self.logger.error("Failed to close Zammad client during action cleanup", exc_info=True)
+                    self.logger.error("Failed to close guardrail service during action cleanup", exc_info=True)
+
+            if self._owns_zammad_client:
+                try:
+                    await self.zammad_client.close()
+                except Exception as e:
+                    if first_error is None:
+                        first_error = e
+                    self.logger.error("Failed to close Zammad client during action cleanup", exc_info=True)
         finally:
-            reset_guardrail_service()
+            if self._owns_guardrail_service:
+                reset_guardrail_service()
             global _service
             _service = None
 

@@ -69,7 +69,13 @@ class TriageError(AppTriageError):
 class TriageService:
     """Service that classifies tickets and selects follow-up actions."""
 
-    def __init__(self, settings: ZammadAISettings) -> None:
+    def __init__(
+        self,
+        settings: ZammadAISettings,
+        guardrail_service: GuardrailService | None = None,
+        preparser_service: PreparserService | None = None,
+        owns_guardrail_service: bool | None = None,
+    ) -> None:
         """Initialize the TriageService with the provided configuration, preparing category/action maps, prompt sources, the GenAI handler, and the Zammad client.
 
         Parameters:
@@ -80,8 +86,15 @@ class TriageService:
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
         self.settings: ZammadAISettings = settings
-        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
-        self.preparser_service: PreparserService = get_preparser_service(settings=settings.preparser)
+        self._owns_guardrail_service = (
+            guardrail_service is None if owns_guardrail_service is None else owns_guardrail_service
+        )
+        self.guardrail_service: GuardrailService = guardrail_service or get_guardrail_service(
+            settings=settings.guardrails
+        )
+        self.preparser_service: PreparserService = preparser_service or get_preparser_service(
+            settings=settings.preparser
+        )
         # Triage setup
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
@@ -500,11 +513,12 @@ class TriageService:
         """
         first_error: Exception | None = None
         try:
-            try:
-                await self.guardrail_service.close()
-            except Exception as e:
-                first_error = e
-                logger.error("Failed to close guardrail service during triage cleanup", exc_info=True)
+            if self._owns_guardrail_service:
+                try:
+                    await self.guardrail_service.close()
+                except Exception as e:
+                    first_error = e
+                    logger.error("Failed to close guardrail service during triage cleanup", exc_info=True)
 
             try:
                 await self.zammad_client.close()
@@ -513,7 +527,8 @@ class TriageService:
                     first_error = e
                 logger.error("Failed to close Zammad client during triage cleanup", exc_info=True)
         finally:
-            reset_guardrail_service()
+            if self._owns_guardrail_service:
+                reset_guardrail_service()
             global _service
             _service = None
 

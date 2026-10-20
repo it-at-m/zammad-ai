@@ -103,7 +103,7 @@ async def _request_json(
     return data
 
 
-async def _fetch_prompt_versions(api_base_url: str) -> dict[str, int | None]:
+async def _fetch_prompt_versions(api_base_url: str) -> dict[str, object]:
     """Fetch prompt versions from the backend status endpoint."""
     url = f"{api_base_url}/api/v1/prompt_versions"
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -117,7 +117,12 @@ async def _fetch_prompt_versions(api_base_url: str) -> dict[str, int | None]:
 
 
 async def process_ticket(
-    text: str, *, api_base_url: str, timeout_seconds: float, api_key: dict[str, str]
+    text: str,
+    *,
+    api_base_url: str,
+    timeout_seconds: float,
+    api_key: dict[str, str],
+    usecase: str | None = None,
 ) -> FrontendResult:
     """Process ticket text through triage and, if the triage action indicates, request an AI-generated answer.
 
@@ -148,7 +153,10 @@ async def process_ticket(
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         try:
-            triage_data = await _request_json(client=client, url=triage_url, payload={"text": text}, headers=api_key)
+            triage_payload: dict[str, Any] = {"text": text}
+            if usecase:
+                triage_payload["usecase"] = usecase
+            triage_data = await _request_json(client=client, url=triage_url, payload=triage_payload, headers=api_key)
         except httpx.ConnectError:
             raise gr.Error(f"Verbindungsfehler: Backend läuft nicht auf {api_base_url}")
         except httpx.TimeoutException:
@@ -160,7 +168,7 @@ async def process_ticket(
             raise gr.Error("Fehler bei Triage")
 
         triage_result = triage_data.get("triage", {})
-        session_id = triage_data.get("id")
+        session_id = triage_data.get("session_id")
 
         category = triage_result.get("category", {}).get("name", "Unbekannt")
         action = str(triage_result.get("action", {}).get("name", "Unbekannt"))
@@ -182,6 +190,7 @@ async def process_ticket(
                     "category": category,
                     "session_id": session_id,
                     "action": action,
+                    **({"usecase": usecase} if usecase else {}),
                 },
                 headers=api_key,
             )
@@ -210,7 +219,7 @@ async def process_ticket(
 
 def _render_config_md(
     settings: ZammadAISettings,
-    prompt_versions: dict[str, int | None] | None = None,
+    prompt_versions: dict[str, object] | None = None,
     *,
     prompt_versions_loaded: bool = False,
 ) -> str:
@@ -322,8 +331,9 @@ def _render_rules_preview(settings: ZammadAISettings, limit: int = 10) -> str:
 
 def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
     """Build the Gradio frontend Blocks UI."""
+    configured_usecases = settings.usecases or [settings.usecase]
 
-    async def _process_ticket(text: str, api_key_value: str = "") -> FrontendResult:
+    async def _process_ticket(text: str, selected_usecase: str, api_key_value: str = "") -> FrontendResult:
         """Process the given ticket text using the module's configured API base URL and the frontend's request timeout.
 
         Parameters:
@@ -345,6 +355,7 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 api_base_url=API_BASE_URL,
                 timeout_seconds=settings.frontend.request_timeout_seconds,
                 api_key=api_key_dict,
+                usecase=selected_usecase,
             )
         except gr.Error as e:
             message = str(e) if str(e) else "Fehler bei der Verarbeitung"
@@ -378,6 +389,12 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 )
 
                 gr.Markdown("### Eingabe")
+                usecase_input = gr.Dropdown(
+                    label="Usecase",
+                    choices=[usecase.name for usecase in configured_usecases],
+                    value=configured_usecases[0].name,
+                    interactive=len(configured_usecases) > 1,
+                )
                 input_text = gr.Textbox(label="Ticket-Text", placeholder="Geben Sie hier Ihre Anfrage ein...", lines=10)
                 submit_btn = gr.Button("Absenden", variant="primary")
 
@@ -421,8 +438,8 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
             answer_documents_output,
         ]
 
-        submit_btn.click(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
-        input_text.submit(fn=_process_ticket, inputs=[input_text, api_key_input], outputs=outputs)
+        submit_btn.click(fn=_process_ticket, inputs=[input_text, usecase_input, api_key_input], outputs=outputs)
+        input_text.submit(fn=_process_ticket, inputs=[input_text, usecase_input, api_key_input], outputs=outputs)
         frontend.load(fn=_load_config_md, outputs=config_md)
 
     return frontend

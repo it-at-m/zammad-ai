@@ -1,8 +1,10 @@
 """Application settings and configuration source loading."""
 
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
+import yaml
 from pydantic import Field, PositiveInt, model_validator
 from pydantic_settings import (
     BaseSettings,
@@ -23,7 +25,7 @@ from .polling import PollingSettings
 from .preparser import PreparserSettings
 from .prometheus import PrometheusSettings
 from .triage import TriageSettings
-from .usecase import UseCaseSettings
+from .usecase import RouterSettings, UseCaseSettings
 from .zammad import ZammadAPISettings, ZammadEAISettings
 
 
@@ -80,6 +82,8 @@ class ZammadAISettings(BaseSettings):
             description="Default use case",
         ),
     )
+    usecases: list[UseCaseSettings] = Field(default_factory=list)
+    router: RouterSettings = Field(default_factory=RouterSettings)
     genai: GenAIProviderSettings = Field(
         description="Settings for GenAI integration, including model selection and configuration.",
         default_factory=lambda: GenAIOpenAISettings(),
@@ -234,4 +238,68 @@ def get_settings() -> ZammadAISettings:
     Returns:
         ZammadAISettings: The cached settings instance used by the application.
     """
-    return ZammadAISettings()
+    settings = ZammadAISettings()
+    if settings.usecases:
+        _validate_usecases(settings.usecases, settings.router)
+        return settings
+
+    config_dir = Path(settings.router.usecase_config_dir)
+    if not config_dir.is_absolute():
+        config_dir = Path.cwd() / config_dir
+    definitions = _load_usecase_definitions(config_dir)
+    if definitions:
+        settings.usecases = definitions
+        _validate_usecases(definitions, settings.router)
+    else:
+        settings.usecases = [settings.usecase]
+    return settings
+
+
+def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:
+    """Load usecase definition files when the configured directory exists."""
+    if _is_test_mode() or not config_dir.is_dir():
+        return []
+
+    definitions: list[UseCaseSettings] = []
+    for path in sorted(config_dir.glob("*.yaml")):
+        with path.open(encoding="utf-8") as file:
+            payload: Any = yaml.safe_load(file) or {}
+        if not isinstance(payload, dict):
+            raise ValueError(f"Usecase configuration must be a mapping: {path}")
+        definitions.append(UseCaseSettings.model_validate(payload))
+    return definitions
+
+
+def _validate_usecases(usecases: list[UseCaseSettings], router: RouterSettings | None = None) -> None:
+    """Reject duplicate names and overlapping exact route definitions."""
+    names = [usecase.name for usecase in usecases]
+    if len(names) != len(set(names)):
+        raise ValueError("Usecase names must be unique")
+
+    if router is not None and router.unmatched_policy == "fallback":
+        if router.fallback_usecase not in names:
+            raise ValueError(f"Fallback usecase '{router.fallback_usecase}' is not configured")
+
+    routes: list[tuple[str | None, str | None, str]] = []
+    for usecase in usecases:
+        for match in usecase.match:
+            for request_type, action, previous_name in routes:
+                if (match.request_type is None or request_type is None or match.request_type == request_type) and (
+                    match.action is None or action is None or match.action == action
+                ):
+                    raise ValueError(
+                        f"Kafka routes for '{usecase.name}' and '{previous_name}' overlap and are ambiguous"
+                    )
+            routes.append((match.request_type, match.action, usecase.name))
+
+    polling_routes: list[tuple[int | None, str | None, str]] = []
+    for usecase in usecases:
+        for match in usecase.polling_match:
+            for group_id, group_name, previous_name in polling_routes:
+                if (match.group_id is None or group_id is None or match.group_id == group_id) and (
+                    match.group_name is None or group_name is None or match.group_name == group_name
+                ):
+                    raise ValueError(
+                        f"Polling routes for '{usecase.name}' and '{previous_name}' overlap and are ambiguous"
+                    )
+            polling_routes.append((match.group_id, match.group_name, usecase.name))
