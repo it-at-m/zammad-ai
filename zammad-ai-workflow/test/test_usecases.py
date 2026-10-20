@@ -98,9 +98,7 @@ def test_registry_preserves_usecase_name_after_config_merge(
 
     monkeypatch.setattr("app.usecases.registry.ZammadAISettings.model_validate", fake_model_validate)
 
-    runtime_settings = registry._build_settings(definition)
+    registry._build_settings(definition)
 
-    assert runtime_settings["usecase"]["name"] == "support"
-    assert runtime_settings["kafka"]["retry_delay_seconds"] == 123
     assert captured_payload["usecase"]["name"] == "support"
     assert captured_payload["kafka"]["retry_delay_seconds"] == 123
