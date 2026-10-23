@@ -6,6 +6,7 @@ from typing import Any
 from app.action.service import ActionService
 from app.answer.service import AnswerService
 from app.guardrails.http_client import GuardrailService
+from app.preparser.service import PreparserService
 from app.settings import ZammadAISettings
 from app.settings.usecase import UseCaseSettings
 from app.triage.triage import TriageService
@@ -22,8 +23,12 @@ class UseCaseRuntime:
         """Build one isolated service group for a usecase."""
         self.name = name
         self.settings = settings
+        self.preparser_service = PreparserService(settings=settings.preparser)
         self.triage_service = TriageService(
-            settings=settings, guardrail_service=guardrail_service, owns_guardrail_service=False
+            settings=settings,
+            guardrail_service=guardrail_service,
+            preparser_service=self.preparser_service,
+            owns_guardrail_service=False,
         )
         self.answer_service = AnswerService(settings=settings, guardrail_service=guardrail_service)
         self.action_service = ActionService(

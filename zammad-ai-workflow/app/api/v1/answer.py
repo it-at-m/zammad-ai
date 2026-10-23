@@ -60,18 +60,24 @@ async def answer(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     registry = getattr(request.app.state, "usecase_registry", None)
+    runtime = None
     if registry is not None:
         if input.usecase:
             try:
-                service = registry.get(input.usecase).action_service
+                runtime = registry.get(input.usecase)
+                service = runtime.action_service
             except KeyError as e:
                 raise HTTPException(status_code=422, detail="Unknown usecase") from e
         elif len(registry.runtimes) > 1:
             raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
+        else:
+            runtime = next(iter(registry.runtimes.values()))
 
     try:
-        # Preparse input text via shared helper
-        user_text = get_preparsed_text(request, input.text)
+        # Preparse input text via the selected runtime's preparser when available
+        user_text = get_preparsed_text(
+            request, input.text, preparser_service=runtime.preparser_service if runtime is not None else None
+        )
 
         answer_result = await service.get_answer(
             ticket_id=input.ticket_id,
