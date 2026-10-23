@@ -310,15 +310,23 @@ async def get_prompt_versions() -> dict[str, object]:
     """Return the versions of all loaded prompts.
 
     Returns:
-        dict[str, int | None]: A dictionary mapping prompt names to their version numbers.
+        dict[str, int | None]: A flat dictionary mapping prompt names to their version
+        numbers. When multiple usecase runtimes are configured, a nested dictionary
+        mapping usecase names to their prompt version dictionaries is returned instead.
     """
     if hasattr(backend.state, "usecase_registry"):
+        runtimes = backend.state.usecase_registry.runtimes
+        if len(runtimes) == 1:
+            runtime = next(iter(runtimes.values()))
+            prompts = runtime.triage_service.get_prompt_versions()
+            prompts.update(runtime.answer_service.get_prompt_versions())
+            return prompts
         return {
             name: {
                 **runtime.triage_service.get_prompt_versions(),
                 **runtime.answer_service.get_prompt_versions(),
             }
-            for name, runtime in backend.state.usecase_registry.runtimes.items()
+            for name, runtime in runtimes.items()
         }  # type: ignore[return-value]
     prompts = backend.state.triage_service.get_prompt_versions()
     prompts.update(backend.state.answer_service.get_prompt_versions())
@@ -345,7 +353,15 @@ async def health_check() -> HealthCheckResponse:
 if settings.frontend.enabled:
     # Mount the feedback frontend first so it is not shadowed by the root frontend mount.
     backend = mount_feedback_frontend(app=backend, settings=settings)
-    backend = mount_frontend(app=backend, settings=settings)
+    backend = mount_frontend(
+        app=backend,
+        settings=settings,
+        usecase_settings=(
+            {name: runtime.settings for name, runtime in usecase_registry.runtimes.items()}
+            if usecase_registry is not None
+            else None
+        ),
+    )
 
 if not settings.frontend.enabled and settings.mode == "development":
     logger.info("Frontend is disabled, rerouting root path to API docs")

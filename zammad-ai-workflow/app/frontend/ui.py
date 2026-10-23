@@ -217,14 +217,36 @@ async def process_ticket(
     return category, action, reasoning, confidence_str, answer, answer_documents
 
 
+def _select_usecase_prompt_versions(
+    prompt_versions: dict[str, object] | None, usecase: str | None
+) -> dict[str, object]:
+    """Return the prompt version map for the selected usecase.
+
+    The backend serves a flat ``{prompt_name: version}`` map for a single usecase
+    runtime and a nested ``{usecase_name: {prompt_name: version}}`` map for multiple
+    runtimes. Nested maps are reduced to the selected usecase's entry, falling back
+    to the first configured usecase when no selection is available.
+    """
+    versions = prompt_versions or {}
+    if not versions or not all(isinstance(value, dict) for value in versions.values()):
+        return versions
+    if usecase is not None:
+        selected = versions.get(usecase)
+        if isinstance(selected, dict):
+            return selected
+    first_usecase_prompts = next(iter(versions.values()))
+    return first_usecase_prompts if isinstance(first_usecase_prompts, dict) else {}
+
+
 def _render_config_md(
     settings: ZammadAISettings,
     prompt_versions: dict[str, object] | None = None,
     *,
     prompt_versions_loaded: bool = False,
+    usecase: str | None = None,
 ) -> str:
     genai: GenAIProviderSettings = settings.genai
-    prompt_versions = prompt_versions or {}
+    prompt_versions = _select_usecase_prompt_versions(prompt_versions, usecase)
 
     triage_model: str = genai.triage_model or genai.chat_model
     answer_model: str = genai.answer_model or genai.chat_model
@@ -286,7 +308,9 @@ def _render_config_md(
     zammad = settings.zammad
     zammad_link = f"[{zammad.base_url}]({str(zammad.base_url).rstrip('/')}/#knowledge_base/{zammad.knowledge_base_id}/locale/de-de)"
 
+    usecase_header = [f"**Usecase**: `{usecase}`", ""] if usecase else []
     md_lines = [
+        *usecase_header,
         "**LLMs**",
         f"- Triage: `{triage_model}`",
         f"- Answer Agent: `{answer_model}`",
@@ -329,9 +353,26 @@ def _render_rules_preview(settings: ZammadAISettings, limit: int = 10) -> str:
     return "\n".join(lines)
 
 
-def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
-    """Build the Gradio frontend Blocks UI."""
+def build_frontend(
+    settings: ZammadAISettings,
+    usecase_settings: dict[str, ZammadAISettings] | None = None,
+) -> gr.Blocks:
+    """Build the Gradio frontend Blocks UI.
+
+    Parameters:
+        settings (ZammadAISettings): Root application settings; used as the fallback
+            for usecases without dedicated settings (e.g. single-usecase deployments).
+        usecase_settings (dict[str, ZammadAISettings] | None): Effective settings per
+            usecase name in multi-usecase mode; drives what the System Info section
+            displays for the selected usecase.
+    """
     configured_usecases = settings.usecases or [settings.usecase]
+
+    def _settings_for(selected_usecase: str | None) -> ZammadAISettings:
+        """Return the effective settings for the selected usecase."""
+        if selected_usecase is not None and usecase_settings is not None:
+            return usecase_settings.get(selected_usecase, settings)
+        return settings
 
     async def _process_ticket(text: str, selected_usecase: str, api_key_value: str = "") -> FrontendResult:
         """Process the given ticket text using the module's configured API base URL and the frontend's request timeout.
@@ -366,13 +407,26 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
             )
             return _ui_error_result(message="Unerwarteter Fehler bei der Verarbeitung")
 
-    async def _load_config_md() -> str:
+    async def _load_config_md(selected_usecase: str | None = None) -> tuple[str, str]:
+        """Render the System Info markdown for the selected usecase.
+
+        Fetches the prompt versions from the backend, picks the selected usecase's
+        entry, and renders the configuration and triage rules from that usecase's
+        effective settings.
+        """
         try:
             prompt_versions = await _fetch_prompt_versions(api_base_url=API_BASE_URL)
         except Exception:
             logger.warning("Failed to fetch prompt versions from backend.", exc_info=True)
             prompt_versions = {}
-        return _render_config_md(settings, prompt_versions=prompt_versions, prompt_versions_loaded=True)
+        active_settings = _settings_for(selected_usecase)
+        config_md = _render_config_md(
+            active_settings,
+            prompt_versions=prompt_versions,
+            prompt_versions_loaded=True,
+            usecase=selected_usecase,
+        )
+        return config_md, _render_rules_preview(active_settings)
 
     with gr.Blocks(title="Zammad AI Triage Demo") as frontend:
         gr.Markdown("# Zammad AI Triage & Answer Demo")
@@ -413,12 +467,18 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
                 gr.Markdown("### System Info")
 
                 # Initial components inside an accordion
+                default_usecase_name = configured_usecases[0].name
+                default_settings = _settings_for(default_usecase_name)
                 with gr.Accordion("System Info (Modelle, Prompts, Regeln, Index)", open=False):
-                    config_md = gr.Markdown(value=_render_config_md(settings, prompt_versions_loaded=False))
+                    config_md = gr.Markdown(
+                        value=_render_config_md(
+                            default_settings, prompt_versions_loaded=False, usecase=default_usecase_name
+                        )
+                    )
                     with gr.Row():
                         with gr.Column():
                             gr.Markdown("#### Triage Regeln")
-                            gr.Markdown(value=_render_rules_preview(settings))
+                            rules_md = gr.Markdown(value=_render_rules_preview(default_settings))
 
             with gr.Column():
                 gr.Markdown("### Ergebnisse")
@@ -440,6 +500,7 @@ def build_frontend(settings: ZammadAISettings) -> gr.Blocks:
 
         submit_btn.click(fn=_process_ticket, inputs=[input_text, usecase_input, api_key_input], outputs=outputs)
         input_text.submit(fn=_process_ticket, inputs=[input_text, usecase_input, api_key_input], outputs=outputs)
-        frontend.load(fn=_load_config_md, outputs=config_md)
+        usecase_input.change(fn=_load_config_md, inputs=[usecase_input], outputs=[config_md, rules_md])
+        frontend.load(fn=_load_config_md, inputs=[usecase_input], outputs=[config_md, rules_md])
 
     return frontend
