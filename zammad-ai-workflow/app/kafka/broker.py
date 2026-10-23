@@ -246,17 +246,23 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
     if multi_usecase and registry is None:
         registry = UseCaseRegistry(settings, get_guardrail_service(settings=settings.guardrails))
     guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
-    triage_service: TriageService = get_triage_service(settings=settings)
-    answer_service: AnswerService = get_answer_service(guardrail_service=guardrail_service, settings=settings)
-    action_service: ActionService = get_action_service(
-        settings=settings, guardrail_service=guardrail_service, answer_service=answer_service
-    )
+    triage_service: TriageService | None = None
+    answer_service: AnswerService | None = None
+    action_service: ActionService | None = None
+    if not multi_usecase:
+        triage_service = get_triage_service(settings=settings)
+        answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
+        action_service = get_action_service(
+            settings=settings, guardrail_service=guardrail_service, answer_service=answer_service
+        )
     resolver = UseCaseResolver(settings.usecases) if multi_usecase else None
 
     def runtime_for_event(
         event: Event | dict[str, object],
     ) -> tuple[ZammadAISettings, TriageService, ActionService, str]:
         if not multi_usecase or registry is None or resolver is None:
+            if triage_service is None or action_service is None:
+                raise KafkaPayloadError("Shared single-usecase services are not initialized")
             return settings, triage_service, action_service, settings.usecase.name
         try:
             parsed = Event.model_validate(event)
@@ -396,6 +402,11 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         runtime.triage_service,
                         runtime.action_service,
                     )
+            elif triage_service is not None and action_service is not None:
+                active_triage = triage_service
+                active_action = action_service
+            else:
+                raise KafkaPayloadError("No usecase services are available to process the Kafka retry")
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
             remaining_delay_seconds = await _sleep_until_retry_after(
