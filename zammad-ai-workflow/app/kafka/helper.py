@@ -329,5 +329,6 @@ async def _handle_processing_exception(
         category=category,
         action_type=action_type,
         outcome="dropped",
+        usecase=settings.usecase.name,
     )
     raise AckMessage()

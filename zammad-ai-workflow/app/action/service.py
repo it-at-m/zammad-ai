@@ -143,9 +143,19 @@ class ActionService:
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
                         )
-                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
+                record_kafka_ticket_outcome(
+                    category=category,
+                    action_type=triage.action.type,
+                    outcome="manual",
+                    usecase=self.settings.usecase.name,
+                )
             elif triage.action.type == ActionTypes.NoAction:
-                record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
+                record_kafka_ticket_outcome(
+                    category=category,
+                    action_type=triage.action.type,
+                    outcome="manual",
+                    usecase=self.settings.usecase.name,
+                )
             elif triage.category.auto_publish and (
                 isinstance(response, StaticAnswer) or (isinstance(response, AnswerCandidate) and response.auto_publish)
             ):
@@ -294,6 +304,7 @@ class ActionService:
                 category=triage.category.name,
                 action_type=triage.action.type,
                 outcome="manual",
+                usecase=self.settings.usecase.name,
             )
         except AppError:
             raise
