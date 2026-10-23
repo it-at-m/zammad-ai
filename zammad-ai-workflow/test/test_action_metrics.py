@@ -133,6 +133,37 @@ async def test_execute_action_counts_posted_shared_draft_metric(
 
 
 @pytest.mark.asyncio
+async def test_execute_action_counts_no_answer_possible_as_manual_metric(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """No-answer outcomes should increment the Kafka manual counter."""
+    baseline = _get_outcome_counter_value(category="General", action_type="ai_answer", outcome="manual")
+    settings = settings_factory()
+    service, post_answer_mock, post_shared_draft_mock = _build_action_service(settings)
+    post_no_action_internal_note_mock = AsyncMock()
+    setattr(service, "_post_no_action_internal_note", post_no_action_internal_note_mock)
+    setattr(
+        service,
+        "get_answer",
+        AsyncMock(return_value=_answer_result(NoAnswerPossible(reasoning="Keine Antwort moeglich. " * 5))),
+    )
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    post_answer_mock.assert_not_awaited()
+    post_shared_draft_mock.assert_not_awaited()
+    post_no_action_internal_note_mock.assert_awaited_once()
+    assert _get_outcome_counter_value(category="General", action_type="ai_answer", outcome="manual") == baseline + 1
+
+
+@pytest.mark.asyncio
 async def test_execute_action_skips_duplicate_check_when_disabled(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
@@ -526,3 +557,26 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
         trace_id="fresh-trace-id",
         allow_in_ai_group=False,
     )
+
+
+@pytest.mark.asyncio
+async def test_execute_action_counts_guardrail_block_as_manual_metric(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Guardrail-blocked answers should increment the Kafka manual counter."""
+    baseline = _get_outcome_counter_value(category="General", action_type="ai_answer", outcome="manual")
+    settings = settings_factory()
+    settings.triage.no_action_internal_note = None
+    service, _, _ = _build_action_service(settings)
+    setattr(service, "get_answer", AsyncMock(side_effect=GuardrailBlockedError("Input failed safety checks")))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(ticket_id=1, triage=triage)
+
+    assert _get_outcome_counter_value(category="General", action_type="ai_answer", outcome="manual") == baseline + 1
