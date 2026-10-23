@@ -17,7 +17,9 @@ from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
 from app.settings.polling import PollingSettings
 from app.settings.settings import ZammadAISettings
+from app.settings.usecase import PollingMatch
 from app.triage.triage import TriageService
+from app.usecases.resolver import UseCaseResolver
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
 from app.zammad.api import ZammadAPIClient
@@ -39,7 +41,12 @@ class PollingService:
     """Poll the Zammad search API and process matching tickets through triage and action."""
 
     def __init__(
-        self, settings: ZammadAISettings, triage_service: TriageService, action_service: ActionService
+        self,
+        settings: ZammadAISettings,
+        triage_service: TriageService,
+        action_service: ActionService,
+        polling_match: list[PollingMatch] | None = None,
+        resolver: UseCaseResolver | None = None,
     ) -> None:
         """Initialize the polling service with settings and processing services."""
         if settings.zammad.type == "eai":
@@ -47,7 +54,9 @@ class PollingService:
         self.settings: ZammadAISettings = settings
         self.triage_service: TriageService = triage_service
         self.action_service: ActionService = action_service
+        self.resolver = resolver
         self.polling_settings: PollingSettings = settings.polling
+        self.polling_match = polling_match or []
         self._processed: dict[int, float] = {}
         self._task: asyncio.Task | None = None
 
@@ -158,6 +167,23 @@ class PollingService:
         zammad_client: BaseZammadClient = self.triage_service.zammad_client
         try:
             ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
+            resolved_usecase = self.resolver.resolve_ticket(ticket) if self.resolver is not None else None
+            if self.resolver is not None and (
+                resolved_usecase is None or resolved_usecase.name != self.settings.usecase.name
+            ):
+                self._processed[ticket_id] = monotonic()
+                return "skipped_unmatched_usecase"
+            if (
+                self.resolver is None
+                and self.polling_match
+                and not any(
+                    (match.group_id is None or match.group_id == ticket.group_id)
+                    and (match.group_name is None or match.group_name == ticket.group_name)
+                    for match in self.polling_match
+                )
+            ):
+                self._processed[ticket_id] = monotonic()
+                return "skipped_unmatched_usecase"
             ensure_ticket_not_already_processed(
                 ticket,
                 ai_group_id=self.settings.zammad.ai_ticket_group_id,
@@ -191,7 +217,12 @@ class PollingService:
                     exc_info=True,
                 )
                 self._processed[ticket_id] = monotonic()
-                record_polling_ticket_outcome(category=None, action_type=None, outcome="aborted_with_error")
+                record_polling_ticket_outcome(
+                    category=None,
+                    action_type=None,
+                    outcome="aborted_with_error",
+                    usecase=self.settings.usecase.name,
+                )
                 return "error_permanent"
             logger.error(
                 "Error connecting to Zammad during polling.",
@@ -220,6 +251,7 @@ class PollingService:
                     category=result.category.name if result is not None else None,
                     action_type=result.action.type if result is not None else None,
                     outcome="aborted_with_error",
+                    usecase=self.settings.usecase.name,
                 )
                 return "error_permanent"
             logger.error(
@@ -233,6 +265,7 @@ class PollingService:
             category=result.category.name,
             action_type=result.action.type,
             outcome="processed",
+            usecase=self.settings.usecase.name,
         )
         self._processed[ticket_id] = monotonic()
         logger.info(

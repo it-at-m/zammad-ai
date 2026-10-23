@@ -20,6 +20,37 @@ usecase:
   name: "my_usecase"
   description: "Description of your use case"
 
+# For multiple usecases, create one file per usecase below this directory.
+# Each file contains name, description, match, polling_match, and a `config`
+# mapping with overrides for triage, answer, genai, polling, or zammad.
+router:
+  usecase_config_dir: "config/usecases"
+  unmatched_policy: "skip"
+  # For unmatched_policy: "fallback", set the target usecase name here.
+  # fallback_usecase: "default"
+
+# Example: config/usecases/permits.yaml
+# name: "permits"
+# description: "Permit requests"
+# match:
+#   - request_type: "permits"
+#     action: "created"
+# polling_match:
+#   - group_name: "Permits"
+# config:
+#   triage:
+#     categories: []
+#     no_category_name: "Cannot Categorize"
+#     actions: []
+#     no_action_name: "no_action"
+#     action_rules: []
+#     prompts:
+#       type: "file"
+#       prompt_map:
+#         categories: "prompts/usecases/permits/triage/categories.prompt.md"
+#         examples: "prompts/usecases/permits/triage/examples.prompt.md"
+#         role: "prompts/usecases/permits/triage/role.prompt.md"
+
 # ============================================================================
 # GenAI Configuration
 # ============================================================================

@@ -27,19 +27,34 @@ POLLING_TICKET_OUTCOMES_TOTAL = Counter(
     labelnames=("category", "action_type", "outcome"),
 )
 
+USECASE_TICKET_OUTCOMES_TOTAL = Counter(
+    name="zammad_ai_usecase_ticket_outcomes_total",
+    documentation="Ticket outcomes with the resolved usecase dimension.",
+    labelnames=("usecase", "category", "action_type", "outcome"),
+)
+
 
 def record_processed_main_kafka_event() -> None:
     """Count a main-topic Kafka event once it passes filtering and enters processing."""
     KAFKA_EVENTS_TOTAL.inc()
 
 
-def record_kafka_ticket_outcome(*, category: str | None, action_type: ActionTypes | str | None, outcome: str) -> None:
+def record_kafka_ticket_outcome(
+    *, category: str | None, action_type: ActionTypes | str | None, outcome: str, usecase: str | None = None
+) -> None:
     """Count a Kafka-driven ticket outcome with normalized labels."""
     KAFKA_TICKET_OUTCOMES_TOTAL.labels(
         category=(category or "unknown").strip() or "unknown",
         action_type=_normalize_action_type(action_type),
         outcome=outcome,
     ).inc()
+    if usecase:
+        USECASE_TICKET_OUTCOMES_TOTAL.labels(
+            usecase=usecase,
+            category=(category or "unknown").strip() or "unknown",
+            action_type=_normalize_action_type(action_type),
+            outcome=outcome,
+        ).inc()
 
 
 def _normalize_action_type(action_type: ActionTypes | str | None) -> str:
@@ -60,10 +75,19 @@ def record_polling_cycle(*, outcome: str) -> None:
     POLLING_CYCLES_TOTAL.labels(outcome=outcome).inc()
 
 
-def record_polling_ticket_outcome(*, category: str | None, action_type: ActionTypes | str | None, outcome: str) -> None:
+def record_polling_ticket_outcome(
+    *, category: str | None, action_type: ActionTypes | str | None, outcome: str, usecase: str | None = None
+) -> None:
     """Count a polling-driven ticket outcome with normalized labels."""
     POLLING_TICKET_OUTCOMES_TOTAL.labels(
         category=(category or "unknown").strip() or "unknown",
         action_type=_normalize_action_type(action_type),
         outcome=outcome,
     ).inc()
+    if usecase:
+        USECASE_TICKET_OUTCOMES_TOTAL.labels(
+            usecase=usecase,
+            category=(category or "unknown").strip() or "unknown",
+            action_type=_normalize_action_type(action_type),
+            outcome=outcome,
+        ).inc()

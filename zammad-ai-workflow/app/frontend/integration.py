@@ -14,7 +14,11 @@ from .ui import build_frontend
 logger: Logger = getLogger("zammad-ai.frontend.integration")
 
 
-def mount_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
+def mount_frontend(
+    app: FastAPI,
+    settings: ZammadAISettings,
+    usecase_settings: dict[str, ZammadAISettings] | None = None,
+) -> FastAPI:
     """Mount a Gradio frontend at the application root when enabled.
 
     If `frontend_settings.enabled` is False, the original `app` is returned unchanged. When enabled, the frontend is mounted at `/` using credentials from `frontend_settings`.
@@ -22,6 +26,7 @@ def mount_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
     Parameters:
         app (FastAPI): The FastAPI application to mount the frontend onto.
         frontend_settings (FrontendSettings): Configuration containing the enable flag and authentication credentials (`auth_username`, `auth_password`).
+        usecase_settings (dict[str, ZammadAISettings] | None): Effective settings per usecase name in multi-usecase mode; lets the frontend render the System Info for the usecase selected in the UI.
 
     Returns:
         FastAPI: The FastAPI application with the Gradio frontend mounted at the root, or the original app if mounting is disabled.
@@ -35,7 +40,7 @@ def mount_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
     )
 
     logger.info("Mounting frontend at root path.")
-    frontend = build_frontend(settings=settings)
+    frontend = build_frontend(settings=settings, usecase_settings=usecase_settings)
 
     return gr.mount_gradio_app(
         app=app,

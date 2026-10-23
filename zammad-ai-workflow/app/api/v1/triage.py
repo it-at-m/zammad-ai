@@ -32,6 +32,9 @@ def triage_dependency(request: Request) -> TriageService:
     Returns:
         TriageService: The TriageService instance stored at request.app.state.triage_service.
     """
+    registry = getattr(request.app.state, "usecase_registry", None)
+    if registry is not None:
+        return next(iter(registry.runtimes.values())).triage_service
     return request.app.state.triage_service
 
 
@@ -60,13 +63,29 @@ async def triage(
         logger.warning("Unauthorized triage request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    registry = getattr(request.app.state, "usecase_registry", None)
+    runtime = None
+    if registry is not None:
+        if input.usecase:
+            try:
+                runtime = registry.get(input.usecase)
+                service = runtime.triage_service
+            except KeyError as e:
+                raise HTTPException(status_code=422, detail="Unknown usecase") from e
+        elif len(registry.runtimes) > 1:
+            raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
+        else:
+            runtime = next(iter(registry.runtimes.values()))
+
     try:
         if not input.session_id:
             input.session_id = str(uuid4())
         text: str = input.text
 
-        # Preparse input text via shared helper
-        text = get_preparsed_text(request, text)
+        # Preparse input text via the selected runtime's preparser when available
+        text = get_preparsed_text(
+            request, text, preparser_service=runtime.preparser_service if runtime is not None else None
+        )
 
         # Get categorization result
         categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)
