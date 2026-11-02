@@ -23,6 +23,7 @@ class UseCaseRuntime:
         """Build one isolated service group for a usecase."""
         self.name = name
         self.settings = settings
+        self.guardrail_service = guardrail_service
         self.preparser_service = PreparserService(settings=settings.preparser)
         self.triage_service = TriageService(
             settings=settings,
@@ -40,26 +41,48 @@ class UseCaseRuntime:
         )
 
     async def cleanup(self) -> None:
-        """Close resources owned by this runtime."""
-        await self.answer_service.cleanup()
-        await self.triage_service.cleanup()
+        """Close resources owned by this runtime.
+
+        The runtime is the sole owner of its guardrail service; the dependent services
+        hold non-owning references, so the guardrail client is closed exactly once here.
+        """
+        first_error: Exception | None = None
+        try:
+            await self.answer_service.cleanup()
+        except Exception as e:
+            first_error = e
+            logger.error("Failed to clean up answer service during usecase runtime cleanup", exc_info=True)
+        try:
+            await self.triage_service.cleanup()
+        except Exception as e:
+            if first_error is None:
+                first_error = e
+            logger.error("Failed to clean up triage service during usecase runtime cleanup", exc_info=True)
+        try:
+            await self.guardrail_service.close()
+        except Exception as e:
+            if first_error is None:
+                first_error = e
+            logger.error("Failed to close guardrail service during usecase runtime cleanup", exc_info=True)
+        if first_error is not None:
+            raise first_error
 
 
 class UseCaseRegistry:
     """Registry containing one runtime per configured usecase."""
 
-    def __init__(self, root_settings: ZammadAISettings, guardrail_service: GuardrailService) -> None:
+    def __init__(self, root_settings: ZammadAISettings) -> None:
         """Build all configured runtimes and their resolver."""
         self.root_settings = root_settings
         self.resolver = UseCaseResolver(root_settings.usecases)
-        self.runtimes: dict[str, UseCaseRuntime] = {
-            definition.name: UseCaseRuntime(
+        self.runtimes: dict[str, UseCaseRuntime] = {}
+        for definition in root_settings.usecases:
+            settings = self._build_settings(definition)
+            self.runtimes[definition.name] = UseCaseRuntime(
                 name=definition.name,
-                settings=self._build_settings(definition),
-                guardrail_service=guardrail_service,
+                settings=settings,
+                guardrail_service=GuardrailService(settings.guardrails),
             )
-            for definition in root_settings.usecases
-        }
 
     def _build_settings(self, definition: UseCaseSettings) -> ZammadAISettings:
         payload: dict[str, Any] = self.root_settings.model_dump(mode="python")

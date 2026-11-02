@@ -244,12 +244,13 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
     )
     multi_usecase = bool(settings.usecases)
     if multi_usecase and registry is None:
-        registry = UseCaseRegistry(settings, get_guardrail_service(settings=settings.guardrails))
-    guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
+        registry = UseCaseRegistry(settings)
+    guardrail_service: GuardrailService | None = None
     triage_service: TriageService | None = None
     answer_service: AnswerService | None = None
     action_service: ActionService | None = None
     if not multi_usecase:
+        guardrail_service = get_guardrail_service(settings=settings.guardrails)
         triage_service = get_triage_service(settings=settings)
         answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
         action_service = get_action_service(

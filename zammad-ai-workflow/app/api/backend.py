@@ -109,10 +109,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
         logger.info("Initializing usecase runtimes and shared services")
-        app.state.guardrail_service = get_guardrail_service(settings=settings.guardrails)
         if settings.usecases:
-            app.state.usecase_registry = usecase_registry or UseCaseRegistry(settings, app.state.guardrail_service)
+            app.state.usecase_registry = usecase_registry or UseCaseRegistry(settings)
         else:
+            app.state.guardrail_service = get_guardrail_service(settings=settings.guardrails)
             app.state.triage_service = get_triage_service(settings=settings)
             app.state.answer_service = get_answer_service(
                 settings=settings, guardrail_service=app.state.guardrail_service
@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await app.state.triage_service.cleanup()
                 await app.state.answer_service.cleanup()
                 await app.state.action_service.cleanup()
-            await app.state.guardrail_service.close()
+                await app.state.guardrail_service.close()
             reset_guardrail_service()
         except CancelledError:
             logger.info("Cleanup cancelled during shutdown.")
@@ -215,7 +215,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 settings: ZammadAISettings = get_settings()
 usecase_registry: UseCaseRegistry | None = None
 if settings.usecases:
-    usecase_registry = UseCaseRegistry(settings, get_guardrail_service(settings=settings.guardrails))
+    usecase_registry = UseCaseRegistry(settings)
 
 if settings.polling.enabled and settings.zammad.type == "eai":
     raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
