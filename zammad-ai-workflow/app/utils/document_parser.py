@@ -24,9 +24,9 @@ class DocumentParser:
         self.mode: Literal["off", "local", "remote"] = settings.mode
         if self.mode == "local":
             try:
-                import_module("langchain_kreuzberg")
+                import_module("langchain_xberg")
             except ImportError:
-                logger.error("langchain_kreuzberg is not installed. Local Kreuzberg parsing will be unavailable.")
+                logger.error("langchain_xberg is not installed. Local Xberg parsing will be unavailable.")
                 raise
 
         elif self.mode == "remote":
@@ -60,10 +60,10 @@ class DocumentParser:
         Returns:
             The extracted document text.
         """
-        KreuzbergLoader = import_module("langchain_kreuzberg").KreuzbergLoader
+        XbergLoader = import_module("langchain_xberg").XbergLoader
 
         document_bytes: bytes = self._coerce_document_bytes(data)
-        loader = KreuzbergLoader(
+        loader = XbergLoader(
             data=document_bytes,
             mime_type=DEFAULT_MIME_TYPE,
         )
