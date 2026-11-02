@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, PositiveInt, Sec
 
 ZammadEndpoint = Literal["api", "eai"]
 
-KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
+XBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
     {
         "pdf",
         "docx",
@@ -24,6 +24,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "pot",
         "ppt",
         "odt",
+        "odp",
         "xlsx",
         "xlsm",
         "xlsb",
@@ -36,6 +37,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "dbf",
         "hwp",
         "hwpx",
+        "wpd",
         "pages",
         "numbers",
         "key",
@@ -51,6 +53,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "rtf",
         "djot",
         "mdx",
+        "qmd",
         "json",
         "yaml",
         "yml",
@@ -110,7 +113,7 @@ class DocumentParsingSettings(BaseModel):
     """Settings for parsing documents retrieved from Zammad."""
 
     mode: Literal["off", "local", "remote"] = Field(
-        description="Mode for parsing documents retrieved from Zammad. 'off' to disable parsing, 'local' to use local Kreuzberg, 'remote' to send documents to a remote Kreuzberg API.",
+        description="Mode for parsing documents retrieved from Zammad. 'off' to disable parsing, 'local' to use local Xberg, 'remote' to send documents to a remote Xberg API.",
         default="off",
     )
 
@@ -120,7 +123,7 @@ class DocumentParsingSettings(BaseModel):
     )
 
     http_proxy_url: str | None = Field(
-        description="Optional proxy URL for routing requests to remote Kreuzberg API through a proxy server.",
+        description="Optional proxy URL for routing requests to remote Xberg API through a proxy server.",
         default=None,
     )
     document_types: list[str] = Field(
@@ -132,11 +135,11 @@ class DocumentParsingSettings(BaseModel):
     def validate_document_types(self) -> "DocumentParsingSettings":
         """Validate that all specified document types are supported."""
         if self.mode != "off" and self.document_types:
-            unsupported_types: list[str] = sorted(set(self.document_types) - KREUZBERG_DOCUMENT_TYPES)
+            unsupported_types: list[str] = sorted(set(self.document_types) - XBERG_DOCUMENT_TYPES)
             if unsupported_types:
                 raise ValueError(
                     "Unsupported document types specified: "
-                    f"{unsupported_types}. Supported types are: {sorted(KREUZBERG_DOCUMENT_TYPES)}"
+                    f"{unsupported_types}. Supported types are: {sorted(XBERG_DOCUMENT_TYPES)}"
                 )
         return self
 

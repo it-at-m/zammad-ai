@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl, NonNegativeInt, PositiveInt, SecretStr, model_validator
 
-KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
+XBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
     {
         "pdf",
         "docx",
@@ -22,6 +22,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "pot",
         "ppt",
         "odt",
+        "odp",
         "xlsx",
         "xlsm",
         "xlsb",
@@ -34,6 +35,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "dbf",
         "hwp",
         "hwpx",
+        "wpd",
         "pages",
         "numbers",
         "key",
@@ -49,6 +51,7 @@ KREUZBERG_DOCUMENT_TYPES: frozenset[str] = frozenset(
         "rtf",
         "djot",
         "mdx",
+        "qmd",
         "json",
         "yaml",
         "yml",
@@ -128,11 +131,11 @@ class DocumentParsingSettings(BaseModel):
     def validate_document_types(self) -> "DocumentParsingSettings":
         """Validate that all specified document types are supported."""
         if self.mode != "off" and self.document_types:
-            unsupported_types: list[str] = sorted(set(self.document_types) - KREUZBERG_DOCUMENT_TYPES)
+            unsupported_types: list[str] = sorted(set(self.document_types) - XBERG_DOCUMENT_TYPES)
             if unsupported_types:
                 raise ValueError(
                     "Unsupported document types specified: "
-                    f"{unsupported_types}. Supported types are: {sorted(KREUZBERG_DOCUMENT_TYPES)}"
+                    f"{unsupported_types}. Supported types are: {sorted(XBERG_DOCUMENT_TYPES)}"
                 )
         return self
 
