@@ -10,12 +10,14 @@
     ":separateMultipleMajorReleases", // separate major updates of dependencies into separate PRs
     ":timezone(Europe/Berlin)", // sets correct timezone for schedule based operations
     "security:openssf-scorecard", // show OpenSSF badge on pull requests to evaluate security health metrics for dependencies
+    ":automergeMinor", // automerge minor and patch releases
+    ":prConcurrentLimit10" // 10 open PRs at max
   ],
   labels: ["renovate"],
   lockFileMaintenance: {
     enabled: true,
   },
-  reviewers: ["freinold", "lenabMUC", "pilitz"],
+  reviewers: ["nharbig", "pilitz"],
   packageRules: [
     {
       matchManagers: ["pep621"],
