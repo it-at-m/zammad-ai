@@ -7,9 +7,9 @@ import pytest
 from langchain_core.documents import Document
 
 from app.answer.knowledgebase import QdrantKBClient
-from app.answer.laws import build_law_tool_name
 from app.settings import ZammadAISettings
 from app.settings.answer import MultiQuerySettings
+from app.utils.laws import build_law_tool_name
 
 
 class FakeVectorStore:

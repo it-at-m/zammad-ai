@@ -1,4 +1,4 @@
-"""Helpers for answer-agent law retrieval tools."""
+"""Helpers for law retrieval tool naming."""
 
 import re
 
