@@ -201,25 +201,30 @@ class LangfuseClient:
             logger.error("Failed to attach evaluation to Langfuse trace.", exc_info=True)
             raise LangfuseError("Failed to attach evaluation to Langfuse trace.") from e
 
+    def _fetch_trace_api_response(self, trace_id: str, fields: str) -> dict[str, object]:
+        """Fetch raw trace data from the Langfuse API.
+
+        The Langfuse v5 SDK no longer wraps the trace GET endpoint, so the request
+        goes through the SDK's configured HTTP client, which applies base URL,
+        authentication, and timeout.
+        """
+        response = self.langfuse.api._client_wrapper.httpx_client.request(
+            f"api/public/traces/{trace_id}",
+            method="GET",
+            params={"fields": fields},
+        )
+        if response.status_code == 404:
+            raise LangfuseError(f"Trace {trace_id} not found")
+        if not 200 <= response.status_code < 300:
+            logger.warning("Langfuse trace request failed.", extra={"status_code": response.status_code})
+            raise LangfuseError(f"Failed to fetch trace {trace_id}")
+        return response.json()
+
     def has_score(self, trace_id: str, score_name: str) -> bool:
         """Return True if a score with the given name already exists on the trace."""
         try:
-            trace = self.langfuse.api.trace.get(trace_id=trace_id, fields="scores")
-            try:
-                data = trace.dict() if hasattr(trace, "dict") else dict(trace)
-            except Exception:
-                data = {}
-            scores = data.get("scores") if isinstance(data, dict) else None
-            if not isinstance(scores, list):
-                return False
-            for s in scores:
-                try:
-                    name = s.get("name") if isinstance(s, dict) else getattr(s, "name", None)
-                    if name == score_name:
-                        return True
-                except Exception:
-                    continue
-            return False
+            response = self.langfuse.api.scores.get_many(trace_id=trace_id, limit=100)
+            return any(getattr(score, "name", None) == score_name for score in response.data)
         except Exception as e:
             logger.warning("Failed to check existing scores on trace.", exc_info=True)
             raise LangfuseError("Failed to check existing scores on trace.") from e
@@ -230,11 +235,7 @@ class LangfuseClient:
         Returns a tuple (input, output, used_documents) where values may be None if not found.
         """
         try:
-            trace = self.langfuse.api.trace.get(trace_id=trace_id, fields="core,io")
-            try:
-                trace_dict = trace.dict() if hasattr(trace, "dict") else dict(trace)
-            except Exception:
-                trace_dict = {}
+            trace_dict = self._fetch_trace_api_response(trace_id=trace_id, fields="core,io")
 
             def _nested_get(d, *keys, default=""):
                 if not isinstance(d, dict):
