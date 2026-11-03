@@ -40,7 +40,7 @@ jobs:
           if [ "${{ matrix.working-directory }}" = "./slm-guardrails" ]; then
             uv sync --locked --all-extras
           else
-            uv sync --locked --all-extras --group kreuzberg
+            uv sync --locked --all-extras --group xberg
           fi
 
       - name: Run ty check

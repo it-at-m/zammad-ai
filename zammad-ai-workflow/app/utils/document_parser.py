@@ -1,4 +1,4 @@
-"""Helpers for parsing attachment documents through Kreuzberg."""
+"""Helpers for parsing attachment documents through Xberg."""
 
 from asyncio import to_thread
 from importlib import import_module
@@ -17,16 +17,16 @@ DEFAULT_MIME_TYPE = "application/octet-stream"
 
 
 class DocumentParser:
-    """Utility class for parsing attachment documents through Kreuzberg."""
+    """Utility class for parsing attachment documents through Xberg."""
 
     def __init__(self, settings: DocumentParsingSettings):
         """Initialize the DocumentParser with the given settings."""
         self.mode: Literal["off", "local", "remote"] = settings.mode
         if self.mode == "local":
             try:
-                import_module("langchain_kreuzberg")
+                import_module("langchain_xberg")
             except ImportError:
-                logger.error("langchain_kreuzberg is not installed. Local Kreuzberg parsing will be unavailable.")
+                logger.error("langchain_xberg is not installed. Local Xberg parsing will be unavailable.")
                 raise
 
         elif self.mode == "remote":
@@ -52,7 +52,7 @@ class DocumentParser:
         return None
 
     async def _parse_local(self, data: Any) -> str:
-        """Process attachment content using local Kreuzberg.
+        """Process attachment content using local Xberg.
 
         Args:
             data: Attachment payload from Zammad as bytes or a file-like object.
@@ -60,17 +60,17 @@ class DocumentParser:
         Returns:
             The extracted document text.
         """
-        KreuzbergLoader = import_module("langchain_kreuzberg").KreuzbergLoader
+        XbergLoader = import_module("langchain_xberg").XbergLoader
 
         document_bytes: bytes = self._coerce_document_bytes(data)
-        loader = KreuzbergLoader(
+        loader = XbergLoader(
             data=document_bytes,
             mime_type=DEFAULT_MIME_TYPE,
         )
         docs: list[Document] = await to_thread(loader.load)
         if not isinstance(docs, list) or not docs:
-            raise ValueError("Kreuzberg did not return any documents for the attachment.")
-        logger.info("Successfully processed document with local Kreuzberg.")
+            raise ValueError("Xberg did not return any documents for the attachment.")
+        logger.info("Successfully processed document with local Xberg.")
         return docs[0].page_content
 
     def _coerce_document_bytes(self, data: Any) -> bytes:
@@ -85,7 +85,7 @@ class DocumentParser:
         raise TypeError(f"Unsupported document payload type: {type(data).__name__}")
 
     async def _parse_remote(self, data: Any, attachment: ArticleAttachment) -> str:
-        """Send attachment content to a remote Kreuzberg API server.
+        """Send attachment content to a remote Xberg API server.
 
         Args:
             data: Attachment payload from Zammad as bytes or a file-like object.
@@ -107,14 +107,14 @@ class DocumentParser:
         payload = response.json()
 
         if not isinstance(payload, list) or not payload:
-            raise ValueError("Remote Kreuzberg returned an empty or invalid response.")
+            raise ValueError("Remote Xberg returned an empty or invalid response.")
         first_result = payload[0]
         if not isinstance(first_result, dict):
-            raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
+            raise ValueError("Remote Xberg returned an invalid extraction result.")
         content = first_result.get("content")
         if not isinstance(content, str):
-            raise ValueError("Remote Kreuzberg returned an invalid extraction result.")
-        logger.info("Successfully sent document to remote Kreuzberg for parsing.")
+            raise ValueError("Remote Xberg returned an invalid extraction result.")
+        logger.info("Successfully sent document to remote Xberg for parsing.")
         return content
 
     async def close(self) -> None:
