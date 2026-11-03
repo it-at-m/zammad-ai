@@ -221,7 +221,7 @@ class AnswerSettings(BaseModel):
         after case-normalization and 64-character truncation. Reject the
         configuration during model validation if any collisions are found.
         """
-        from app.answer.laws import build_law_tool_name
+        from app.utils.laws import build_law_tool_name
 
         tool_name_map: dict[str, list[str]] = {}
         for law in self.laws:

@@ -13,11 +13,11 @@ are used for PER-REQUEST data.
 from datetime import date
 from typing import Any
 
-from app.answer.laws import build_law_tool_name
 from app.models.triage import Category
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings
 from app.settings.templates import ToolDefinition
+from app.utils.laws import build_law_tool_name
 
 
 def build_triage_context(

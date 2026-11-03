@@ -13,6 +13,7 @@ from app.models.answer import AnswerCandidate, NoAnswerPossible
 from app.settings import GenAIProviderSettings
 from app.settings.answer import LawToolSettings
 from app.utils.genai_provider import get_chat_model
+from app.utils.laws import build_law_tool_name
 from app.utils.logging import getLogger
 
 from .dlf import DLFClient, DLFDocument, DLFError, SearchDLFInput
@@ -24,7 +25,6 @@ from .knowledgebase import (
     RetrieveDocumentsKBOutput,
     SearchQdrantKBInput,
 )
-from .laws import build_law_tool_name
 from .middleware import build_knowledgebase_middleware
 
 logger: Logger = getLogger("zammad-ai.answer.agent")

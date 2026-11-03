@@ -1,6 +1,6 @@
 """Separate Gradio frontend for Sachbearbeiter feedback on Langfuse traces."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from json import load
 from logging import Logger
 from pathlib import Path
@@ -93,11 +93,12 @@ def _resolve_feedback_request(
 
 def _load_feedback_trace(
     request: gr.Request | None,
-    lf: LangfuseClient,
+    lf_factory: Callable[[], LangfuseClient],
     expected_access_key: str | None,
     score_name: str,
     translations: Mapping[str, str],
 ) -> tuple[str, str, str, str]:
+    """Resolve validated request query parameters and load the trace for feedback."""
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
         expected_access_key=expected_access_key,
@@ -110,6 +111,12 @@ def _load_feedback_trace(
     provided_key = query_params.access_key
     assert trace_id is not None
     assert provided_key is not None
+
+    try:
+        lf = lf_factory()
+    except Exception:
+        logger.warning("Failed to create Langfuse client", exc_info=True)
+        return "", "", "", translations["error.trace_load_failed"]
 
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
@@ -139,7 +146,7 @@ def _load_feedback_trace(
 
 def _submit_feedback(
     request: gr.Request | None,
-    lf: LangfuseClient,
+    lf_factory: Callable[[], LangfuseClient],
     expected_access_key: str | None,
     score_name: str,
     thumbs: str,
@@ -175,6 +182,7 @@ def _submit_feedback(
 
     # Load IO to compute expected token
     try:
+        lf = lf_factory()
         inp, out, _ = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
@@ -217,9 +225,20 @@ def _submit_feedback(
         return translations["error.feedback_save_failed"]
 
 
-def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
-    """Build a compact Gradio UI mounted separately for feedback collection."""
-    lf = LangfuseClient()
+def build_feedback_frontend(
+    settings: FrontendSettings,
+    langfuse_client_factory: Callable[[], LangfuseClient] | None = None,
+) -> gr.Blocks:
+    """Build a compact Gradio UI mounted separately for feedback collection.
+
+    Parameters:
+        settings (FrontendSettings): Feedback frontend configuration.
+        langfuse_client_factory (Callable[[], LangfuseClient] | None): Factory used to
+            create a Langfuse client per request; defaults to `LangfuseClient`. Each
+            open feedback page gets its own client instead of sharing one app-global
+            instance across all sessions.
+    """
+    client_factory = langfuse_client_factory or LangfuseClient
     expected_access_key = settings.feedback.salt.get_secret_value() if settings.feedback.salt else None
     score_name = settings.feedback.score_name
     allowed_tags = settings.feedback.tags
@@ -228,7 +247,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
     def load_feedback(request: gr.Request | None = None):
         input_text, output_text, used_documents, result = _load_feedback_trace(
             request=request,
-            lf=lf,
+            lf_factory=client_factory,
             expected_access_key=expected_access_key,
             score_name=score_name,
             translations=translations,
@@ -246,7 +265,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
     ) -> str:
         return _submit_feedback(
             request=request,
-            lf=lf,
+            lf_factory=client_factory,
             expected_access_key=expected_access_key,
             score_name=score_name,
             thumbs=thumbs,
@@ -333,6 +352,7 @@ def build_feedback_frontend(settings: FrontendSettings) -> gr.Blocks:
         feedback_app.load(
             fn=load_feedback,
             outputs=[input_box, output_box, used_documents, feedback_page, error_page, error_message],
+            concurrency_limit=None,
         )
         # Thumbs up submission
         (
