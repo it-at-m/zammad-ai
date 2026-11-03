@@ -1,6 +1,7 @@
 """Langfuse client helpers for observability and prompt retrieval."""
 
 from logging import Logger
+from urllib.parse import quote
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -208,8 +209,10 @@ class LangfuseClient:
         goes through the SDK's configured HTTP client, which applies base URL,
         authentication, and timeout.
         """
+        if trace_id in {".", ".."}:
+            raise LangfuseError(f"Trace {trace_id} not found")
         response = self.langfuse.api._client_wrapper.httpx_client.request(
-            f"api/public/traces/{trace_id}",
+            f"api/public/traces/{quote(trace_id, safe='')}",
             method="GET",
             params={"fields": fields},
         )
@@ -223,7 +226,7 @@ class LangfuseClient:
     def has_score(self, trace_id: str, score_name: str) -> bool:
         """Return True if a score with the given name already exists on the trace."""
         try:
-            response = self.langfuse.api.scores.get_many(trace_id=trace_id, limit=100)
+            response = self.langfuse.api.scores.get_many(trace_id=trace_id, name=score_name, limit=1)
             return any(getattr(score, "name", None) == score_name for score in response.data)
         except Exception as e:
             logger.warning("Failed to check existing scores on trace.", exc_info=True)

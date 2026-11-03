@@ -151,6 +151,35 @@ def test_get_trace_io_raises_langfuse_error_for_server_errors() -> None:
         client.get_trace_io(trace_id="trace-123")
 
 
+def test_get_trace_io_treats_trace_id_as_single_path_segment() -> None:
+    """Reserved path characters are encoded and dot segments are rejected."""
+    requested_paths: list[str] = []
+
+    class DummyHttpClient:
+        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
+            requested_paths.append(path)
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"input": "Eine Anfrage", "output": "Eine statische Antwort"},
+            )
+
+    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
+    setattr(
+        client,
+        "langfuse",
+        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
+    )
+
+    client.get_trace_io(trace_id="a/b?x")
+    assert requested_paths == ["api/public/traces/a%2Fb%3Fx"]
+
+    with pytest.raises(LangfuseError):
+        client.get_trace_io(trace_id=".")
+    with pytest.raises(LangfuseError):
+        client.get_trace_io(trace_id="..")
+    assert len(requested_paths) == 1
+
+
 def test_has_score_uses_v5_scores_api() -> None:
     """has_score checks the configured score name via the v5 scores list endpoint."""
 
@@ -158,9 +187,10 @@ def test_has_score_uses_v5_scores_api() -> None:
         name = "user-thumbs"
 
     class DummyScoresAPI:
-        def get_many(self, *, trace_id: str, limit: int):
+        def get_many(self, *, trace_id: str, name: str, limit: int):
             assert trace_id == "trace-123"
-            assert limit == 100
+            assert isinstance(name, str)
+            assert limit == 1
             return SimpleNamespace(data=[DummyScore()])
 
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
@@ -174,7 +204,7 @@ def test_has_score_raises_langfuse_error_when_lookup_fails() -> None:
     """Score lookup failures surface as LangfuseError so the UI fails closed."""
 
     class DummyScoresAPI:
-        def get_many(self, *, trace_id: str, limit: int):
+        def get_many(self, *, trace_id: str, name: str, limit: int):
             raise RuntimeError("langfuse unreachable")
 
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
@@ -360,6 +390,30 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
 
     assert input_text == ""
     assert output_text == ""
+    assert status == "Fehler beim Laden des Traces"
+
+
+def test_load_feedback_trace_returns_load_error_when_client_creation_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Fail closed when the Langfuse client cannot be constructed."""
+
+    def failing_factory() -> LangfuseClient:
+        raise RuntimeError("langfuse unreachable")
+
+    request = _make_request({"trace_id": "trace-123", "key": "expected-key"})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=failing_factory,
+        expected_access_key="secret-salt",
+        score_name="user-thumbs",
+        translations=german_translations,
+    )
+
+    assert input_text == ""
+    assert output_text == ""
+    assert used_documents == ""
     assert status == "Fehler beim Laden des Traces"
 
 
@@ -549,6 +603,31 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
 
     assert result == "Fehler beim Speichern der Bewertung"
     assert client.evaluation_attached is False
+
+
+def test_submit_feedback_returns_save_error_when_client_creation_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Do not attach feedback when the Langfuse client cannot be constructed."""
+
+    def failing_factory() -> LangfuseClient:
+        raise RuntimeError("langfuse unreachable")
+
+    salt = "secret-salt"
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
+        lf_factory=failing_factory,
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs="up",
+        comment="valid comment",
+        user_name="AB",
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+    )
+
+    assert result == "Fehler beim Speichern der Bewertung"
 
 
 def test_submit_feedback_accepts_current_helper_signature(german_translations: dict[str, str]) -> None:

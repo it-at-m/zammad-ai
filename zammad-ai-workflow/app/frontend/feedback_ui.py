@@ -112,7 +112,11 @@ def _load_feedback_trace(
     assert trace_id is not None
     assert provided_key is not None
 
-    lf = lf_factory()
+    try:
+        lf = lf_factory()
+    except Exception:
+        logger.warning("Failed to create Langfuse client", exc_info=True)
+        return "", "", "", translations["error.trace_load_failed"]
 
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
@@ -176,10 +180,9 @@ def _submit_feedback(
     if not submission.comment:
         raise gr.Error(translations["error.feedback_comment_required"])
 
-    lf = lf_factory()
-
     # Load IO to compute expected token
     try:
+        lf = lf_factory()
         inp, out, _ = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
