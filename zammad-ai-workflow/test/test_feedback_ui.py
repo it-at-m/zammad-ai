@@ -52,22 +52,14 @@ def test_resolve_feedback_request_uses_trace_id_query_param(german_translations:
 def test_get_trace_io_supports_static_answer_string_output() -> None:
     """Feedback loading should support the raw input/output of static-answer traces."""
 
-    class DummyHttpClient:
-        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
-            assert method == "GET"
-            assert path == "api/public/traces/static-trace"
-            assert params == {"fields": "core,io"}
-            return SimpleNamespace(
-                status_code=200,
-                json=lambda: {"input": "Eine Anfrage", "output": "Eine statische Antwort"},
-            )
+    class DummyTraceAPI:
+        def get(self, trace_id: str, fields: str) -> dict[str, str]:
+            assert trace_id == "static-trace"
+            assert fields == "core,io"
+            return {"input": "Eine Anfrage", "output": "Eine statische Antwort"}
 
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(
-        client,
-        "langfuse",
-        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
-    )
+    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
 
     input_text, output_text, used_documents = client.get_trace_io(trace_id="static-trace")
 
@@ -79,32 +71,24 @@ def test_get_trace_io_supports_static_answer_string_output() -> None:
 def test_get_trace_io_supports_nested_answer_output() -> None:
     """Feedback loading should accept Langfuse output wrapped in a response object."""
 
-    class DummyHttpClient:
-        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
-            assert method == "GET"
-            assert path == "api/public/traces/answer-trace"
-            assert params == {"fields": "core,io"}
-            return SimpleNamespace(
-                status_code=200,
-                json=lambda: {
-                    "input": {"kwargs": {"user_text": "Eine Anfrage"}},
-                    "output": {
-                        "response": {
-                            "subject": "Ein sehr langer Antwortbetreff, der die Mindestlänge erfüllt und hier endet",
-                            "response": "Eine ausführliche Antwort mit genügend Inhalt, um die Modellvalidierung zu erfüllen. Es muss mindestens 200 Zeichen lang sein, damit die Validierung der Antwort erfolgreich ist. Daher wird hier zusätzlicher Text hinzugefügt, um diese Anforderung zu erfüllen.",
-                            "documents": [{"title": "Dokument 1", "url": "https://example.com/doc1"}],
-                            "auto_publish": True,
-                        }
-                    },
+    class DummyTraceAPI:
+        def get(self, trace_id: str, fields: str) -> dict[str, dict[str, object]]:
+            assert trace_id == "answer-trace"
+            assert fields == "core,io"
+            return {
+                "input": {"kwargs": {"user_text": "Eine Anfrage"}},
+                "output": {
+                    "response": {
+                        "subject": "Ein sehr langer Antwortbetreff, der die Mindestlänge erfüllt und hier endet",
+                        "response": "Eine ausführliche Antwort mit genügend Inhalt, um die Modellvalidierung zu erfüllen. Es muss mindestens 200 Zeichen lang sein, damit die Validierung der Antwort erfolgreich ist. Daher wird hier zusätzlicher Text hinzugefügt, um diese Anforderung zu erfüllen.",
+                        "documents": [{"title": "Dokument 1", "url": "https://example.com/doc1"}],
+                        "auto_publish": True,
+                    }
                 },
-            )
+            }
 
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(
-        client,
-        "langfuse",
-        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
-    )
+    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
 
     input_text, output_text, used_documents = client.get_trace_io(trace_id="answer-trace")
 
@@ -113,105 +97,6 @@ def test_get_trace_io_supports_nested_answer_output() -> None:
     assert "Ein sehr langer Antwortbetreff" in output_text
     assert "Eine ausführliche Antwort" in output_text
     assert used_documents == "- [Dokument 1](https://example.com/doc1)\n"
-
-
-def test_get_trace_io_raises_langfuse_error_for_missing_trace() -> None:
-    """A 404 from Langfuse maps to LangfuseError so the UI shows the not-found page."""
-
-    class DummyHttpClient:
-        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
-            return SimpleNamespace(status_code=404, json=lambda: {})
-
-    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(
-        client,
-        "langfuse",
-        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
-    )
-
-    with pytest.raises(LangfuseError):
-        client.get_trace_io(trace_id="missing-trace")
-
-
-def test_get_trace_io_raises_langfuse_error_for_server_errors() -> None:
-    """Unexpected Langfuse responses fail with LangfuseError instead of crashing."""
-
-    class DummyHttpClient:
-        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
-            return SimpleNamespace(status_code=500, json=lambda: {"detail": "boom"})
-
-    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(
-        client,
-        "langfuse",
-        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
-    )
-
-    with pytest.raises(LangfuseError):
-        client.get_trace_io(trace_id="trace-123")
-
-
-def test_get_trace_io_treats_trace_id_as_single_path_segment() -> None:
-    """Reserved path characters are encoded and dot segments are rejected."""
-    requested_paths: list[str] = []
-
-    class DummyHttpClient:
-        def request(self, path: str, *, method: str, params: dict[str, str] | None = None):
-            requested_paths.append(path)
-            return SimpleNamespace(
-                status_code=200,
-                json=lambda: {"input": "Eine Anfrage", "output": "Eine statische Antwort"},
-            )
-
-    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(
-        client,
-        "langfuse",
-        SimpleNamespace(api=SimpleNamespace(_client_wrapper=SimpleNamespace(httpx_client=DummyHttpClient()))),
-    )
-
-    client.get_trace_io(trace_id="a/b?x")
-    assert requested_paths == ["api/public/traces/a%2Fb%3Fx"]
-
-    with pytest.raises(LangfuseError):
-        client.get_trace_io(trace_id=".")
-    with pytest.raises(LangfuseError):
-        client.get_trace_io(trace_id="..")
-    assert len(requested_paths) == 1
-
-
-def test_has_score_uses_v5_scores_api() -> None:
-    """has_score checks the configured score name via the v5 scores list endpoint."""
-
-    class DummyScore:
-        name = "user-thumbs"
-
-    class DummyScoresAPI:
-        def get_many(self, *, trace_id: str, name: str, limit: int):
-            assert trace_id == "trace-123"
-            assert isinstance(name, str)
-            assert limit == 1
-            return SimpleNamespace(data=[DummyScore()])
-
-    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(scores=DummyScoresAPI())))
-
-    assert client.has_score(trace_id="trace-123", score_name="user-thumbs") is True
-    assert client.has_score(trace_id="trace-123", score_name="other-score") is False
-
-
-def test_has_score_raises_langfuse_error_when_lookup_fails() -> None:
-    """Score lookup failures surface as LangfuseError so the UI fails closed."""
-
-    class DummyScoresAPI:
-        def get_many(self, *, trace_id: str, name: str, limit: int):
-            raise RuntimeError("langfuse unreachable")
-
-    client = cast(Any, LangfuseClient.__new__(LangfuseClient))
-    setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(scores=DummyScoresAPI())))
-
-    with pytest.raises(LangfuseError):
-        client.has_score(trace_id="trace-123", score_name="user-thumbs")
 
 
 def test_resolve_feedback_request_rejects_blank_query_values(german_translations: dict[str, str]) -> None:

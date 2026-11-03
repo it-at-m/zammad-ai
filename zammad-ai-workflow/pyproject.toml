@@ -27,7 +27,7 @@ dependencies = [
     "langchain-qdrant==1.1.0",
     "langchain==1.4.7",
     "langchain-anthropic==1.7.7",
-    "langfuse==5.1.0",
+    "langfuse==4.18.0",
     "anthropic==2.3.0",
     "markdownify==1.2.3",
     "openai==3.42.1",
