@@ -49,6 +49,12 @@ kafka:
   retry_delay_seconds: 300
   max_retry_attempts: 3
 
+  # Retries for moving a ticket back to its original group after processing.
+  # Waits group_restore_retry_delay_seconds (doubled per attempt) between attempts.
+  # Keep the total wait well below max_poll_interval_ms.
+  group_restore_retry_attempts: 2
+  group_restore_retry_delay_seconds: 5.0
+
   max_workers: 5 # Maximum number of concurrent workers for processing events
 
   # Security: choose one schema and set the discriminator `type` to `env` or `file`.
@@ -76,6 +82,8 @@ Use double underscores for nesting. Important keys include:
 - `ZAMMAD_AI_KAFKA__RETRY_TOPIC`
 - `ZAMMAD_AI_KAFKA__RETRY_DELAY_SECONDS`
 - `ZAMMAD_AI_KAFKA__MAX_RETRY_ATTEMPTS`
+- `ZAMMAD_AI_KAFKA__GROUP_RESTORE_RETRY_ATTEMPTS`
+- `ZAMMAD_AI_KAFKA__GROUP_RESTORE_RETRY_DELAY_SECONDS`
 - `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_REQUEST_TYPES`
 - `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_ACTION_TYPES`
 - `ZAMMAD_AI_KAFKA__SECURITY__CA_FILE_BASE64`
@@ -109,3 +117,7 @@ When using PKCS#12, the broker security layer decodes the secret in-memory, conv
   - second retry: base delay times 2
   - third retry: base delay times 4
 - Retrying stops after `kafka.max_retry_attempts` completed retries, at which point the event is acknowledged and dropped.
+- Moving a ticket back to its original group is retried in place before the event is handed to the retry topic:
+  `kafka.group_restore_retry_attempts` additional attempts with `kafka.group_restore_retry_delay_seconds` base delay,
+  doubled after each failed attempt (defaults: wait 5s, then 10s). This keeps transient Zammad connection errors from
+  sending fully processed events to the retry topic.

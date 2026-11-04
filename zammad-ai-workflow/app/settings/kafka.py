@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveInt, model_validator
+from pydantic import BaseModel, Field, FilePath, NonNegativeInt, PositiveFloat, PositiveInt, model_validator
 
 
 class KafkaSettings(BaseModel):
@@ -37,6 +37,22 @@ class KafkaSettings(BaseModel):
     max_retry_attempts: NonNegativeInt = Field(
         description="Maximum number of retry attempts after the initial processing attempt.",
         default=3,
+    )
+
+    group_restore_retry_attempts: NonNegativeInt = Field(
+        description=(
+            "Additional attempts to move a ticket back to its original group before the event is "
+            "handed to the retry topic. Keep the total wait well below max_poll_interval_ms."
+        ),
+        default=2,
+    )
+
+    group_restore_retry_delay_seconds: PositiveFloat = Field(
+        description=(
+            "Base delay in seconds between group-restore attempts; doubled after each failed attempt "
+            "(defaults wait 5s, then 10s)."
+        ),
+        default=5.0,
     )
 
     client_id: str = Field(

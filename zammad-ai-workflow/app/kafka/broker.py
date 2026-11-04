@@ -283,6 +283,8 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                             group_id=original_group_id,
                             handler_stage="restore_ticket_group",
                             log_message="Moved ticket back to original group",
+                            retry_attempts=settings.kafka.group_restore_retry_attempts,
+                            retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
                         )
             except AckMessage:
                 raise
@@ -362,6 +364,8 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                             group_id=parsed_original_group_id,
                             handler_stage="restore_ticket_group",
                             log_message="Moved ticket back to original group",
+                            retry_attempts=settings.kafka.group_restore_retry_attempts,
+                            retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
                         )
             except AckMessage:
                 raise
