@@ -67,7 +67,7 @@ Request:
 Response fields:
 
 - `response`
-- `documents` as `[{ "title": "...", "url": "..." }]`
+- `documents` as `[{ "title": "...", "id": 42, "url": "..." }]` where `id` is the knowledge base article ID (if applicable) and `url` is the public link. Knowledge base URLs are crafted server-side from the article ID; they are never exposed to the agent.
 - `auto_publish`
 
 ## Example
