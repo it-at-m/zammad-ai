@@ -49,6 +49,7 @@ async def _process_ticket_event(
     group_state: dict[str, int | str | None],
     record_processed_event: bool = False,
     allow_in_ai_group: bool = False,
+    allow_no_answer_internal_note: bool = False,
 ) -> None:
     """Parse and process a Kafka event."""
     if isinstance(event, Event):
@@ -139,6 +140,7 @@ async def _process_ticket_event(
         ai_ticket_author=settings.zammad.ai_ticket_author,
         duplicate_detection_enabled=settings.zammad.duplicate_detection_enabled,
         allow_in_ai_group=allow_in_ai_group,
+        allow_no_answer_internal_note=allow_no_answer_internal_note,
     )
 
     if (
@@ -194,6 +196,7 @@ async def _process_ticket_event(
         original_group_id=original_group_id,
         original_group_name=original_group_name,
         allow_in_ai_group=allow_in_ai_group,
+        allow_no_answer_internal_note=allow_no_answer_internal_note,
     )
 
 
@@ -342,6 +345,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     group_state=group_state,
                     record_processed_event=False,
                     allow_in_ai_group=True,
+                    allow_no_answer_internal_note=True,
                 )
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
