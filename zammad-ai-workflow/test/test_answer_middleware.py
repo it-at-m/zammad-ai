@@ -4,12 +4,17 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from langchain.messages import HumanMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables import RunnableLambda
 
-from app.answer.middleware import KnowledgebaseQuery, _format_answer, build_knowledgebase_middleware
+from app.answer.middleware import (
+    KnowledgebaseQuery,
+    _format_answer,
+    build_context_trimming_middleware,
+    build_knowledgebase_middleware,
+)
 from app.models.answer import AnswerCandidate
 from app.settings.answer import MultiQuerySettings
 
@@ -186,7 +191,9 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
         def __init__(self) -> None:
             self.last_langfuse_prompt: object | None = None
 
-        def build_config(self, session_id: str | None = None, langfuse_prompt: object | None = None) -> dict[str, object]:
+        def build_config(
+            self, session_id: str | None = None, langfuse_prompt: object | None = None
+        ) -> dict[str, object]:
             self.last_langfuse_prompt = langfuse_prompt
             return {"session_id": session_id}
 
@@ -229,7 +236,7 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
 
         def __or__(self, other: RunnableLambda) -> RunnableLambda:
             async def _ainvoke(prompt_input: object, config: object | None = None) -> AnswerCandidate:
-                return await other.ainvoke(prompt_input, config=config) # ty: ignore
+                return await other.ainvoke(prompt_input, config=config)  # ty: ignore
 
             return RunnableLambda(_ainvoke)
 
@@ -267,3 +274,105 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
     assert cast(dict[str, object], config["configurable"])["session_id"] == "session-id"
     assert langfuse_client.last_langfuse_prompt is None
     assert result.response.startswith("Formatierte Antwort fuer den Test")
+
+
+def _tool_call(call_id: str, query: str) -> dict[str, object]:
+    """Build a minimal tool call payload for AI messages."""
+    return {"name": "search_knowledgebase", "args": {"query": query}, "id": call_id, "type": "tool_call"}
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_noop_within_budget() -> None:
+    """Messages within the budget should be left unchanged."""
+    middleware: Any = build_context_trimming_middleware(context_window_tokens=100000, reserved_output_tokens=100)
+    state = {
+        "messages": [
+            SystemMessage(content="Knowledge-base context"),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="Hier ist die Antwort."),
+        ]
+    }
+
+    assert await middleware.abefore_model(state, None) is None
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_drops_oldest_tool_exchanges() -> None:
+    """The oldest tool exchanges should be dropped first while system and human messages are preserved."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1500,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    long_result = "x" * 3000
+    state = {
+        "messages": [
+            SystemMessage(content="Knowledge-base context"),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content=long_result, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage")]),
+            ToolMessage(content=long_result, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    updates = result["messages"]
+    assert isinstance(updates[0], RemoveMessage)
+    kept = updates[1:]
+    assert isinstance(kept[0], SystemMessage)
+    assert kept[1].content == "Ich brauche einen Personalausweis."
+    assert isinstance(kept[2], AIMessage)
+    assert kept[2].tool_calls[0]["id"] == "call_2"
+    assert isinstance(kept[3], ToolMessage)
+    assert kept[3].tool_call_id == "call_2"
+    assert kept[4].content == "Folgefrage"
+    assert len(kept) == 5
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_returns_none_when_budget_cannot_be_met() -> None:
+    """If protected messages alone exceed the budget, trimming should leave the state unchanged."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1000,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    state = {
+        "messages": [
+            SystemMessage(content="y" * 6000),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="x" * 3000, tool_call_id="call_1"),
+        ]
+    }
+
+    assert await middleware.abefore_model(state, None) is None
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_truncates_oversized_kb_context() -> None:
+    """An oversized KB system message should be truncated instead of bypassing the guard."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1000,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    state = {
+        "messages": [
+            SystemMessage(content="Knowledge-base context\n\n" + "x" * 10000),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 2
+    assert isinstance(kept[0], SystemMessage)
+    assert len(kept[0].content) < 10000
+    assert "truncated" in kept[0].content
