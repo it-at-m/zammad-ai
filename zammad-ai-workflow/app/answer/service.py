@@ -292,9 +292,14 @@ class AnswerService:
         """
         knowledge_base_id = self.settings.zammad.knowledge_base_id
         if not knowledge_base_id:
+            if any(document.id for document in documents):
+                logger.warning(
+                    "Agent cited knowledge base article IDs but 'zammad.knowledge_base_id' is not"
+                    " configured; no document URLs could be crafted."
+                )
             return
         for document in documents:
-            if document.id is not None:
+            if document.id:
                 document.url = (
                     f"{self.settings.zammad.base_url}"
                     f"#knowledge_base/{knowledge_base_id}/locale/de-de/answer/{document.id}"

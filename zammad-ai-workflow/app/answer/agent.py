@@ -131,7 +131,7 @@ async def search_knowledgebase(
                     KBDocument(
                         title=doc.metadata.get("answer_title", "").strip(),
                         body=doc.metadata.get("answer_body", "").replace("\n", " ").strip(),
-                        id=doc.metadata.get("answer_id", 0),
+                        id=doc.metadata.get("answer_id"),
                     ),
                     score,
                 )
