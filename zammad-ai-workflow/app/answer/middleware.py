@@ -225,7 +225,9 @@ def _truncate_kb_context(messages: list[Any], budget_tokens: int) -> list[Any]:
         replacement = original if len(original) <= max_chars else original[: max(0, max_chars - len(suffix))] + suffix
 
     result = list(messages)
-    result[kb_indices[0]] = SystemMessage(content=replacement)
+    original = messages[kb_indices[0]]
+    if replacement != original.content:
+        result[kb_indices[0]] = SystemMessage(content=replacement, id=original.id)
     for index in reversed(kb_indices[1:]):
         del result[index]
     return result
@@ -288,14 +290,16 @@ def build_context_trimming_middleware(
         reserved_output_tokens (int): Tokens reserved for the model response (max_tokens).
         overhead_tokens (int): Reserve for the agent prompt, tools, and tokenization overhead.
     """
+    budget = context_window_tokens - reserved_output_tokens - overhead_tokens
+    if budget <= 0:
+        raise ValueError(
+            "Context budget must be positive, got "
+            f"{context_window_tokens} - {reserved_output_tokens} - {overhead_tokens} = {budget}."
+        )
 
     @before_model
     async def context_trimming_middleware(state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
         messages = list(state.get("messages", []))
-        budget = context_window_tokens - reserved_output_tokens - overhead_tokens
-        if budget <= 0:
-            logger.warning("Context budget is non-positive; skipping message trimming.")
-            return None
 
         context_trimmed = _truncate_kb_context(messages, budget)
         trimmed = _trim_messages_to_budget(context_trimmed, budget)

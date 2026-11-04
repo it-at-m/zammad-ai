@@ -297,6 +297,27 @@ async def test_context_trimming_middleware_noop_within_budget() -> None:
 
 
 @pytest.mark.asyncio
+async def test_context_trimming_middleware_noop_keeps_identified_kb_message() -> None:
+    """A KB message with an explicit id should not be replaced when no truncation is needed."""
+    middleware: Any = build_context_trimming_middleware(context_window_tokens=100000, reserved_output_tokens=100)
+    state = {
+        "messages": [
+            SystemMessage(content="Knowledge-base context", id="kb-context-1"),
+            HumanMessage(content="Ich brauche einen Personalausweis.", id="human-1"),
+            AIMessage(content="Hier ist die Antwort.", id="ai-1"),
+        ]
+    }
+
+    assert await middleware.abefore_model(state, None) is None
+
+
+def test_context_trimming_middleware_rejects_non_positive_budget() -> None:
+    """A non-positive context budget should fail fast instead of skipping trimming."""
+    with pytest.raises(ValueError, match="Context budget must be positive"):
+        build_context_trimming_middleware(context_window_tokens=100, reserved_output_tokens=200, overhead_tokens=8192)
+
+
+@pytest.mark.asyncio
 async def test_context_trimming_middleware_drops_oldest_tool_exchanges() -> None:
     """The oldest tool exchanges should be dropped first while system and human messages are preserved."""
     middleware: Any = build_context_trimming_middleware(
