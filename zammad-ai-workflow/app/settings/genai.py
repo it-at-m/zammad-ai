@@ -21,6 +21,17 @@ class BaseGenAISettings(BaseModel):
         description="Maximum number of tokens to request from the LLM SDK",
         default=8192,
     )
+    context_window_tokens: PositiveInt = Field(
+        description=(
+            "Maximum context window of the GenAI model in tokens. The answer agent trims its "
+            "conversation history to stay within this window minus the max_tokens output reserve."
+        ),
+        default=131072,
+    )
+    context_overhead_tokens: PositiveInt = Field(
+        description="Tokens reserved for the agent prompt, tool schemas, and tokenization overhead.",
+        default=8192,
+    )
     timeout: PositiveInt = Field(
         description="Request timeout in seconds for the LLM SDK",
         default=600,
