@@ -19,7 +19,7 @@ from app.utils.token import compute_feedback_token
 from app.zammad.api import ZammadAPIClient
 from app.zammad.eai import ZammadEAIClient
 from app.zammad.markers import NO_ANSWER_NOTE_SUBJECT
-from app.zammad.processing import ensure_ticket_not_already_processed
+from app.zammad.processing import TicketProcessingState, ensure_ticket_not_already_processed
 
 
 class ActionService:
@@ -51,6 +51,7 @@ class ActionService:
         original_group_id: int | None = None,
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
+        allow_no_answer_internal_note: bool = False,
     ) -> None:
         """Run the configured action for a ticket and publish or draft the answer."""
         effective_session_id: str | None = session_id or triage.session_id
@@ -63,11 +64,13 @@ class ActionService:
             if original_group_id is None:
                 await self._ensure_ticket_not_already_processed(
                     ticket_id,
+                    allow_no_answer_internal_note=allow_no_answer_internal_note,
                     allow_in_ai_group=allow_in_ai_group,
                 )
             else:
                 await self._ensure_ticket_not_already_processed(
                     ticket_id,
+                    allow_no_answer_internal_note=allow_no_answer_internal_note,
                     original_group_id=original_group_id,
                     original_group_name=original_group_name,
                     allow_in_ai_group=allow_in_ai_group,
@@ -96,6 +99,7 @@ class ActionService:
                         action=action,
                         reason=f"{reason}\n\nNo answer possible. Explanation:\n{response.reasoning}",
                         allow_in_ai_group=allow_in_ai_group,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                     )
                 else:
                     await self._post_no_action_internal_note(
@@ -106,6 +110,7 @@ class ActionService:
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
                         allow_in_ai_group=allow_in_ai_group,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                     )
                 if self.settings.frontend.feedback.post_internal_note:
                     feedback_trace_id = self._create_feedback_trace(
@@ -120,6 +125,7 @@ class ActionService:
                             response=response,
                             trace_id=feedback_trace_id,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
                     else:
                         await self._post_feedback_internal_note(
@@ -130,6 +136,7 @@ class ActionService:
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
                 record_kafka_ticket_outcome(category=category, action_type=triage.action.type, outcome="manual")
             elif triage.action.type == ActionTypes.NoAction:
@@ -140,11 +147,13 @@ class ActionService:
                 if original_group_id is None:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                         allow_in_ai_group=allow_in_ai_group,
                     )
                 else:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
                         allow_in_ai_group=allow_in_ai_group,
@@ -176,11 +185,13 @@ class ActionService:
                 if original_group_id is None:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                         allow_in_ai_group=allow_in_ai_group,
                     )
                 else:
                     await self._ensure_ticket_not_already_processed(
                         ticket_id,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
                         allow_in_ai_group=allow_in_ai_group,
@@ -211,6 +222,7 @@ class ActionService:
                             response=response,
                             trace_id=feedback_trace_id,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
                     else:
                         await self._post_feedback_internal_note(
@@ -221,6 +233,7 @@ class ActionService:
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
         except GuardrailBlockedError as e:
             blocked_reasoning = (
@@ -236,6 +249,7 @@ class ActionService:
                         action=triage.action.name,
                         reason=f"{triage.reasoning}\n\n{blocked_reasoning}\n{e}",
                         allow_in_ai_group=allow_in_ai_group,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                     )
                 else:
                     await self._post_no_action_internal_note(
@@ -246,6 +260,7 @@ class ActionService:
                         original_group_id=original_group_id,
                         original_group_name=original_group_name,
                         allow_in_ai_group=allow_in_ai_group,
+                        allow_no_answer_internal_note=allow_no_answer_internal_note,
                     )
             except Exception:
                 self.logger.error("Failed to post internal note for blocked answer.", exc_info=True)
@@ -263,6 +278,7 @@ class ActionService:
                             response=blocked_response,
                             trace_id=feedback_trace_id,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
                     else:
                         await self._post_feedback_internal_note(
@@ -273,6 +289,7 @@ class ActionService:
                             original_group_id=original_group_id,
                             original_group_name=original_group_name,
                             allow_in_ai_group=allow_in_ai_group,
+                            allow_no_answer_internal_note=allow_no_answer_internal_note,
                         )
                 except Exception:
                     self.logger.error("Failed to post feedback note for blocked answer.", exc_info=True)
@@ -296,15 +313,20 @@ class ActionService:
         original_group_id: int | None = None,
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
+        allow_no_answer_internal_note: bool = False,
     ) -> None:
         if not self.settings.triage.no_action_internal_note:
             return
-        await self._ensure_ticket_not_already_processed(
+        state: TicketProcessingState | None = await self._ensure_ticket_not_already_processed(
             ticket_id,
+            allow_no_answer_internal_note=allow_no_answer_internal_note,
             original_group_id=original_group_id,
             original_group_name=original_group_name,
             allow_in_ai_group=allow_in_ai_group,
         )
+        if state is not None and state.has_no_answer_internal_note:
+            self.logger.info(f"No-answer internal note already present for ticket {ticket_id}; skipping duplicate note")
+            return
         text: str = _safe_format(
             template=self.settings.triage.no_action_internal_note,
             category=category,
@@ -350,10 +372,11 @@ class ActionService:
         original_group_id: int | None = None,
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
+        allow_no_answer_internal_note: bool = False,
     ) -> None:
         await self._ensure_ticket_not_already_processed(
             ticket_id,
-            allow_no_answer_internal_note=isinstance(response, NoAnswerPossible),
+            allow_no_answer_internal_note=allow_no_answer_internal_note or isinstance(response, NoAnswerPossible),
             original_group_id=original_group_id,
             original_group_name=original_group_name,
             allow_in_ai_group=allow_in_ai_group,
@@ -409,9 +432,9 @@ class ActionService:
         original_group_id: int | None = None,
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
-    ) -> None:
+    ) -> TicketProcessingState | None:
         if not self.settings.zammad.duplicate_detection_enabled:
-            return
+            return None
 
         ticket = await self.zammad_client.get_ticket(id=ticket_id)
         if (
@@ -422,7 +445,7 @@ class ActionService:
             and original_group_id != self.settings.zammad.ai_ticket_group_id
         ):
             ticket = ticket.model_copy(update={"group_id": original_group_id, "group_name": original_group_name})
-        ensure_ticket_not_already_processed(
+        return ensure_ticket_not_already_processed(
             ticket,
             ai_group_id=self.settings.zammad.ai_ticket_group_id,
             ai_group_name=self.settings.zammad.ai_ticket_group_name,
