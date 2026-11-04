@@ -47,6 +47,7 @@ def test_classify_exception_category_wrong_confidence_threshold() -> None:
 
 def test_classify_exception_commit_failed_error_is_dropped() -> None:
     """Kafka commit failures should not be retried as business processing errors."""
+
     class CommitFailedError(Exception):
         pass
 
