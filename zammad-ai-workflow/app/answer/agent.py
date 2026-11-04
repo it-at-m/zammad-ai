@@ -25,7 +25,7 @@ from .knowledgebase import (
     RetrieveDocumentsKBOutput,
     SearchQdrantKBInput,
 )
-from .middleware import build_knowledgebase_middleware
+from .middleware import build_context_trimming_middleware, build_knowledgebase_middleware
 
 logger: Logger = getLogger("zammad-ai.answer.agent")
 
@@ -252,7 +252,14 @@ def build_agent(
             tool_message_content="Response candidate has been generated!",
         ),
         context_schema=AgentContext,
-        middleware=[build_knowledgebase_middleware(chat_model)],
+        middleware=[
+            build_knowledgebase_middleware(chat_model),
+            build_context_trimming_middleware(
+                context_window_tokens=genai_settings.context_window_tokens,
+                reserved_output_tokens=genai_settings.max_tokens,
+                overhead_tokens=genai_settings.context_overhead_tokens,
+            ),
+        ],
     )
 
     return agent

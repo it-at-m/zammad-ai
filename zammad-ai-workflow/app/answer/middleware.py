@@ -1,4 +1,4 @@
-"""LangGraph middleware for injecting knowledge-base context."""
+"""LangGraph middleware for injecting knowledge-base context and trimming model context."""
 
 from __future__ import annotations
 
@@ -6,12 +6,14 @@ from collections.abc import Sequence
 from logging import Logger
 from typing import Any
 
-from langchain.agents.middleware import before_agent
-from langchain.messages import HumanMessage, SystemMessage
+from langchain.agents.middleware import before_agent, before_model
+from langchain.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langfuse import observe, propagate_attributes
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from pydantic import BaseModel, Field, ValidationError
 from qdrant_client.models import Filter, IsEmptyCondition, PayloadField
 
@@ -25,6 +27,12 @@ logger: Logger = getLogger("zammad-ai.answer.middleware")
 
 KB_CONTEXT_HEADER = "Knowledge-base context"
 KB_CONTEXT_EMPTY = "No relevant knowledge-base documents were found for this request."
+KB_CONTEXT_TRUNCATED = "[Knowledge-base context was truncated to fit the model context window.]"
+
+# Conservative chars-per-token heuristic for German text. Underestimating the
+# chars-per-token ratio overestimates the token count, which errs towards
+# trimming earlier instead of overflowing the model context window.
+CHARS_PER_TOKEN: float = 3.0
 
 
 class KnowledgebaseQuery(BaseModel):
@@ -102,7 +110,11 @@ async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: 
     multi_query_retriever = getattr(qdrant_client, "multi_query_retriever", None)
     vectorstore = getattr(qdrant_client, "vectorstore", None)
 
-    if isinstance(multi_query_settings, MultiQuerySettings) and multi_query_settings.enabled and vectorstore is not None:
+    if (
+        isinstance(multi_query_settings, MultiQuerySettings)
+        and multi_query_settings.enabled
+        and vectorstore is not None
+    ):
         queries = await _build_queries(query, multi_query_retriever, multi_query_settings)
         if len(queries) > 1:
             qdrant_settings = getattr(qdrant_client, "qdrant_settings", None)
@@ -166,6 +178,137 @@ def build_knowledgebase_middleware(query_model: BaseChatModel):
     return knowledgebase_middleware
 
 
+def _split_into_exchanges(messages: list[Any]) -> list[list[Any]]:
+    """Group messages into exchanges, keeping tool results attached to their tool calls."""
+    exchanges: list[list[Any]] = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        if isinstance(message, AIMessage) and message.tool_calls:
+            exchange = [message]
+            index += 1
+            while index < len(messages) and isinstance(messages[index], ToolMessage):
+                exchange.append(messages[index])
+                index += 1
+            exchanges.append(exchange)
+        else:
+            exchanges.append([message])
+            index += 1
+    return exchanges
+
+
+def _is_kb_context(message: Any) -> bool:
+    return (
+        isinstance(message, SystemMessage)
+        and isinstance(message.content, str)
+        and message.content.startswith(KB_CONTEXT_HEADER)
+    )
+
+
+def _truncate_kb_context(messages: list[Any], budget_tokens: int) -> list[Any]:
+    """Reduce the injected KB message to the space left by other messages."""
+    kb_indices = [index for index, message in enumerate(messages) if _is_kb_context(message)]
+    if not kb_indices:
+        return messages
+
+    non_kb_messages = [message for index, message in enumerate(messages) if index not in kb_indices]
+    available_tokens = budget_tokens - count_tokens_approximately(
+        non_kb_messages,
+        chars_per_token=CHARS_PER_TOKEN,
+    )
+    if available_tokens <= 0:
+        replacement = KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_TRUNCATED
+    else:
+        max_chars = int(available_tokens * CHARS_PER_TOKEN)
+        original = messages[kb_indices[0]].content
+        suffix = "\n\n" + KB_CONTEXT_TRUNCATED
+        replacement = original if len(original) <= max_chars else original[: max(0, max_chars - len(suffix))] + suffix
+
+    result = list(messages)
+    result[kb_indices[0]] = SystemMessage(content=replacement)
+    for index in reversed(kb_indices[1:]):
+        del result[index]
+    return result
+
+
+def _trim_messages_to_budget(messages: list[Any], budget_tokens: int) -> list[Any] | None:
+    """Drop old exchanges until the estimated token count fits the budget.
+
+    The latest human message and non-KB system messages are preserved. Tool
+    results are dropped together with their tool-call message so the sequence
+    stays valid. Returns None when no trimming is needed or protected messages
+    alone exceed the budget.
+    """
+    total = count_tokens_approximately(messages, chars_per_token=CHARS_PER_TOKEN)
+    if total <= budget_tokens:
+        return None
+
+    exchanges = _split_into_exchanges(messages)
+    latest_human_index = next(
+        (index for index in reversed(range(len(messages))) if isinstance(messages[index], HumanMessage)),
+        None,
+    )
+    exchange_ranges: list[tuple[int, range]] = []
+    message_index = 0
+    for index, exchange in enumerate(exchanges):
+        exchange_ranges.append((index, range(message_index, message_index + len(exchange))))
+        message_index += len(exchange)
+
+    for preserve_human_messages in (True, False):
+        for index, exchange_indices in exchange_ranges:
+            if total <= budget_tokens:
+                break
+            exchange = exchanges[index]
+            if not exchange or any(isinstance(message, SystemMessage) for message in exchange):
+                continue
+            if latest_human_index is not None and latest_human_index in exchange_indices:
+                continue
+            has_human_message = any(isinstance(message, HumanMessage) for message in exchange)
+            if preserve_human_messages and has_human_message:
+                continue
+            total -= count_tokens_approximately(exchange, chars_per_token=CHARS_PER_TOKEN)
+            exchanges[index] = []
+
+    kept = [message for exchange in exchanges for message in exchange]
+    if total > budget_tokens:
+        logger.warning("Cannot trim messages below the context budget after removing old conversation history.")
+        return None
+    return kept
+
+
+def build_context_trimming_middleware(
+    context_window_tokens: int,
+    reserved_output_tokens: int,
+    overhead_tokens: int = 8192,
+):
+    """Create middleware that keeps the agent conversation within the model context window.
+
+    Parameters:
+        context_window_tokens (int): Maximum context window of the model in tokens.
+        reserved_output_tokens (int): Tokens reserved for the model response (max_tokens).
+        overhead_tokens (int): Reserve for the agent prompt, tools, and tokenization overhead.
+    """
+
+    @before_model
+    async def context_trimming_middleware(state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+        messages = list(state.get("messages", []))
+        budget = context_window_tokens - reserved_output_tokens - overhead_tokens
+        if budget <= 0:
+            logger.warning("Context budget is non-positive; skipping message trimming.")
+            return None
+
+        context_trimmed = _truncate_kb_context(messages, budget)
+        trimmed = _trim_messages_to_budget(context_trimmed, budget)
+        if trimmed is None and context_trimmed == messages:
+            return None
+
+        result = context_trimmed if trimmed is None else trimmed
+        logger.warning(f"Trimmed answer context from {len(messages)} to {len(result)} messages.")
+        return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *result]}
+
+    return context_trimming_middleware
+
+
 @observe(as_type="span")
 async def _format_answer(
     chat_model: BaseChatModel,
@@ -186,9 +329,7 @@ async def _format_answer(
         prompt_template.metadata = {"langfuse_prompt": format_langfuse_prompt}
 
     config: RunnableConfig = (
-        langfuse_client.build_config(session_id=session_id)
-        if langfuse_client is not None
-        else RunnableConfig()
+        langfuse_client.build_config(session_id=session_id) if langfuse_client is not None else RunnableConfig()
     )
     structured_model = chat_model.with_structured_output(AnswerCandidate)
     chain = prompt_template | structured_model
