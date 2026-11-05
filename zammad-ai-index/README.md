@@ -104,7 +104,7 @@ Notes:
 
 ## Law Ingestion (Experimental)
 
-You can ingest legal texts (e.g., FeV) into the same Qdrant collection using the shared embeddings/Qdrant setup. Configure one or more laws in `config.yaml` under the `laws:` section (see `config.example.yaml`), then run:
+You can ingest legal texts (e.g., FeV) into a target's Qdrant collection using the shared embeddings/Qdrant setup. Configure one or more laws per target under `targets[].laws` (see `config.example.yaml`), then run:
 
 ```bash
 uv run python main.py
@@ -117,6 +117,36 @@ Notes:
 - Deterministic IDs are generated per paragraph chunk to upsert documents on subsequent runs.
 - A snapshot is created before writing; snapshot failure aborts the run.
 - `document_type` is either law or annex.
+
+## Indexing Targets
+
+What gets indexed is defined by the `targets:` list in `config.yaml` — one target per Qdrant collection. A deployment with a single usecase defines exactly one target; each target indexes one Zammad knowledge base (or a subset of categories) into its own collection during a single run:
+
+```yaml
+targets:
+  - name: default
+    qdrant:
+      collection_name: zammad-ai_default
+    zammad:
+      knowledge_base_id: 1
+  - name: permits
+    qdrant:
+      collection_name: zammad-ai_permits
+    zammad:
+      knowledge_base_id: 2
+      category_ids: [7]
+    laws:
+      - id: fev
+        name: Fahrerlaubnis-Verordnung
+        url: https://www.gesetze-im-internet.de/fev_2010/BJNR198000010.html
+```
+
+Notes:
+
+- At least one target is required; root-level `laws` are ignored — define laws per target.
+- Each target inherits all unspecified `qdrant` and `zammad` fields from the root configuration.
+- Every target must resolve to a `qdrant.collection_name` and a `zammad.knowledge_base_id`; target names and collection names must be unique.
+- A failing target does not stop the remaining targets; the job exits non-zero if any target failed.
 
 ## Qdrant Prerequisites
 
@@ -139,7 +169,8 @@ Key sections (see `config.example.yaml` for a full example):
 - `genai`: `sdk`, `chat_model`, `embedding_model`, `max_retries`
 - `qdrant`: `url`, `api_key`, `collection_name`, `vector_name`, `vector_dimension`, `timeout`, `retrieval_num_documents`
 - `zammad`: `type` (`api` or `eai`), `base_url`, `knowledge_base_id`, auth fields, optional RSS feed token/locale, and `document_parsing` (`mode`, `url`, `http_proxy_url`, `document_types`)
-- `laws` (optional): list of law sources with `id`, `name`, `url`, `chunk_size`, `chunk_overlap`
+- `laws`: defined per target under `targets[].laws` (`id`, `name`, `url`, `chunk_size`, `chunk_overlap`)
+- `targets` (required): list of indexing targets with `name`, `qdrant` overrides, `zammad` overrides, and `laws`; every target needs a `collection_name` and a `knowledge_base_id`
 - `mode`: `production`, `development`, or `unittest`
 - `langfuse_enabled`: enable or disable tracing/prompt lookup
 

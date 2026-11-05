@@ -54,7 +54,7 @@ genai:
   embedding_model: text-embedding-3-large
 
 # ---------------------------------------------------------------------------
-# Qdrant vector database
+# Qdrant vector database (shared connection settings)
 # ---------------------------------------------------------------------------
 # Secret: ZAMMAD_AI_QDRANT__API_KEY
 qdrant:
@@ -62,8 +62,6 @@ qdrant:
   url: http://localhost:6333
   # API key for Qdrant; always set in production.
   api_key: null
-  # Name of the Qdrant collection to store embeddings in.
-  collection_name: zammad-ai_default
   # Optional vector namespace within the collection.
   vector_name: null
   # Must match the output dimension of the configured embedding_model.
@@ -84,17 +82,32 @@ qdrant:
   snapshot_delta: 12
 
 # ---------------------------------------------------------------------------
-# Law ingestion (optional)
+# Indexing targets (required, one per Qdrant collection / usecase)
 # ---------------------------------------------------------------------------
-# Configure one or more laws to ingest into the same Qdrant collection.
-# When configured, run: `uv run python main.py`
-#
-# laws:
-#   - id: fev
-#     name: Fahrerlaubnis-Verordnung
-#     url: https://www.gesetze-im-internet.de/fev_2010/BJNR198000010.html
-#     chunk_size: 1200
-#     chunk_overlap: 200
+# Each target indexes one Zammad knowledge base (or a subset of categories)
+# into its own Qdrant collection during a single job run. Targets inherit all
+# unspecified qdrant and zammad fields from the root configuration above and
+# define their own laws. Every target must define a collection_name and a
+# knowledge_base_id; target names and collection names must be unique.
+targets:
+  - name: default
+    qdrant:
+      collection_name: zammad-ai_default
+    zammad:
+      knowledge_base_id: 1
+  # Additional targets, e.g. one per usecase:
+  # - name: permits
+  #   qdrant:
+  #     collection_name: zammad-ai_permits
+  #   zammad:
+  #     knowledge_base_id: 2
+  #     category_ids: [7]
+  #   laws:
+  #     - id: fev
+  #       name: Fahrerlaubnis-Verordnung
+  #       url: https://www.gesetze-im-internet.de/fev_2010/BJNR198000010.html
+  #       chunk_size: 1200
+  #       chunk_overlap: 200
 
 # ---------------------------------------------------------------------------
 # Zammad connection — choose exactly one type (api or eai).
@@ -106,8 +119,6 @@ zammad:
   type: api
   # Base URL of your Zammad instance.
   base_url: https://my-zammad.example.com
-  # ID of the knowledge base to index.
-  knowledge_base_id: 1
   # Optional list of category IDs to filter documents by. If empty, documents from all categories will be retrieved.
   category_ids: []
   # HTTP timeout in seconds for Zammad requests (minimum 5).
@@ -134,7 +145,6 @@ zammad:
 # zammad:
 #   type: eai
 #   base_url: https://my-zammad.example.com
-#   knowledge_base_id: 1
 #   category_ids: []
 #   timeout: 30
 #   max_retries: 3

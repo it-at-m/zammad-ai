@@ -49,7 +49,9 @@ class QdrantKBClient:
         """Initialize the client, embeddings, and vector store for the index job."""
         self.logger: Logger = getLogger("zammad-ai-index.qdrant")
 
-        self.collection_name: str = settings.qdrant.collection_name
+        collection_name: str | None = settings.qdrant.collection_name
+        assert collection_name is not None, "Target collection name must be resolved before constructing the client"
+        self.collection_name: str = collection_name
         self.settings: ZammadAIIndexSettings = settings
         self.qdrant_settings: QdrantSettings = settings.qdrant
         self.genai_settings: GenAISettings = settings.genai
@@ -63,15 +65,13 @@ class QdrantKBClient:
 
         # Check if collection exists and if there is data in it, else raise an Error
         try:
-            if not self.client.collection_exists(collection_name=self.qdrant_settings.collection_name):
-                self.logger.error(f"Qdrant collection '{self.qdrant_settings.collection_name}' does not exist.")
-                raise QdrantKBError(f"Qdrant collection '{self.qdrant_settings.collection_name}' does not exist.")
+            if not self.client.collection_exists(collection_name=self.collection_name):
+                self.logger.error(f"Qdrant collection '{self.collection_name}' does not exist.")
+                raise QdrantKBError(f"Qdrant collection '{self.collection_name}' does not exist.")
 
-            collection_info: CollectionInfo = self.client.get_collection(
-                collection_name=self.qdrant_settings.collection_name
-            )
+            collection_info: CollectionInfo = self.client.get_collection(collection_name=self.collection_name)
             if collection_info.points_count == 0:
-                self.logger.warning(f"Qdrant collection '{self.qdrant_settings.collection_name}' exists but is empty.")
+                self.logger.warning(f"Qdrant collection '{self.collection_name}' exists but is empty.")
 
         except ApiException as e:
             self.logger.error("Error checking Qdrant collection existence or retrieving collection info", exc_info=True)
@@ -217,7 +217,7 @@ class QdrantKBClient:
 
         if create_snapshot:
             new_snapshot: SnapshotDescription | None = self.client.create_snapshot(
-                collection_name=self.qdrant_settings.collection_name,
+                collection_name=self.collection_name,
                 wait=True,
             )
             if new_snapshot is None:

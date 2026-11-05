@@ -1,7 +1,8 @@
 """Top-level settings for the Zammad AI index job."""
 
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -17,6 +18,7 @@ from .index import IndexJobSettings
 from .law import LawConfig
 from .logging import LoggingSettings
 from .qdrant import QdrantSettings
+from .target import IndexTargetSettings
 from .zammad import ZammadAPISettings, ZammadEAISettings
 
 
@@ -79,9 +81,13 @@ class ZammadAIIndexSettings(BaseSettings):
         default_factory=lambda: QdrantSettings(),
     )
 
-    # Optional: additional external sources to ingest (e.g., laws)
-    laws: list[LawConfig] = Field(
-        description="List of law ingestion sources to process when using the dedicated law entry point.",
+    targets: list[IndexTargetSettings] = Field(
+        description=(
+            "Indexing targets, e.g. one per usecase. At least one target is required. Each target is "
+            "indexed into its own Qdrant collection, inherits unspecified qdrant and zammad fields from "
+            "the root configuration, and defines its own laws. Every target must resolve to a "
+            "collection_name and a knowledge_base_id."
+        ),
         default_factory=list,
     )
 
@@ -145,24 +151,66 @@ class ZammadAIIndexSettings(BaseSettings):
         return tuple(sources)
 
     @model_validator(mode="after")
-    def _validate_unique_law_ids(self) -> "ZammadAIIndexSettings":
-        """Ensure no duplicate law IDs are configured.
-
-        Raise a standard validation error (ValueError) if a law id appears more than once.
-        """
-        seen: set[str] = set()
-        duplicates: set[str] = set()
-        for law in self.laws or []:
-            lid = getattr(law, "id", None)
-            if lid is None:
-                continue
-            if lid in seen:
-                duplicates.add(lid)
-            else:
-                seen.add(lid)
+    def _validate_unique_target_names(self) -> "ZammadAIIndexSettings":
+        """Ensure no duplicate target names are configured."""
+        names = [target.name for target in self.targets]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
         if duplicates:
-            raise ValueError(f"Duplicate law ids in settings: {', '.join(sorted(duplicates))}")
+            raise ValueError(f"Duplicate target names in settings: {', '.join(duplicates)}")
         return self
+
+    def resolve_targets(self) -> list["ResolvedTarget"]:
+        """Resolve one effective settings object and law list per indexing target.
+
+        At least one target is required; root-level laws are ignored and must
+        be defined per target instead. Each target deep-merges its qdrant and
+        zammad overrides into the root configuration, so shared settings such
+        as the Qdrant URL or Zammad base URL stay configured once. Raises a
+        ValueError when a target is missing its collection or knowledge base,
+        or when two targets resolve to the same collection.
+        """
+        if not self.targets:
+            raise ValueError("At least one indexing target must be configured under 'targets'.")
+        resolved: list[ResolvedTarget] = []
+        collection_names: list[str] = []
+        for target in self.targets:
+            payload: dict[str, Any] = self.model_dump(mode="python", exclude={"targets"})
+            _deep_merge(payload, {"qdrant": target.qdrant, "zammad": target.zammad})
+            effective = ZammadAIIndexSettings.model_validate(payload)
+            collection_name = effective.qdrant.collection_name
+            knowledge_base_id = effective.zammad.knowledge_base_id
+            missing: list[str] = []
+            if collection_name is None:
+                missing.append("qdrant.collection_name")
+            if knowledge_base_id is None:
+                missing.append("zammad.knowledge_base_id")
+            if missing:
+                raise ValueError(f"Target '{target.name}' is missing: {', '.join(missing)}")
+            assert collection_name is not None and knowledge_base_id is not None
+            resolved.append(ResolvedTarget(name=target.name, settings=effective, laws=target.laws))
+            collection_names.append(collection_name)
+        duplicates = sorted({name for name in collection_names if collection_names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"Targets must resolve to unique Qdrant collections: {', '.join(duplicates)}")
+        return resolved
+
+
+@dataclass(frozen=True)
+class ResolvedTarget:
+    """One resolved indexing target with its effective settings and laws."""
+
+    name: str
+    settings: ZammadAIIndexSettings
+    laws: list[LawConfig]
+
+
+def _deep_merge(target: dict[str, Any], override: dict[str, Any]) -> None:
+    """Recursively merge the override mapping into the target mapping."""
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = value
 
 
 @lru_cache(maxsize=1)

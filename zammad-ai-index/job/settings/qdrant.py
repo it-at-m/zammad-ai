@@ -18,9 +18,9 @@ class QdrantSettings(BaseModel):
         default=None,
         examples=["sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],
     )
-    collection_name: str = Field(
-        description="Qdrant collection name",
-        default="zammad-ai_default",
+    collection_name: str | None = Field(
+        description="Qdrant collection name; defined per indexing target under 'targets' (optional shared default).",
+        default=None,
         examples=["zammad-ai_my-topic"],
     )
     vector_name: str = Field(
