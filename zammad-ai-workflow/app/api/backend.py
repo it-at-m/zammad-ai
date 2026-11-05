@@ -195,9 +195,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await app.state.answer_service.cleanup()
                 await app.state.action_service.cleanup()
                 await app.state.guardrail_service.close()
-            reset_guardrail_service()
         except CancelledError:
             logger.info("Cleanup cancelled during shutdown.")
+        finally:
+            reset_guardrail_service()
     except Exception as e:
         logger.error(
             f"Error during application lifespan management. Error type: {type(e).__name__}",
