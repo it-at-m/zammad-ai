@@ -102,7 +102,11 @@ async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: 
     multi_query_retriever = getattr(qdrant_client, "multi_query_retriever", None)
     vectorstore = getattr(qdrant_client, "vectorstore", None)
 
-    if isinstance(multi_query_settings, MultiQuerySettings) and multi_query_settings.enabled and vectorstore is not None:
+    if (
+        isinstance(multi_query_settings, MultiQuerySettings)
+        and multi_query_settings.enabled
+        and vectorstore is not None
+    ):
         queries = await _build_queries(query, multi_query_retriever, multi_query_settings)
         if len(queries) > 1:
             qdrant_settings = getattr(qdrant_client, "qdrant_settings", None)
@@ -186,9 +190,7 @@ async def _format_answer(
         prompt_template.metadata = {"langfuse_prompt": format_langfuse_prompt}
 
     config: RunnableConfig = (
-        langfuse_client.build_config(session_id=session_id)
-        if langfuse_client is not None
-        else RunnableConfig()
+        langfuse_client.build_config(session_id=session_id) if langfuse_client is not None else RunnableConfig()
     )
     structured_model = chat_model.with_structured_output(AnswerCandidate)
     chain = prompt_template | structured_model
