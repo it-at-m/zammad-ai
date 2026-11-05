@@ -1,4 +1,5 @@
-config.yaml
+*config*.yaml
 certs/
 data/
 huggingface_cache/
+config/usecases/*.yaml

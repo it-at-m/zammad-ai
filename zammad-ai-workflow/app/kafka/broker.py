@@ -16,9 +16,11 @@ from app.answer.service import AnswerService, get_answer_service
 from app.errors import KafkaPayloadError
 from app.guardrails.http_client import GuardrailService, get_guardrail_service
 from app.kafka.helper import (
+    USECASE_HEADER,
     _handle_processing_exception,
     _parse_original_group_id,
     _parse_retry_count,
+    _parse_usecase,
     _reschedule_retry_event,
     _restore_ticket_group,
     _safe_ticket_id,
@@ -30,6 +32,8 @@ from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
 from app.settings import ZammadAISettings
 from app.triage.triage import TriageService, get_triage_service
+from app.usecases.registry import UseCaseRegistry
+from app.usecases.resolver import UseCaseResolver
 from app.utils.logging import getLogger
 from app.utils.status import track_activity
 from app.zammad.base import BaseZammadClient, TicketNotFoundError, ZammadConnectionError, ZammadRetryableError
@@ -49,8 +53,20 @@ async def _process_ticket_event(
     group_state: dict[str, int | str | None],
     record_processed_event: bool = False,
     allow_in_ai_group: bool = False,
+    apply_event_type_filters: bool = True,
 ) -> None:
-    """Parse and process a Kafka event."""
+    """Parse and process a Kafka event.
+
+    Parameters:
+        settings (ZammadAISettings): Active settings for the event (root or usecase runtime settings).
+        triage_service (TriageService): Triage service used to categorize the ticket.
+        action_service (ActionService): Action service used to execute the triage result.
+        event (Event | dict[str, object]): Raw Kafka event payload.
+        group_state (dict[str, int | str | None]): Mutable state shared with the caller across processing steps.
+        record_processed_event (bool): Whether to increment the main-topic ingress metric.
+        allow_in_ai_group (bool): Whether tickets already located in the AI group may be processed.
+        apply_event_type_filters (bool): Whether to enforce the shared kafka.event_processing request/action filters. Usecase match routing already decides which events are processed, so the filters are skipped for usecase-routed events.
+    """
     if isinstance(event, Event):
         raw_request_type = event.request_type
         raw_action = event.action
@@ -79,7 +95,10 @@ async def _process_ticket_event(
         )
         raise AckMessage() from e
 
-    if parsed_event.request_type not in settings.kafka.event_processing.valid_request_types:
+    if (
+        apply_event_type_filters
+        and parsed_event.request_type not in settings.kafka.event_processing.valid_request_types
+    ):
         logger.info(
             "Skipping event with unsupported request type",
             extra={
@@ -91,7 +110,7 @@ async def _process_ticket_event(
         )
         raise AckMessage()
 
-    if parsed_event.action not in settings.kafka.event_processing.valid_action_types:
+    if apply_event_type_filters and parsed_event.action not in settings.kafka.event_processing.valid_action_types:
         logger.info(
             "Skipping event with unsupported action type",
             extra={
@@ -209,7 +228,7 @@ def _get_group_state_int(group_state: dict[str, int | str | None], key: str) -> 
     return value if isinstance(value, int) else None
 
 
-def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
+def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = None) -> tuple[KafkaRouter, Callable]:
     """Create and configure a KafkaRouter and its subscriber event handler for ticket triage.
 
     Parameters:
@@ -238,12 +257,64 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             ),
         ),
     )
-    guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
-    triage_service: TriageService = get_triage_service(settings=settings)
-    answer_service: AnswerService = get_answer_service(guardrail_service=guardrail_service, settings=settings)
-    action_service: ActionService = get_action_service(
-        settings=settings, guardrail_service=guardrail_service, answer_service=answer_service
-    )
+    multi_usecase = bool(settings.usecases)
+    if multi_usecase and registry is None:
+        registry = UseCaseRegistry(settings)
+    guardrail_service: GuardrailService | None = None
+    triage_service: TriageService | None = None
+    answer_service: AnswerService | None = None
+    action_service: ActionService | None = None
+    if not multi_usecase:
+        guardrail_service = get_guardrail_service(settings=settings.guardrails)
+        triage_service = get_triage_service(settings=settings)
+        answer_service = get_answer_service(guardrail_service=guardrail_service, settings=settings)
+        action_service = get_action_service(
+            settings=settings, guardrail_service=guardrail_service, answer_service=answer_service
+        )
+    resolver = UseCaseResolver(settings.usecases) if multi_usecase else None
+
+    def runtime_for_event(
+        event: Event | dict[str, object],
+    ) -> tuple[ZammadAISettings, TriageService, ActionService, str]:
+        if not multi_usecase or registry is None or resolver is None:
+            if triage_service is None or action_service is None:
+                raise KafkaPayloadError("Shared single-usecase services are not initialized")
+            return settings, triage_service, action_service, settings.usecase.name
+        try:
+            parsed = Event.model_validate(event)
+        except ValidationError as e:
+            raise KafkaPayloadError("Kafka event payload could not be resolved to a usecase") from e
+        definition = resolver.resolve_event(parsed)
+        if definition is None:
+            match settings.router.unmatched_policy:
+                case "skip":
+                    logger.info(
+                        "Skipping Kafka event that matched no configured usecase.",
+                        extra={
+                            "request_type": parsed.request_type,
+                            "action": parsed.action,
+                            "ticket_id": _safe_ticket_id(parsed.ticket),
+                        },
+                    )
+                    raise AckMessage()
+                case "fallback":
+                    if settings.router.fallback_usecase is None:
+                        raise KafkaPayloadError("No fallback usecase is configured")
+                    definition = next(
+                        (usecase for usecase in settings.usecases if usecase.name == settings.router.fallback_usecase),
+                        None,
+                    )
+                    if definition is None:
+                        raise KafkaPayloadError("Configured fallback usecase is not available")
+                case "error":
+                    raise KafkaPayloadError("Kafka event did not match a configured usecase")
+            if definition is None:
+                raise KafkaPayloadError("No usecase could be resolved for Kafka event")
+        runtime = registry.runtimes.get(definition.name)
+        if runtime is None:
+            raise KafkaPayloadError("Resolved Kafka usecase runtime is not available")
+        return runtime.settings, runtime.triage_service, runtime.action_service, definition.name
+
     broker = router.broker
 
     @router.subscriber(
@@ -257,14 +328,27 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         """Process a Kafka event from the main topic."""
         async with track_activity():
             group_state: dict[str, int | str | None] = {}
+            active_settings = settings
+            active_triage = triage_service
+            active_action = action_service
             try:
+                active_settings, active_triage, active_action, usecase = runtime_for_event(event)
+            except AckMessage:
+                raise
+            except KafkaPayloadError as e:
+                logger.error("Dropping Kafka event with an unresolvable usecase.", exc_info=True)
+                raise AckMessage() from e
+
+            try:
+                logger.debug("Resolved Kafka event usecase", extra={"usecase": usecase})
                 await _process_ticket_event(
-                    settings=settings,
-                    triage_service=triage_service,
-                    action_service=action_service,
+                    settings=active_settings,
+                    triage_service=active_triage,
+                    action_service=active_action,
                     event=event,
                     group_state=group_state,
                     record_processed_event=True,
+                    apply_event_type_filters=not multi_usecase,
                 )
                 original_group_id = _get_group_state_int(group_state, "original_group_id")
                 if original_group_id is not None:
@@ -275,7 +359,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     )
                     if ticket_id is not None:
                         await _restore_ticket_group(
-                            zammad_client=triage_service.zammad_client,
+                            zammad_client=active_triage.zammad_client,
                             ticket_id=ticket_id,
                             group_id=original_group_id,
                             handler_stage="restore_ticket_group",
@@ -284,15 +368,16 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
             except AckMessage:
                 raise
             except Exception as e:
+                assert active_settings.triage is not None
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)
                     if isinstance(event, Event)
                     else _safe_ticket_id(event.get("ticket")),
-                    category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+                    category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
                     broker=broker,
-                    settings=settings,
-                    zammad_client=triage_service.zammad_client,
+                    settings=active_settings,
+                    zammad_client=active_triage.zammad_client,
                     event=Event.model_validate(event) if not isinstance(event, Event) else event,
                     original_group_id=_get_group_state_int(group_state, "original_group_id"),
                     retry_count=0,
@@ -313,20 +398,51 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
         retry_after: object | None = Context("message.headers.retry_after"),
         original_group_id: object | None = Context("message.headers.original_group_id"),
         retry_count: object | None = Context("message.headers.retry_count"),
+        usecase_header: object | None = Context(f"message.headers.{USECASE_HEADER}"),
     ) -> None:
         """Process retryable Kafka events after waiting for their retry window."""
         async with track_activity():
             group_state: dict[str, int | str | None] = {}
+            active_settings = settings
+            active_triage = triage_service
+            active_action = action_service
+            if multi_usecase and registry is not None:
+                usecase_name = _parse_usecase(usecase_header)
+                runtime = registry.runtimes.get(usecase_name) if usecase_name is not None else None
+                if runtime is None:
+                    if usecase_name is None:
+                        logger.warning("Kafka retry is missing a usecase header; resolving from its payload.")
+                    else:
+                        logger.warning(
+                            "Kafka retry has an unknown usecase header; resolving from its payload.",
+                            extra={"usecase": usecase_name},
+                        )
+                    try:
+                        active_settings, active_triage, active_action, _ = runtime_for_event(event)
+                    except KafkaPayloadError as e:
+                        logger.error("Dropping Kafka retry with an unresolved payload.", exc_info=True)
+                        raise AckMessage() from e
+                else:
+                    active_settings, active_triage, active_action = (
+                        runtime.settings,
+                        runtime.triage_service,
+                        runtime.action_service,
+                    )
+            elif triage_service is not None and action_service is not None:
+                active_triage = triage_service
+                active_action = action_service
+            else:
+                raise KafkaPayloadError("No usecase services are available to process the Kafka retry")
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
             remaining_delay_seconds = await _sleep_until_retry_after(
                 retry_after,
-                retry_delay_seconds=settings.kafka.retry_delay_seconds,
+                retry_delay_seconds=active_settings.kafka.retry_delay_seconds,
             )
             if remaining_delay_seconds is not None:
                 await _reschedule_retry_event(
                     broker=broker,
-                    settings=settings,
+                    settings=active_settings,
                     event=event,
                     original_group_id=parsed_original_group_id,
                     retry_count=parsed_retry_count,
@@ -335,13 +451,14 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                 raise AckMessage()
             try:
                 await _process_ticket_event(
-                    settings=settings,
-                    triage_service=triage_service,
-                    action_service=action_service,
+                    settings=active_settings,
+                    triage_service=active_triage,
+                    action_service=active_action,
                     event=event,
                     group_state=group_state,
                     record_processed_event=False,
                     allow_in_ai_group=True,
+                    apply_event_type_filters=not multi_usecase,
                 )
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
@@ -353,7 +470,7 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                     )
                     if ticket_id is not None:
                         await _restore_ticket_group(
-                            zammad_client=triage_service.zammad_client,
+                            zammad_client=active_triage.zammad_client,
                             ticket_id=ticket_id,
                             group_id=parsed_original_group_id,
                             handler_stage="restore_ticket_group",
@@ -365,15 +482,16 @@ def build_router(settings: ZammadAISettings) -> tuple[KafkaRouter, Callable]:
                 parsed_original_group_id = _parse_original_group_id(original_group_id)
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
+                assert active_settings.triage is not None
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)
                     if isinstance(event, Event)
                     else _safe_ticket_id(event.get("ticket")),
-                    category_wrong_retry_confidence_threshold=settings.triage.category_wrong_retry_confidence_threshold,
+                    category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
                     broker=broker,
-                    settings=settings,
-                    zammad_client=triage_service.zammad_client,
+                    settings=active_settings,
+                    zammad_client=active_triage.zammad_client,
                     event=Event.model_validate(event) if not isinstance(event, Event) else event,
                     original_group_id=parsed_original_group_id,
                     retry_count=parsed_retry_count,

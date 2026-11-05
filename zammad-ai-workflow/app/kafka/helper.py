@@ -18,6 +18,7 @@ logger: Logger = getLogger(name="zammad-ai.kafka.helper")
 RETRY_AFTER_HEADER = "retry_after"
 RETRY_COUNT_HEADER = "retry_count"
 ORIGINAL_GROUP_ID_HEADER = "original_group_id"
+USECASE_HEADER = "usecase"
 AIOKAFKA_MAX_POLL_INTERVAL_MS = 300_000
 MAX_RETRY_HANDLER_SLEEP_SECONDS = (AIOKAFKA_MAX_POLL_INTERVAL_MS - 1_000) / 1000
 
@@ -76,7 +77,6 @@ def _parse_retry_count(retry_count: object | None) -> int:
     """Extract the number of completed retry attempts from Kafka headers."""
     if retry_count is None:
         return 0
-
     try:
         if not isinstance(retry_count, (str, bytes, bytearray, int)):
             raise TypeError
@@ -88,6 +88,15 @@ def _parse_retry_count(retry_count: object | None) -> int:
             exc_info=True,
         )
         return 0
+
+
+def _parse_usecase(usecase: object | None) -> str | None:
+    """Read the usecase name carried by a retry message."""
+    if isinstance(usecase, bytes):
+        return usecase.decode(errors="ignore") or None
+    if isinstance(usecase, str):
+        return usecase or None
+    return None
 
 
 async def _sleep_until_retry_after(retry_after: object | None, *, retry_delay_seconds: float) -> float | None:
@@ -132,6 +141,7 @@ async def _reschedule_retry_event(
     retry_headers = _build_retry_headers(retry_after_ms, retry_count)
     if original_group_id is not None:
         retry_headers[ORIGINAL_GROUP_ID_HEADER] = str(original_group_id)
+    retry_headers[USECASE_HEADER] = settings.usecase.name
 
     await broker.publish(
         message=event.model_dump(mode="json") if isinstance(event, Event) else event,
@@ -163,6 +173,7 @@ async def _republish_retry_event(
     retry_headers = _build_retry_headers(retry_after_ms, next_retry_count)
     if original_group_id is not None:
         retry_headers[ORIGINAL_GROUP_ID_HEADER] = str(original_group_id)
+    retry_headers[USECASE_HEADER] = settings.usecase.name
     await broker.publish(
         message=event.model_dump(mode="json"),
         topic=settings.kafka.retry_topic,
@@ -267,6 +278,7 @@ async def _handle_processing_exception(
                 category=category,
                 action_type=action_type,
                 outcome="aborted_with_error",
+                usecase=settings.usecase.name,
             )
             if original_group_id is not None:
                 restored_ticket_id = ticket_id if ticket_id is not None else _safe_ticket_id(event.ticket)
@@ -317,5 +329,6 @@ async def _handle_processing_exception(
         category=category,
         action_type=action_type,
         outcome="dropped",
+        usecase=settings.usecase.name,
     )
     raise AckMessage()

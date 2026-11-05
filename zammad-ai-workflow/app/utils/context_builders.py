@@ -55,6 +55,7 @@ def build_triage_context(
     """
     today: date = date.today()
     today_str: str = f"{today.isoformat()}, {today.strftime('%A')}, KW{today.isocalendar().week:02d}"
+    assert settings.triage is not None
     return {
         "knowledge_base_enabled": bool(settings.answer.qdrant.collection_name),
         "dlf_enabled": settings.answer.dlf is not None,

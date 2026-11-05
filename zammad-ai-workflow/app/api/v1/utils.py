@@ -5,6 +5,7 @@ from secrets import compare_digest
 from fastapi import Request
 from fastapi.security import HTTPAuthorizationCredentials
 
+from app.preparser.service import PreparserService
 from app.settings.settings import ZammadAISettings, get_settings
 from app.utils.logging import getLogger
 
@@ -37,16 +38,22 @@ def check_api_key(provided_key: str | HTTPAuthorizationCredentials | None) -> bo
     return compare_digest(provided_value, expected_key)
 
 
-def get_preparsed_text(request: Request | None, text: str) -> str:
-    """Return preparsed text using the request-scoped preparser service if available.
+def get_preparsed_text(request: Request | None, text: str, preparser_service: PreparserService | None = None) -> str:
+    """Return preparsed text using the given or request-scoped preparser service.
 
-    Fetches ``request.app.state.preparser_service`` and calls ``preparse`` on the
-    provided text. If anything fails, logs the error and returns the original text.
+    Uses ``preparser_service`` when provided (e.g. the selected usecase runtime's
+    service); otherwise fetches ``request.app.state.preparser_service`` and calls
+    ``preparse`` on the provided text. If anything fails, logs the error and returns
+    the original text.
 
     This centralizes the preparser logic to keep behavior consistent across endpoints.
     """
     try:
-        preparser = request.app.state.preparser_service if request is not None else None
+        preparser = (
+            preparser_service
+            if preparser_service is not None
+            else (request.app.state.preparser_service if request is not None else None)
+        )
         if preparser is not None:
             return preparser.preparse(text)
     except Exception as e:  # pragma: no cover - defensive  # noqa: F841

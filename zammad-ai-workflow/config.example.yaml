@@ -16,9 +16,35 @@
 # ============================================================================
 # Use Case Configuration
 # ============================================================================
+# The `usecase` block below is a template for a usecase definition file.
+# Copy it into a file under config/usecases/ (see config/usecases/README.md
+# and config/usecases/permits.yaml.example) and add a `config` mapping with
+# the settings that should override the shared root configuration.
+#
+# Note: this root-level block alone does not activate usecase routing.
+# Without usecase definition files, the service runs in shared mode and only
+# processes Kafka events whose request_type (and action) is listed under
+# `kafka.event_processing` below; with the default empty lists no events are
+# processed.
 usecase:
   name: "my_usecase"
   description: "Description of your use case"
+  match:
+    - request_type: "support" # matches any action for this request type
+      # action: "created" # optional: also require a specific event action
+  # Optional: route polling-based tickets to this usecase by group metadata.
+  # polling_match:
+  #   - group_name: "Support"
+
+# For multiple usecases, create one file per usecase below this directory.
+# Each file contains name, description, match, polling_match, and a `config`
+# mapping with overrides for triage, answer, genai, polling, or zammad.
+# See config/usecases/permits.yaml.example for a complete, ready-to-copy example.
+router:
+  usecase_config_dir: "config/usecases"
+  unmatched_policy: "skip" # Options: "skip" (drop unmatched events), "error" (raise), "fallback" (route to fallback_usecase)
+  # For unmatched_policy: "fallback", set the target usecase name here.
+  # fallback_usecase: "my_usecase"
 
 # ============================================================================
 # GenAI Configuration
@@ -183,6 +209,8 @@ kafka:
   max_workers: 5 # Maximum number of concurrent workers for processing events
   retry_topic: "ticket-events-retry" # Kafka topic for retrying failed events
   event_processing:
+    # Only applied to events processed without usecase match routing. With usecases
+    # configured, the usecase `match` rules decide which events are processed.
     valid_request_types: [] # List of request types to process (example: ["support"])
     valid_action_types: [] # List of action types to process (example: ["created", "updated"])
 
@@ -235,6 +263,8 @@ max_user_text_length: 2000
 # ============================================================================
 # Triage Configuration
 # ============================================================================
+# Triage may instead be defined per usecase under `config.triage` in a
+# usecase file (config/usecases/*.yaml); it is then required there.
 triage:
   # Category setup: Define the categories for ticket classification
   # Each category requires only a unique name.

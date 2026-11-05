@@ -22,7 +22,7 @@ Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zamm
 - `genai`: model provider, chat model, embedding model, and retry settings
 - `zammad`: REST API or EAI connection settings, knowledge base ID, and document parsing config
 - `kafka`: broker URL, topic names, retry policy, client ID, group ID, and mTLS security
-- `triage`: categories, actions, rules, prompt sources, and fallback behavior
+- `triage`: categories, actions, rules, prompt sources, and fallback behavior; optional at the root when every configured usecase defines its own triage settings under `config`
 - `answer`: answer prompts, Qdrant settings, optional DLF integration, judge settings, and law tools
 - `frontend`: optional Gradio UI and feedback settings
 - `api`: API key and graceful shutdown timeout

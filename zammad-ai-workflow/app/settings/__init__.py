@@ -9,7 +9,7 @@ from .polling import PollingSettings
 from .preparser import PreparserSettings
 from .settings import ZammadAISettings, get_settings
 from .triage import TriageSettings
-from .usecase import UseCaseSettings
+from .usecase import PollingMatch, RouterSettings, UseCaseMatch, UseCaseSettings
 from .zammad import BaseZammadSettings, ZammadAPISettings, ZammadEAISettings
 
 __all__: list[str] = [
@@ -28,6 +28,9 @@ __all__: list[str] = [
     "QdrantSettings",
     "TriageSettings",
     "UseCaseSettings",
+    "UseCaseMatch",
+    "PollingMatch",
+    "RouterSettings",
     "ZammadAISettings",
     "ZammadAPISettings",
     "ZammadEAISettings",

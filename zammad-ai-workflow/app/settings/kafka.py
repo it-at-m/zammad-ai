@@ -123,12 +123,20 @@ class EventProcessingSettings(BaseModel):
 
     valid_request_types: list[str] = Field(
         default_factory=list,
-        description="List of valid request types to process. Events with request types not in this list will be acknowledged and skipped.",
+        description=(
+            "List of valid request types to process. Events with request types not in this list will be "
+            "acknowledged and skipped. Not applied to events routed via usecase match rules; with usecases "
+            "configured, the usecase match rules decide which events are processed."
+        ),
     )
 
     valid_action_types: list[str] = Field(
         default_factory=list,
-        description="List of valid action types to process. Events with action types not in this list will be acknowledged and skipped.",
+        description=(
+            "List of valid action types to process. Events with action types not in this list will be "
+            "acknowledged and skipped. Not applied to events routed via usecase match rules; with usecases "
+            "configured, the usecase match rules decide which events are processed."
+        ),
     )
 
 

@@ -54,6 +54,7 @@ def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch)
         get_settings.cache_clear()
 
     assert settings.mode == "unittest"
+    assert settings.triage is not None
     assert settings.triage.prompts.type == "string"
 
 
