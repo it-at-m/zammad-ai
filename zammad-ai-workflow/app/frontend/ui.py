@@ -245,6 +245,7 @@ def _render_config_md(
     prompt_versions_loaded: bool = False,
     usecase: str | None = None,
 ) -> str:
+    assert settings.triage is not None
     genai: GenAIProviderSettings = settings.genai
     prompt_versions = _select_usecase_prompt_versions(prompt_versions, usecase)
 
@@ -341,6 +342,7 @@ def _render_config_md(
 
 
 def _render_rules_preview(settings: ZammadAISettings, limit: int = 10) -> str:
+    assert settings.triage is not None
     rules = settings.triage.action_rules or []
     if not rules:
         return "(keine Regeln konfiguriert)"

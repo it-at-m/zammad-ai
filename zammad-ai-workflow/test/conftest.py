@@ -190,6 +190,7 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
         """
         settings = base_settings.model_copy(deep=True)
         if action_rules is not None:
+            assert settings.triage is not None
             settings.triage.action_rules = action_rules
         if valid_request_types is not None:
             settings.kafka.event_processing.valid_request_types = valid_request_types

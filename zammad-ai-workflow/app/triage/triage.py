@@ -96,6 +96,8 @@ class TriageService:
             settings=settings.preparser
         )
         # Triage setup
+        if settings.triage is None:
+            raise ValueError("Triage settings are required but not configured")
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
 

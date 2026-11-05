@@ -164,6 +164,7 @@ class PollingService:
 
     async def _process_ticket(self, ticket_id: int) -> str:
         """Fetch, triage, and execute the action for a single ticket and return its outcome."""
+        assert self.settings.triage is not None
         zammad_client: BaseZammadClient = self.triage_service.zammad_client
         try:
             ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)

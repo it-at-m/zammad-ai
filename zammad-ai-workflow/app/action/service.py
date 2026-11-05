@@ -322,6 +322,7 @@ class ActionService:
         original_group_name: str | None = None,
         allow_in_ai_group: bool = False,
     ) -> None:
+        assert self.settings.triage is not None
         if not self.settings.triage.no_action_internal_note:
             return
         await self._ensure_ticket_not_already_processed(
@@ -510,6 +511,7 @@ class ActionService:
             )
             user_text = user_text[: self.max_user_text_length]
 
+        assert self.settings.triage is not None
         action: Action | None = next(
             (action for action in self.settings.triage.actions if action.name == action_name), None
         )

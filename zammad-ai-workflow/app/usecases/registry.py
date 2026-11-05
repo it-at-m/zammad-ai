@@ -83,6 +83,52 @@ class UseCaseRegistry:
                 settings=settings,
                 guardrail_service=GuardrailService(settings.guardrails),
             )
+        self._warn_inert_polling_usecases()
+        self._warn_ruleless_usecases()
+
+    def _warn_inert_polling_usecases(self) -> None:
+        """Warn about polling-enabled usecases that can never match a polled ticket.
+
+        With more than one usecase, a usecase without polling_match rules never
+        matches a polled ticket, so its polling service would skip every ticket
+        forever.
+        """
+        if len(self.root_settings.usecases) <= 1:
+            return
+        for definition in self.root_settings.usecases:
+            runtime = self.runtimes.get(definition.name)
+            if runtime is None:
+                continue
+            if runtime.settings.polling.enabled and not definition.polling_match:
+                logger.warning(
+                    f"Usecase '{definition.name}' has polling enabled but defines no polling_match rules; "
+                    "it will never match polled tickets. Add polling_match rules or disable polling for this usecase."
+                )
+
+    def _warn_ruleless_usecases(self) -> None:
+        """Warn about usecases that define neither match nor polling_match rules.
+
+        With more than one usecase, such a usecase never matches a Kafka event
+        or a polled ticket. The sole-usecase case is exempt because polled
+        tickets match it unconditionally and unmatched events may be routed to
+        it via the fallback policy. The configured fallback usecase is exempt
+        for the same reason.
+        """
+        if len(self.root_settings.usecases) <= 1:
+            return
+        for definition in self.root_settings.usecases:
+            if definition.match or definition.polling_match:
+                continue
+            if (
+                self.root_settings.router.unmatched_policy == "fallback"
+                and self.root_settings.router.fallback_usecase == definition.name
+            ):
+                continue
+            logger.warning(
+                f"Usecase '{definition.name}' defines neither match nor polling_match rules; "
+                "it will never match Kafka events or polled tickets. "
+                "Add at least one match or polling_match rule to its definition."
+            )
 
     def _build_settings(self, definition: UseCaseSettings) -> ZammadAISettings:
         payload: dict[str, Any] = self.root_settings.model_dump(mode="python")
@@ -95,6 +141,11 @@ class UseCaseRegistry:
             "polling_match": [match.model_dump() for match in definition.polling_match],
         }
         _deep_merge(payload, deepcopy(definition.config))
+        if payload.get("triage") is None:
+            raise ValueError(
+                f"Usecase '{definition.name}' must define triage settings under its config "
+                "because the root configuration does not define any"
+            )
         payload["usecase"]["name"] = definition.name
         return ZammadAISettings.model_validate(payload)
 
@@ -106,9 +157,17 @@ class UseCaseRegistry:
             raise KeyError(f"Unknown usecase: {name}") from e
 
     async def cleanup(self) -> None:
-        """Close every configured runtime."""
+        """Close every configured runtime, continuing past individual failures."""
+        first_error: Exception | None = None
         for runtime in self.runtimes.values():
-            await runtime.cleanup()
+            try:
+                await runtime.cleanup()
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                logger.error(f"Failed to clean up usecase runtime '{runtime.name}'.", exc_info=True)
+        if first_error is not None:
+            raise first_error
 
 
 def _deep_merge(target: dict[str, Any], override: dict[str, Any]) -> None:
