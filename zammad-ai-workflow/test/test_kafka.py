@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Protocol, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -33,7 +34,9 @@ from app.settings.triage import (
     StringTriagePrompts,
     TriageSettings,
 )
+from app.settings.usecase import UseCaseMatch, UseCaseSettings
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.usecases.registry import UseCaseRegistry
 from app.zammad.base import ZammadConnectionError
 
 
@@ -199,6 +202,140 @@ async def test_event_handler_valid_message(
         assert mock_triage.perform_triage.call_count == 1
         called_ticket = mock_triage.perform_triage.call_args.kwargs.get("ticket")
         assert called_ticket is not None and called_ticket.id == 3720
+
+
+@pytest.mark.asyncio
+async def test_event_handler_routes_multi_usecase_event_without_shared_type_filters(
+    mock_triage: MagicMock,
+    mock_get_action_service: MagicMock,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Usecase match rules route events even when shared event filters are empty."""
+    settings = settings_factory(valid_request_types=[], valid_action_types=[]).model_copy(
+        update={
+            "usecases": [
+                UseCaseSettings(
+                    name="auslaenderbehoerde",
+                    match=[UseCaseMatch(request_type="Kontakt Ausländerbehörde", action="ticket_created")],
+                )
+            ]
+        }
+    )
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(id=747, articles=[ZammadArticle(id=1, ticket_id=747, text="msg")])
+    )
+    registry = cast(
+        UseCaseRegistry,
+        SimpleNamespace(
+            runtimes={
+                "auslaenderbehoerde": SimpleNamespace(
+                    settings=settings,
+                    triage_service=mock_triage,
+                    action_service=mock_get_action_service,
+                )
+            }
+        ),
+    )
+    router, _ = build_router(settings=settings, registry=registry)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.topic,
+            message={
+                "action": "ticket_created",
+                "ticket": "747",
+                "status": "new",
+                "statusId": "1",
+                "anliegenart": "Kontakt Ausländerbehörde",
+                "lhmExtId": "",
+            },
+        )
+
+    mock_triage.perform_triage.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_drops_events_for_sole_usecase_without_match_rules(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_action_service: MagicMock,
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """A sole usecase without match rules must match no event, even one the shared filters would accept."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"]).model_copy(
+        update={"usecases": [UseCaseSettings(name="default")]}
+    )
+    registry = cast(
+        UseCaseRegistry,
+        SimpleNamespace(
+            runtimes={
+                "default": SimpleNamespace(
+                    settings=settings,
+                    triage_service=mock_triage,
+                    action_service=mock_get_action_service,
+                )
+            }
+        ),
+    )
+    router, _ = build_router(settings=settings, registry=registry)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("INFO"):
+            await test_broker.publish(topic=settings.kafka.topic, message=kafka_message_factory())
+
+    assert "Skipping Kafka event that matched no configured usecase." in caplog.text
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_logs_and_acks_unmatched_event_with_skip_policy(
+    mock_triage: MagicMock,
+    mock_get_action_service: MagicMock,
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """Events that match no usecase must be acknowledged with an explicit skip log."""
+    settings = settings_factory().model_copy(
+        update={
+            "usecases": [
+                UseCaseSettings(
+                    name="auslaenderbehoerde",
+                    match=[UseCaseMatch(request_type="Kontakt Ausländerbehörde", action="ticket_created")],
+                )
+            ]
+        }
+    )
+    registry = cast(
+        UseCaseRegistry,
+        SimpleNamespace(
+            runtimes={
+                "auslaenderbehoerde": SimpleNamespace(
+                    settings=settings,
+                    triage_service=mock_triage,
+                    action_service=mock_get_action_service,
+                )
+            }
+        ),
+    )
+    router, _ = build_router(settings=settings, registry=registry)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("INFO"):
+            await test_broker.publish(
+                topic=settings.kafka.topic,
+                message={
+                    "action": "ticket_created",
+                    "ticket": "747",
+                    "status": "new",
+                    "statusId": "1",
+                    "anliegenart": "Unbekanntes Anliegen",
+                    "lhmExtId": "",
+                },
+            )
+
+    assert "Skipping Kafka event that matched no configured usecase." in caplog.text
+    mock_triage.perform_triage.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -774,6 +911,7 @@ async def test_retry_limit_restores_original_group(
 ) -> None:
     """When the retry limit is reached, the ticket should be moved back to its original group."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -838,6 +976,7 @@ async def test_retry_limit_counts_aborted_with_error(
     labels = {"category": "Test", "action_type": "no_action", "outcome": "aborted_with_error"}
     baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -872,6 +1011,7 @@ async def test_intermediate_retry_does_not_count_aborted_with_error(
     labels = {"category": "unknown", "action_type": "unknown", "outcome": "aborted_with_error"}
     baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 2
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -993,6 +1133,7 @@ async def test_event_handler_category_wrong_retries_below_threshold(
 ) -> None:
     """Category wrong errors with low confidence are retried."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    assert settings.triage is not None
     settings.triage.category_wrong_retry_confidence_threshold = 0.7
     router, event_handler = build_router(settings=settings)
     mock_triage.perform_triage.side_effect = TriageCategoryWrongError(
@@ -1014,6 +1155,7 @@ async def test_event_handler_category_wrong_drops_above_threshold(
 ) -> None:
     """Category wrong errors with high confidence are dropped."""
     settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    assert settings.triage is not None
     settings.triage.category_wrong_retry_confidence_threshold = 0.7
     router, event_handler = build_router(settings=settings)
     mock_triage.perform_triage.side_effect = TriageCategoryWrongError(

@@ -134,8 +134,17 @@ config:
 ```
 
 Kafka events without a matching rule are acknowledged and skipped. Ambiguous or
-overlapping routes fail startup. REST requests and the developer frontend send the
-selected usecase explicitly via the `usecase` field.
+overlapping routes fail startup. A usecase without `match` rules never matches
+Kafka events, whether it is the only configured usecase or one of many. A
+polling-enabled usecase without `polling_match` rules never matches polled
+tickets when more than one usecase is configured and warns at startup. REST
+requests and the developer frontend send the selected usecase explicitly via
+the `usecase` field.
+
+Single-usecase deployments without usecase definition files or explicit
+`usecases` configuration do not use usecase routing: every Kafka event is
+processed by the root `usecase` under the shared `kafka.event_processing`
+filters.
 
 ## Local Development Stack
 

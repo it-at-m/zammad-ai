@@ -105,8 +105,9 @@ class ZammadAISettings(BaseSettings):
         default_factory=lambda: PollingSettings(),
     )
 
-    triage: TriageSettings = Field(
-        description="Settings for triage step, including categories, actions, and rules.",
+    triage: TriageSettings | None = Field(
+        default=None,
+        description="Settings for triage step, including categories, actions, and rules. May be omitted when every configured usecase defines its own triage settings.",
     )
 
     frontend: FrontendSettings = Field(
@@ -239,20 +240,31 @@ def get_settings() -> ZammadAISettings:
         ZammadAISettings: The cached settings instance used by the application.
     """
     settings = ZammadAISettings()
+    settings.usecases = _resolve_usecases(settings)
+    return settings
+
+
+def _resolve_usecases(settings: ZammadAISettings) -> list[UseCaseSettings]:
+    """Resolve the effective usecase definitions for a deployment.
+
+    Explicitly configured usecases take precedence; otherwise the usecase
+    definition files are loaded. Single-usecase deployments stay on the legacy
+    path with no usecases, preserving the shared-service and event-filter
+    behavior; a configured usecase without match rules never matches a Kafka
+    event.
+    """
     if settings.usecases:
         _validate_usecases(settings.usecases, settings.router)
-        return settings
+        return settings.usecases
 
     config_dir = Path(settings.router.usecase_config_dir)
     if not config_dir.is_absolute():
         config_dir = Path.cwd() / config_dir
     definitions = _load_usecase_definitions(config_dir)
     if definitions:
-        settings.usecases = definitions
         _validate_usecases(definitions, settings.router)
-    else:
-        settings.usecases = [settings.usecase]
-    return settings
+        return definitions
+    return []
 
 
 def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:

@@ -53,8 +53,20 @@ async def _process_ticket_event(
     group_state: dict[str, int | str | None],
     record_processed_event: bool = False,
     allow_in_ai_group: bool = False,
+    apply_event_type_filters: bool = True,
 ) -> None:
-    """Parse and process a Kafka event."""
+    """Parse and process a Kafka event.
+
+    Parameters:
+        settings (ZammadAISettings): Active settings for the event (root or usecase runtime settings).
+        triage_service (TriageService): Triage service used to categorize the ticket.
+        action_service (ActionService): Action service used to execute the triage result.
+        event (Event | dict[str, object]): Raw Kafka event payload.
+        group_state (dict[str, int | str | None]): Mutable state shared with the caller across processing steps.
+        record_processed_event (bool): Whether to increment the main-topic ingress metric.
+        allow_in_ai_group (bool): Whether tickets already located in the AI group may be processed.
+        apply_event_type_filters (bool): Whether to enforce the shared kafka.event_processing request/action filters. Usecase match routing already decides which events are processed, so the filters are skipped for usecase-routed events.
+    """
     if isinstance(event, Event):
         raw_request_type = event.request_type
         raw_action = event.action
@@ -83,7 +95,10 @@ async def _process_ticket_event(
         )
         raise AckMessage() from e
 
-    if parsed_event.request_type not in settings.kafka.event_processing.valid_request_types:
+    if (
+        apply_event_type_filters
+        and parsed_event.request_type not in settings.kafka.event_processing.valid_request_types
+    ):
         logger.info(
             "Skipping event with unsupported request type",
             extra={
@@ -95,7 +110,7 @@ async def _process_ticket_event(
         )
         raise AckMessage()
 
-    if parsed_event.action not in settings.kafka.event_processing.valid_action_types:
+    if apply_event_type_filters and parsed_event.action not in settings.kafka.event_processing.valid_action_types:
         logger.info(
             "Skipping event with unsupported action type",
             extra={
@@ -273,6 +288,14 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
         if definition is None:
             match settings.router.unmatched_policy:
                 case "skip":
+                    logger.info(
+                        "Skipping Kafka event that matched no configured usecase.",
+                        extra={
+                            "request_type": parsed.request_type,
+                            "action": parsed.action,
+                            "ticket_id": _safe_ticket_id(parsed.ticket),
+                        },
+                    )
                     raise AckMessage()
                 case "fallback":
                     if settings.router.fallback_usecase is None:
@@ -325,6 +348,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     event=event,
                     group_state=group_state,
                     record_processed_event=True,
+                    apply_event_type_filters=not multi_usecase,
                 )
                 original_group_id = _get_group_state_int(group_state, "original_group_id")
                 if original_group_id is not None:
@@ -344,6 +368,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             except AckMessage:
                 raise
             except Exception as e:
+                assert active_settings.triage is not None
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)
@@ -433,6 +458,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     group_state=group_state,
                     record_processed_event=False,
                     allow_in_ai_group=True,
+                    apply_event_type_filters=not multi_usecase,
                 )
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
@@ -456,6 +482,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                 parsed_original_group_id = _parse_original_group_id(original_group_id)
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
+                assert active_settings.triage is not None
                 await _handle_processing_exception(
                     e,
                     ticket_id=_safe_ticket_id(event.ticket)

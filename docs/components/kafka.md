@@ -21,7 +21,10 @@ The structure is defined in the dbs/ticketing-eventing service and can be found 
 
 ## Event Filtering
 
-The service does not automatically process every event received from Kafka. It uses the `kafka.event_processing.valid_request_types` configuration to filter events based on the `request_type` (or `anliegenart`) field.
+The service does not automatically process every event received from Kafka. How events are filtered depends on whether usecase routing is configured:
+
+- **Without usecase routing** (single-usecase deployments without usecase definition files or explicit `usecases` configuration): The service uses the `kafka.event_processing.valid_request_types` and `kafka.event_processing.valid_action_types` configuration to filter events based on the `request_type` (or `anliegenart`) and `action` fields. Every accepted event is processed by the root `usecase`.
+- **With usecase routing** (`router.usecase_config_dir` or explicit `usecases` configuration): The `match` rules of the usecase definitions decide which events are processed. A usecase without `match` rules never matches an event, whether it is the only configured usecase or one of many. The `kafka.event_processing` filters are not applied to usecase-routed events. Events that match no usecase follow `router.unmatched_policy`; with the default `skip` policy the event is acknowledged and dropped with an INFO log entry.
 
 - **Config Key**: `kafka.event_processing.valid_request_types` (list of strings)
 - **Logic**: If the `request_type` of an incoming event is not in this list, the event is acknowledged and ignored. This prevents the service from responding to tickets it is not configured to handle.

@@ -13,7 +13,11 @@ class UseCaseResolver:
         self.usecases = usecases
 
     def resolve_event(self, event: Event) -> UseCaseSettings | None:
-        """Return the usecase matching a Kafka event, if any."""
+        """Return the usecase matching a Kafka event, if any.
+
+        A usecase without match rules never matches; unmatched events are left
+        to the router's unmatched policy.
+        """
         for usecase in self.usecases:
             if any(
                 (match.request_type is None or match.request_type == event.request_type)

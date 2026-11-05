@@ -336,8 +336,12 @@ async def get_prompt_versions() -> dict[str, object]:
 
 @backend.get("/api/v1/usecases", tags=["status"])
 async def get_usecases() -> list[dict[str, str]]:
-    """Return configured usecases for API clients and the developer frontend."""
-    return [{"name": usecase.name, "description": usecase.description} for usecase in settings.usecases]
+    """Return configured usecases for API clients and the developer frontend.
+
+    Single-usecase deployments report their root usecase.
+    """
+    effective_usecases = settings.usecases or [settings.usecase]
+    return [{"name": usecase.name, "description": usecase.description} for usecase in effective_usecases]
 
 
 @backend.get("/api/v1/health", tags=["health"])
