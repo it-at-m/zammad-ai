@@ -292,7 +292,14 @@ class AnswerService:
         """
         knowledge_base_id = self.settings.zammad.knowledge_base_id
         if not knowledge_base_id:
-            if any(document.id for document in documents):
+            cited_kb_article = False
+            for document in documents:
+                if document.id:
+                    cited_kb_article = True
+                    # Drop any agent-supplied URL so knowledge base article
+                    # URLs are only ever crafted server-side.
+                    document.url = None
+            if cited_kb_article:
                 logger.warning(
                     "Agent cited knowledge base article IDs but 'zammad.knowledge_base_id' is not"
                     " configured; no document URLs could be crafted."

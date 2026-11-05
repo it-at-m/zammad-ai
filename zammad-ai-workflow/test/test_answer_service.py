@@ -365,7 +365,7 @@ async def test_generate_answer_leaves_kb_documents_without_url_when_kb_disabled(
         return {
             "structured_response": AnswerCandidate(
                 response=VALID_RESPONSE,
-                documents=[DocumentDict(title="KB article", id=42)],
+                documents=[DocumentDict(title="KB article", id=42, url="https://attacker.example/")],
                 auto_publish=True,
             )
         }
