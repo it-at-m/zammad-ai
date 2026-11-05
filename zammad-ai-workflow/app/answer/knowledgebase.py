@@ -61,7 +61,13 @@ class KBDocument(BaseModel):
 
     title: str = Field(description="The title of the document")
     body: str = Field(description="The body content of the document")
-    url: str = Field(description="The URL of the document")
+    id: int | None = Field(
+        default=None,
+        description=(
+            "The knowledge base article ID. Use this ID to reference the document in the final "
+            "answer's documents list. Never include or invent URLs for knowledge base documents."
+        ),
+    )
 
 
 class LawDocument(BaseModel):
