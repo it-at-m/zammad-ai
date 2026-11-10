@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from faststream.exceptions import AckMessage, NackMessage
-from faststream.kafka import TestKafkaBroker
+from faststream.kafka import TestKafkaBroker, Topic
 from pydantic import HttpUrl, SecretStr
 
 from app.errors import TriageCategoryWrongError, TriageError
@@ -40,7 +40,7 @@ from app.zammad.base import ZammadConnectionError
 
 
 class _KafkaSubscriberInspection(Protocol):
-    _topics: list[str]
+    _topics: list[Topic | str]
     _connection_args: dict[str, object]
 
 
@@ -1194,7 +1194,7 @@ def test_router_uses_configured_max_poll_interval(
     router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     connection_args_by_topic = {
-        tuple(typed_subscriber._topics): typed_subscriber._connection_args
+        tuple(getattr(topic, "name", topic) for topic in typed_subscriber._topics): typed_subscriber._connection_args
         for subscriber in router.broker.subscribers
         for typed_subscriber in (cast(_KafkaSubscriberInspection, subscriber),)
     }

@@ -1,12 +1,10 @@
 [project]
 name = "zammad-ai-workflow"
 license = "MIT"
-
-version = "0.4.20"
-
+version = "0.4.22"
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
-requires-python = "==3.14.8"
+requires-python = "==3.14.10"
 authors = [
     { name = "freinold", email = "fabian.reinold@muenchen.de" },
     { name = "nharbig", email = "nico.harbig@muenchen.de" },
@@ -18,47 +16,49 @@ maintainers = [
 
 dependencies = [
     "cryptography==50.0.2",
-    "fastapi==0.151.0",
-    "faststream[cli,kafka,prometheus]==0.7.7",
+    "fastapi==0.162.0",
+    "faststream[cli,kafka,prometheus]==0.7.8",
     "feedparser==6.0.14",
-    "gradio==6.30.0",
+    "gradio==6.31.0",
     "httpx[socks]==0.28.1",
     "jinja2==3.1.6",
-    "langchain-core==1.6.12",
-    "langchain-openai==1.7.2",
+    "langchain-core==1.7.3",
+    "langchain-openai==1.7.3",
     "langchain-qdrant==1.1.0",
-    "langchain==1.4.6",
-    "langchain-anthropic==1.7.6",
+    "langchain==1.4.7",
+    "langchain-anthropic==1.7.7",
     "langfuse==4.18.0",
-    "anthropic==1.15.0",
+    "anthropic==2.3.0",
     "markdownify==1.2.3",
-    "openai==3.35.1",
-    "pandas==3.0.6",
-    "pydantic-settings==2.16.0",
-    "pydantic==2.14.1",
+    "openai==3.42.1",
+    "pandas==3.1.0",
+    "pydantic-settings==2.16.2",
+    "pydantic==2.14.2",
     "python-dotenv==1.2.4",
     "stamina==26.1.0",
     "structlog==26.1.0",
     "truststore==0.10.5",
     "uvicorn==0.54.0",
-    "fastembed==0.9.0",
+    "fastembed==0.9.1",
     "langchain-classic==1.0.8",
-    "qdrant-client==1.19.1",
+    "qdrant-client==1.20.0",
     "urllib3==2.8.0",
-    "tornado==6.5.10",
 ]
 
 [dependency-groups]
 dev = [
     "ipykernel==7.4.0",
     "pre-commit==4.7.0",
-    "pytest-asyncio==1.4.0",
-    "pytest==9.1.1",
-    "ruff==0.17.1",
-    "ty==0.0.89",
-    "virtualenv==21.14.11",
+    "pytest-asyncio==1.4.1.post1",
+    "pytest==9.2.0",
+    "ruff==0.17.3",
+    "ty==0.0.95",
+    "virtualenv==21.15.2",
 ]
-kreuzberg = ["langchain-kreuzberg==1.0.2", "kreuzberg==4.10.4"]
+xberg = [
+    "langchain-xberg==1.3.8",
+    "xberg==1.3.9"
+]
 
 [tool.uv]
 add-bounds = "exact"

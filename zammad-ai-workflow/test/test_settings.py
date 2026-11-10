@@ -9,6 +9,7 @@ from app.settings.api import APISettings
 from app.settings.frontend import FeedbackSettings
 from app.settings.polling import PollingSettings
 from app.settings.settings import ZammadAISettings, get_settings
+from app.settings.zammad import DocumentParsingSettings
 
 
 def test_feedback_settings_require_salt_for_internal_notes() -> None:
@@ -138,3 +139,24 @@ def test_zammad_ai_settings_includes_polling_defaults() -> None:
     get_settings.cache_clear()
     settings = get_settings()
     assert settings.polling.enabled is False
+
+
+@pytest.mark.parametrize("mode", ["local", "remote"])
+@pytest.mark.parametrize("document_type", ["odp", "wpd", "qmd"])
+def test_document_parsing_accepts_xberg_extensions(mode: Literal["local", "remote"], document_type: str) -> None:
+    """Local and remote parsing should accept document types supported by Xberg."""
+    settings = DocumentParsingSettings(
+        mode=mode,
+        url="https://xberg.example.com" if mode == "remote" else None,
+        document_types=[document_type],
+    )
+
+    assert document_type in settings.document_types
+
+
+def test_document_parsing_rejects_unsupported_document_types() -> None:
+    """Both parsing modes should reject document types their backend does not support."""
+    with pytest.raises(ValidationError, match="Unsupported document types"):
+        DocumentParsingSettings(mode="local", document_types=["exe"])
+    with pytest.raises(ValidationError, match="Unsupported document types"):
+        DocumentParsingSettings(mode="remote", url="https://xberg.example.com", document_types=["exe"])

@@ -11,8 +11,11 @@ from app.frontend.feedback_ui import (
     _load_translations,
     _resolve_feedback_request,
     _submit_feedback,
+    build_feedback_frontend,
 )
 from app.observe.langfuse import LangfuseClient, LangfuseError
+from app.settings import FrontendSettings
+from app.settings.frontend import FeedbackSettings
 from app.utils.token import compute_feedback_token
 
 
@@ -133,7 +136,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
 
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         translations=german_translations,
@@ -171,7 +174,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
 
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         translations=german_translations,
@@ -207,7 +210,7 @@ def test_load_feedback_trace_supports_empty_output_no_answer_trace(
 
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         translations=german_translations,
@@ -233,7 +236,7 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
 
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key="secret-salt",
         score_name="user-thumbs",
         translations=german_translations,
@@ -264,7 +267,7 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
     salt = "secret-salt"
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         translations=german_translations,
@@ -272,6 +275,30 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
 
     assert input_text == ""
     assert output_text == ""
+    assert status == "Fehler beim Laden des Traces"
+
+
+def test_load_feedback_trace_returns_load_error_when_client_creation_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Fail closed when the Langfuse client cannot be constructed."""
+
+    def failing_factory() -> LangfuseClient:
+        raise RuntimeError("langfuse unreachable")
+
+    request = _make_request({"trace_id": "trace-123", "key": "expected-key"})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=failing_factory,
+        expected_access_key="secret-salt",
+        score_name="user-thumbs",
+        translations=german_translations,
+    )
+
+    assert input_text == ""
+    assert output_text == ""
+    assert used_documents == ""
     assert status == "Fehler beim Laden des Traces"
 
 
@@ -344,7 +371,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
     client = DummyClient()
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=client,
+        lf_factory=lambda: client,
         expected_access_key=salt,
         score_name="configured-thumbs",
         thumbs="down",
@@ -402,7 +429,7 @@ def test_submit_feedback_rejects_invalid_submission(
     client = DummyClient()
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=client,
+        lf_factory=lambda: client,
         expected_access_key=salt,
         score_name="user-thumbs",
         thumbs=thumbs,
@@ -448,7 +475,7 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
     client = DummyClient()
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=client,
+        lf_factory=lambda: client,
         expected_access_key=salt,
         score_name="user-thumbs",
         thumbs="up",
@@ -461,6 +488,31 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
 
     assert result == "Fehler beim Speichern der Bewertung"
     assert client.evaluation_attached is False
+
+
+def test_submit_feedback_returns_save_error_when_client_creation_fails(
+    german_translations: dict[str, str],
+) -> None:
+    """Do not attach feedback when the Langfuse client cannot be constructed."""
+
+    def failing_factory() -> LangfuseClient:
+        raise RuntimeError("langfuse unreachable")
+
+    salt = "secret-salt"
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
+        lf_factory=failing_factory,
+        expected_access_key=salt,
+        score_name="user-thumbs",
+        thumbs="up",
+        comment="valid comment",
+        user_name="AB",
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+    )
+
+    assert result == "Fehler beim Speichern der Bewertung"
 
 
 def test_submit_feedback_accepts_current_helper_signature(german_translations: dict[str, str]) -> None:
@@ -491,7 +543,7 @@ def test_submit_feedback_accepts_current_helper_signature(german_translations: d
     salt = "secret-salt"
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         thumbs="up",
@@ -523,7 +575,7 @@ def test_load_feedback_trace_uses_english_translations() -> None:
     salt = "secret-salt"
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
-        lf=DummyClient(),
+        lf_factory=DummyClient,
         expected_access_key=salt,
         score_name="user-thumbs",
         translations=translations,
@@ -533,3 +585,68 @@ def test_load_feedback_trace_uses_english_translations() -> None:
     assert output_text == "world"
     assert used_documents == "!!!"
     assert status == "Trace loaded"
+
+
+def test_build_feedback_frontend_load_event_allows_concurrent_page_loads() -> None:
+    """Multiple open feedback pages must load in parallel instead of queueing serially."""
+    settings = FrontendSettings(feedback=FeedbackSettings(salt="secret-salt"))
+    app = build_feedback_frontend(settings)
+
+    load_fns = [fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+
+    assert len(load_fns) == 1
+    assert load_fns[0].concurrency_limit is None
+
+
+def test_build_feedback_frontend_creates_langfuse_client_per_request() -> None:
+    """Each feedback request constructs its own Langfuse client via the factory."""
+    settings = FrontendSettings(feedback=FeedbackSettings(salt="secret-salt"))
+    instances: list[LangfuseClient] = []
+
+    class RecordingClient(LangfuseClient):
+        def __init__(self) -> None:
+            instances.append(self)
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", ""
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+    app = build_feedback_frontend(settings, langfuse_client_factory=RecordingClient)
+    assert instances == []
+
+    load_fns = [fn.fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+    load_fn = load_fns[0]
+    assert load_fn is not None
+    salt = "secret-salt"
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)})
+
+    load_fn(request)
+
+    assert len(instances) == 1
+
+
+def test_build_feedback_frontend_skips_langfuse_client_for_invalid_requests() -> None:
+    """Invalid query parameters must fail before any Langfuse client is created."""
+    settings = FrontendSettings(feedback=FeedbackSettings(salt="secret-salt"))
+    instances: list[LangfuseClient] = []
+
+    class RecordingClient(LangfuseClient):
+        def __init__(self) -> None:
+            instances.append(self)
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", ""
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+    app = build_feedback_frontend(settings, langfuse_client_factory=RecordingClient)
+
+    load_fns = [fn.fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+    load_fn = load_fns[0]
+    assert load_fn is not None
+    load_fn(_make_request({}))
+
+    assert instances == []
