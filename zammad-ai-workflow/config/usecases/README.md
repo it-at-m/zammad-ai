@@ -8,6 +8,11 @@ rules are optional routing rules for Kafka events, `polling_match` rules are
 optional routing rules for polled tickets, and settings under `config`
 override the shared root configuration for that usecase.
 
+Do not override `kafka` settings per usecase. Kafka subscribers bind to the
+topics of the shared root configuration, while retry publishing uses the
+effective per-usecase settings, so a mismatched `retry_topic` would strand
+retry events on a topic that no subscriber consumes.
+
 A usecase without `match` rules never matches Kafka events, whether it is the
 only configured usecase or one of many. With more than one usecase, a usecase
 without `polling_match` rules never matches polled tickets.
