@@ -53,6 +53,9 @@ class PollingService:
         self.triage_service: TriageService = triage_service
         self.action_service: ActionService = action_service
         self.resolver = resolver
+        self._resolve_group_names: bool = any(
+            match.group_name is not None for usecase in resolver.usecases for match in usecase.polling_match
+        )
         self.polling_settings: PollingSettings = settings.polling
         self._processed: dict[int, float] = {}
         self._task: asyncio.Task | None = None
@@ -159,12 +162,27 @@ class PollingService:
         for ticket_id in expired:
             self._processed.pop(ticket_id, None)
 
+    async def _with_resolved_group_name(self, ticket: ZammadTicket, zammad_client: BaseZammadClient) -> ZammadTicket:
+        """Resolve a missing ticket group name when polling_match rules route by group name.
+
+        Tickets that already include a group name are returned unchanged.
+        """
+        if not self._resolve_group_names or ticket.group_name is not None or ticket.group_id is None:
+            return ticket
+        if not isinstance(zammad_client, ZammadAPIClient):
+            return ticket
+        group_name = await zammad_client.get_group_name(ticket.group_id)
+        if group_name is None:
+            return ticket
+        return ticket.model_copy(update={"group_name": group_name})
+
     async def _process_ticket(self, ticket_id: int) -> str:
         """Fetch, triage, and execute the action for a single ticket and return its outcome."""
         assert self.settings.triage is not None
         zammad_client: BaseZammadClient = self.triage_service.zammad_client
         try:
             ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
+            ticket = await self._with_resolved_group_name(ticket, zammad_client)
             resolved_usecase = self.resolver.resolve_ticket(ticket)
             if resolved_usecase is None or resolved_usecase.name != self.settings.usecase.name:
                 self._processed[ticket_id] = monotonic()

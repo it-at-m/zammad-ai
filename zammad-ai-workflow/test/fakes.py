@@ -244,6 +244,10 @@ class FakeZammadClient:
             return ZammadTicket(id=id, articles=[])
         return self.ticket
 
+    async def get_group_name(self, group_id: int) -> str | None:
+        """Retrieve the name of a Zammad group by its id."""
+        return None
+
     async def post_answer(self, ticket_id: str, text: str, subject: str | None = None, internal: bool = False) -> None:
         """Prevent posting an answer during tests by failing if called.
 
