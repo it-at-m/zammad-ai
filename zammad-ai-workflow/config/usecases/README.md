@@ -3,9 +3,10 @@
 Place one YAML file per usecase in this directory and reference the directory
 from `router.usecase_config_dir` in `config.yaml`.
 
-Each file must define a unique `name`, at least one `match` or `polling_match`
-rule, and optional settings under `config`. Those settings override the shared
-root configuration for that usecase.
+Each file must define a unique `name`. Everything else is optional: `match`
+rules are optional routing rules for Kafka events, `polling_match` rules are
+optional routing rules for polled tickets, and settings under `config`
+override the shared root configuration for that usecase.
 
 A usecase without `match` rules never matches Kafka events, whether it is the
 only configured usecase or one of many. With more than one usecase, a usecase
