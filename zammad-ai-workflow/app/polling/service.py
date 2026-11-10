@@ -165,13 +165,22 @@ class PollingService:
     async def _with_resolved_group_name(self, ticket: ZammadTicket, zammad_client: BaseZammadClient) -> ZammadTicket:
         """Resolve a missing ticket group name when polling_match rules route by group name.
 
-        Tickets that already include a group name are returned unchanged.
+        Tickets that already include a group name are returned unchanged. A vanished
+        group leaves the name unresolved so the ticket is skipped as unmatched, while
+        transient lookup errors propagate so the ticket is retried in a later cycle.
         """
         if not self._resolve_group_names or ticket.group_name is not None or ticket.group_id is None:
             return ticket
         if not isinstance(zammad_client, ZammadAPIClient):
             return ticket
-        group_name = await zammad_client.get_group_name(ticket.group_id)
+        try:
+            group_name = await zammad_client.get_group_name(ticket.group_id)
+        except TicketNotFoundError:
+            logger.warning(
+                "Group of polled ticket no longer exists.",
+                extra={"ticket_id": ticket.id, "group_id": ticket.group_id},
+            )
+            return ticket
         if group_name is None:
             return ticket
         return ticket.model_copy(update={"group_name": group_name})

@@ -112,7 +112,10 @@ class ZammadAPIClient(BaseZammadClient):
             raise ZammadPayloadParseError(f"Invalid ticket payload for ticket {id}") from e
         group_name = _extract_group_name(ticket_data)
         if group_name is None and self.settings.ai_ticket_group_name is not None and group_id is not None:
-            group_name = await self.get_group_name(group_id)
+            try:
+                group_name = await self.get_group_name(group_id)
+            except Exception:
+                logger.warning(f"Failed to resolve group name for group {group_id}.", exc_info=True)
         return ZammadTicket(
             id=id,
             articles=articles,
@@ -125,13 +128,10 @@ class ZammadAPIClient(BaseZammadClient):
     async def get_group_name(self, group_id: int) -> str | None:
         """Resolve the name of a Zammad group by its ID.
 
-        Returns None when the group cannot be retrieved or exposes no usable name.
+        Returns None when the group payload exposes no usable name; request
+        errors propagate to the caller.
         """
-        try:
-            group_data = await self._request("GET", f"/api/v1/groups/{group_id}")
-        except Exception:
-            logger.warning(f"Failed to resolve group name for group {group_id}.", exc_info=True)
-            return None
+        group_data = await self._request("GET", f"/api/v1/groups/{group_id}")
         if isinstance(group_data, dict):
             return _extract_group_name(group_data)
         return None
