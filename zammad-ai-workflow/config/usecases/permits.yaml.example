@@ -2,8 +2,8 @@
 # Example usecase definition for multi-usecase routing
 # ============================================================================
 # Copy this file to config/usecases/permits.yaml (remove the .example suffix)
-# and adjust the values. All files matching *.yaml in router.usecase_config_dir
-# are loaded automatically at startup.
+# and adjust the values. All files matching *.yaml or *.yml in
+# router.usecase_config_dir are loaded automatically at startup.
 #
 # Kafka events are only routed to this usecase when they match at least one
 # rule under `match`. Events that match no usecase follow

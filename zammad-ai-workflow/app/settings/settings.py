@@ -288,7 +288,8 @@ def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:
         return []
 
     definitions: list[UseCaseSettings] = []
-    for path in sorted(config_dir.glob("*.yaml")):
+    paths = sorted([*config_dir.glob("*.yaml"), *config_dir.glob("*.yml")])
+    for path in paths:
         with path.open(encoding="utf-8") as file:
             payload: Any = yaml.safe_load(file) or {}
         if not isinstance(payload, dict):
