@@ -130,7 +130,7 @@ def test_registry_preserves_usecase_name_after_config_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Per-usecase config must not rename the runtime identity."""
-    settings: ZammadAISettings = settings_factory(valid_request_types=["support"])
+    settings: ZammadAISettings = settings_factory()
     registry = UseCaseRegistry.__new__(UseCaseRegistry)
     registry.root_settings = settings
     definition = UseCaseSettings(
@@ -314,16 +314,20 @@ def test_registry_does_not_warn_for_sole_ruleless_usecase(
     assert "neither match nor polling_match" not in caplog.text
 
 
-def test_resolve_usecases_keeps_single_usecase_deployments_on_the_legacy_path(settings_factory) -> None:
-    """Without usecase files or explicit usecases, deployments must not enter usecase routing.
+def test_resolve_usecases_requires_at_least_one_usecase(settings_factory) -> None:
+    """Without explicit usecases or usecase definition files, settings loading must fail."""
+    settings: ZammadAISettings = settings_factory(usecases=[])
 
-    Single-usecase deployments keep the legacy path where every Kafka event is
-    processed by the root usecase under the shared event-type filters; a
-    fallback usecase without match rules would silently drop every event.
-    """
-    settings: ZammadAISettings = settings_factory()
+    with pytest.raises(ValueError, match="At least one usecase"):
+        _resolve_usecases(settings)
 
-    assert _resolve_usecases(settings) == []
+
+def test_resolve_usecases_rejects_root_level_usecase(settings_factory) -> None:
+    """The root-level `usecase` field is populated internally and must not be configured."""
+    settings: ZammadAISettings = settings_factory(usecase=UseCaseSettings(name="default"))
+
+    with pytest.raises(ValueError, match="Root-level 'usecase'"):
+        _resolve_usecases(settings)
 
 
 def test_resolve_usecases_prefers_explicitly_configured_usecases(settings_factory) -> None:
@@ -339,7 +343,7 @@ def test_resolve_usecases_loads_definition_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Usecase definition files are loaded and validated when present."""
-    settings: ZammadAISettings = settings_factory()
+    settings: ZammadAISettings = settings_factory(usecases=[])
     definitions = [UseCaseSettings(name="permits", match=[UseCaseMatch(request_type="permits")])]
     monkeypatch.setattr("app.settings.settings._load_usecase_definitions", lambda _config_dir: definitions)
 

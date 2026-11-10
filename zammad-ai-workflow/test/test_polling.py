@@ -17,16 +17,12 @@ from app.errors import (
 )
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
-from app.polling.service import (
-    PollingConfigurationError,
-    PollingService,
-    get_polling_service,
-    reset_polling_service,
-)
+from app.polling.service import PollingConfigurationError, PollingService
 from app.settings import ZammadAISettings
 from app.settings.polling import PollingSettings
 from app.settings.triage import Action, ActionTypes, Category
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.usecases.resolver import UseCaseResolver
 from app.zammad.base import ZammadAuthError, ZammadPermanentError, ZammadRetryableError
 from test.fakes import FakeZammadClient
 
@@ -70,7 +66,12 @@ def _build_service(settings: ZammadAISettings, zammad_client: object) -> tuple[P
     action_service = MagicMock()
     execute_action = AsyncMock(return_value=None)
     action_service.execute_action = execute_action
-    service = PollingService(settings=settings, triage_service=triage_service, action_service=action_service)
+    service = PollingService(
+        settings=settings,
+        triage_service=triage_service,
+        action_service=action_service,
+        resolver=UseCaseResolver(settings.usecases),
+    )
     return service, perform_triage, execute_action
 
 
@@ -311,7 +312,12 @@ async def test_eai_client_rejected(settings_factory: Callable[..., ZammadAISetti
     )
     settings = settings_factory(zammad=eai_settings)
     with pytest.raises(PollingConfigurationError):
-        PollingService(settings=settings, triage_service=MagicMock(), action_service=MagicMock())
+        PollingService(
+            settings=settings,
+            triage_service=MagicMock(),
+            action_service=MagicMock(),
+            resolver=UseCaseResolver(settings.usecases),
+        )
 
 
 @pytest.mark.asyncio
@@ -340,16 +346,3 @@ async def test_start_runs_cycle_and_stop_cancels_task(settings_factory: Callable
     assert service._task is None
     assert task.cancelled() or task.done()
     perform_triage.assert_not_awaited()
-
-
-def test_singleton_get_and_reset() -> None:
-    """The module-level polling service should behave as a resettable singleton."""
-    reset_polling_service()
-    first = get_polling_service(settings=MagicMock(), triage_service=MagicMock(), action_service=MagicMock())
-    second = get_polling_service(settings=MagicMock(), triage_service=MagicMock(), action_service=MagicMock())
-    try:
-        assert first is second
-    finally:
-        reset_polling_service()
-
-    assert polling_service_module._service is None
