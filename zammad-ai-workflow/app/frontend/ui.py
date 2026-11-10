@@ -363,12 +363,12 @@ def build_frontend(
 
     Parameters:
         settings (ZammadAISettings): Root application settings; used as the fallback
-            for usecases without dedicated settings (e.g. single-usecase deployments).
+            for usecases without dedicated settings.
         usecase_settings (dict[str, ZammadAISettings] | None): Effective settings per
-            usecase name in multi-usecase mode; drives what the System Info section
-            displays for the selected usecase.
+            usecase name; drives what the System Info section displays for the
+            selected usecase.
     """
-    configured_usecases = settings.usecases or [settings.usecase]
+    configured_usecases = settings.usecases
 
     def _settings_for(selected_usecase: str | None) -> ZammadAISettings:
         """Return the effective settings for the selected usecase."""

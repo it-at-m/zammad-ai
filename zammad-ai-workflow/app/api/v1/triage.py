@@ -24,18 +24,16 @@ header_scheme = HTTPBearer(auto_error=False)
 
 
 def triage_dependency(request: Request) -> TriageService:
-    """Retrieve the request-scoped TriageService instance from the FastAPI application state.
+    """Retrieve the default TriageService instance from the usecase registry.
 
     Parameters:
-        request (Request): Incoming FastAPI request whose app.state contains the service.
+        request (Request): Incoming FastAPI request whose app.state contains the usecase registry.
 
     Returns:
-        TriageService: The TriageService instance stored at request.app.state.triage_service.
+        TriageService: The TriageService of the first configured usecase runtime.
     """
-    registry = getattr(request.app.state, "usecase_registry", None)
-    if registry is not None:
-        return next(iter(registry.runtimes.values())).triage_service
-    return request.app.state.triage_service
+    registry = request.app.state.usecase_registry
+    return next(iter(registry.runtimes.values())).triage_service
 
 
 triage_router = APIRouter(
@@ -63,19 +61,17 @@ async def triage(
         logger.warning("Unauthorized triage request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    registry = getattr(request.app.state, "usecase_registry", None)
-    runtime = None
-    if registry is not None:
-        if input.usecase:
-            try:
-                runtime = registry.get(input.usecase)
-                service = runtime.triage_service
-            except KeyError as e:
-                raise HTTPException(status_code=422, detail="Unknown usecase") from e
-        elif len(registry.runtimes) > 1:
-            raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
-        else:
-            runtime = next(iter(registry.runtimes.values()))
+    registry = request.app.state.usecase_registry
+    if input.usecase:
+        try:
+            runtime = registry.get(input.usecase)
+            service = runtime.triage_service
+        except KeyError as e:
+            raise HTTPException(status_code=422, detail="Unknown usecase") from e
+    elif len(registry.runtimes) > 1:
+        raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
+    else:
+        runtime = next(iter(registry.runtimes.values()))
 
     try:
         if not input.session_id:
@@ -83,9 +79,7 @@ async def triage(
         text: str = input.text
 
         # Preparse input text via the selected runtime's preparser when available
-        text = get_preparsed_text(
-            request, text, preparser_service=runtime.preparser_service if runtime is not None else None
-        )
+        text = get_preparsed_text(request, text, preparser_service=runtime.preparser_service)
 
         # Get categorization result
         categorization: CategorizationResult = await service.predict_category(text, session_id=input.session_id)

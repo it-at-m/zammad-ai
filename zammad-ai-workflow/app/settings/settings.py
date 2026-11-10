@@ -76,13 +76,22 @@ class ZammadAISettings(BaseSettings):
     """
 
     usecase: UseCaseSettings = Field(
-        description="Use case settings defining the specific AI application scenario.",
+        description=(
+            "Identity of the active usecase (name, description, match and polling_match rules). "
+            "Populated internally per usecase runtime; configuring this field at root level is rejected."
+        ),
         default_factory=lambda: UseCaseSettings(
             name="default",
             description="Default use case",
         ),
     )
-    usecases: list[UseCaseSettings] = Field(default_factory=list)
+    usecases: list[UseCaseSettings] = Field(
+        description=(
+            "Usecase definitions, e.g. one per usecase. At least one usecase is required, either "
+            "configured here or loaded from the usecase definition files in router.usecase_config_dir."
+        ),
+        default_factory=list,
+    )
     router: RouterSettings = Field(default_factory=RouterSettings)
     genai: GenAIProviderSettings = Field(
         description="Settings for GenAI integration, including model selection and configuration.",
@@ -248,11 +257,14 @@ def _resolve_usecases(settings: ZammadAISettings) -> list[UseCaseSettings]:
     """Resolve the effective usecase definitions for a deployment.
 
     Explicitly configured usecases take precedence; otherwise the usecase
-    definition files are loaded. Single-usecase deployments stay on the legacy
-    path with no usecases, preserving the shared-service and event-filter
-    behavior; a configured usecase without match rules never matches a Kafka
-    event.
+    definition files are loaded. At least one usecase must resolve, and the
+    root-level `usecase` field must not be configured directly.
     """
+    if "usecase" in settings.model_fields_set:
+        raise ValueError(
+            "Root-level 'usecase' is no longer supported; configure usecases under 'usecases' "
+            "or as usecase definition files in router.usecase_config_dir."
+        )
     if settings.usecases:
         _validate_usecases(settings.usecases, settings.router)
         return settings.usecases
@@ -264,7 +276,10 @@ def _resolve_usecases(settings: ZammadAISettings) -> list[UseCaseSettings]:
     if definitions:
         _validate_usecases(definitions, settings.router)
         return definitions
-    return []
+    raise ValueError(
+        "At least one usecase must be configured under 'usecases' or as usecase definition files "
+        f"in '{settings.router.usecase_config_dir}'."
+    )
 
 
 def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:

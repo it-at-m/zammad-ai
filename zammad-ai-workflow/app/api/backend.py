@@ -13,15 +13,11 @@ from fastapi.responses import RedirectResponse
 from prometheus_client import Counter, Histogram
 from starlette.responses import Response
 
-from app.action.service import get_action_service
-from app.answer import get_answer_service
 from app.frontend import mount_feedback_frontend, mount_frontend
-from app.guardrails.http_client import get_guardrail_service, reset_guardrail_service
 from app.models.api_v1 import HealthCheckResponse
-from app.polling.service import PollingService, get_polling_service, reset_polling_service
+from app.polling.service import PollingService
 from app.preparser.service import get_preparser_service
 from app.settings import ZammadAISettings, get_settings
-from app.triage import get_triage_service
 from app.usecases.registry import UseCaseRegistry
 from app.utils.logging import getLogger
 from app.utils.status import set_status, track_activity
@@ -88,7 +84,7 @@ def _is_kafka_reachable(broker_url: str, timeout_seconds: float = 1.0) -> bool:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application startup and shutdown by initializing and cleaning shared services.
 
-    On startup, attaches `triage_service` and `answer_service` to `app.state` using current settings. On shutdown, awaits each service's `cleanup()` method; `asyncio.CancelledError` raised during cleanup is caught.
+    On startup, attaches the usecase registry, preparser service, and polling services to `app.state`. On shutdown, awaits cleanup of the polling services and the usecase registry; `asyncio.CancelledError` raised during cleanup is caught.
     """
     set_status("startup")
     settings: ZammadAISettings = get_settings()
@@ -108,31 +104,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     exc_info=True,
                 )
 
-        logger.info("Initializing usecase runtimes and shared services")
-        if settings.usecases:
-            app.state.usecase_registry = usecase_registry or UseCaseRegistry(settings)
-        else:
-            app.state.guardrail_service = get_guardrail_service(settings=settings.guardrails)
-            app.state.triage_service = get_triage_service(settings=settings)
-            app.state.answer_service = get_answer_service(
-                settings=settings, guardrail_service=app.state.guardrail_service
-            )
-            app.state.action_service = get_action_service(
-                settings=settings,
-                answer_service=app.state.answer_service,
-                guardrail_service=app.state.guardrail_service,
-            )
+        logger.info("Initializing usecase runtimes")
+        app.state.usecase_registry = usecase_registry
         app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
-        app.state.preparser_service = get_preparser_service(settings=settings.preparser)
-
-        if settings.polling.enabled or (
-            settings.usecases
-            and any(
-                registry_runtime.settings.polling.enabled
-                for registry_runtime in app.state.usecase_registry.runtimes.values()
-            )
-        ):
+        polling_runtimes = [
+            runtime for runtime in app.state.usecase_registry.runtimes.values() if runtime.settings.polling.enabled
+        ]
+        if settings.polling.enabled or polling_runtimes:
             if settings.zammad.type == "eai":
                 logger.error("Polling is configured but the Zammad EAI client does not support polling.")
                 raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
@@ -142,25 +121,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Polling-based ticket intake uses in-memory deduplication and must run as a single replica. "
                 "Multiple instances would process the same tickets in parallel."
             )
-            if settings.usecases:
-                app.state.polling_services = [
-                    PollingService(
-                        settings=runtime.settings,
-                        triage_service=runtime.triage_service,
-                        action_service=runtime.action_service,
-                        resolver=app.state.usecase_registry.resolver,
-                        polling_match=runtime.settings.usecase.polling_match,
-                    )
-                    for runtime in app.state.usecase_registry.runtimes.values()
-                    if runtime.settings.polling.enabled
-                ]
-                for polling_service in app.state.polling_services:
-                    polling_service.start()
-            else:
-                app.state.polling_service = get_polling_service(
-                    settings=settings, triage_service=app.state.triage_service, action_service=app.state.action_service
+            app.state.polling_services = [
+                PollingService(
+                    settings=runtime.settings,
+                    triage_service=runtime.triage_service,
+                    action_service=runtime.action_service,
+                    resolver=app.state.usecase_registry.resolver,
                 )
-                app.state.polling_service.start()
+                for runtime in polling_runtimes
+            ]
+            for polling_service in app.state.polling_services:
+                polling_service.start()
             logger.info(
                 f"Polling-based ticket intake active: query '{settings.polling.search_query}' every {settings.polling.interval_seconds} seconds."
             )
@@ -170,35 +141,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         yield
 
-        logger.info("Shutting down shared Triage, Answer and Action services")
+        logger.info("Shutting down usecase runtimes")
         set_status("shutdown")
-        polling_services = getattr(app.state, "polling_services", None)
-        if polling_services is not None:
-            for polling_service in polling_services:
-                try:
-                    await polling_service.cleanup()
-                except Exception:
-                    logger.error("Failed to clean up polling service during shutdown.", exc_info=True)
-        else:
-            polling_service = getattr(app.state, "polling_service", None)
-            if polling_service is not None:
-                try:
-                    await polling_service.cleanup()
-                except Exception:
-                    logger.error("Failed to clean up polling service during shutdown.", exc_info=True)
-                reset_polling_service()
+        polling_services = getattr(app.state, "polling_services", [])
+        for polling_service in polling_services:
+            try:
+                await polling_service.cleanup()
+            except Exception:
+                logger.error("Failed to clean up polling service during shutdown.", exc_info=True)
         try:
-            if hasattr(app.state, "usecase_registry"):
-                await app.state.usecase_registry.cleanup()
-            else:
-                await app.state.triage_service.cleanup()
-                await app.state.answer_service.cleanup()
-                await app.state.action_service.cleanup()
-                await app.state.guardrail_service.close()
+            await app.state.usecase_registry.cleanup()
         except CancelledError:
             logger.info("Cleanup cancelled during shutdown.")
-        finally:
-            reset_guardrail_service()
     except Exception as e:
         logger.error(
             f"Error during application lifespan management. Error type: {type(e).__name__}",
@@ -214,9 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 settings: ZammadAISettings = get_settings()
-usecase_registry: UseCaseRegistry | None = None
-if settings.usecases:
-    usecase_registry = UseCaseRegistry(settings)
+usecase_registry: UseCaseRegistry = UseCaseRegistry(settings)
 
 if settings.polling.enabled and settings.zammad.type == "eai":
     raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
@@ -312,37 +264,29 @@ async def get_prompt_versions() -> dict[str, object]:
 
     Returns:
         dict[str, int | None]: A flat dictionary mapping prompt names to their version
-        numbers. When multiple usecase runtimes are configured, a nested dictionary
-        mapping usecase names to their prompt version dictionaries is returned instead.
+        numbers when a single usecase runtime is configured. With multiple usecase
+        runtimes, a nested dictionary mapping usecase names to their prompt version
+        dictionaries is returned instead.
     """
-    if hasattr(backend.state, "usecase_registry"):
-        runtimes = backend.state.usecase_registry.runtimes
-        if len(runtimes) == 1:
-            runtime = next(iter(runtimes.values()))
-            prompts = runtime.triage_service.get_prompt_versions()
-            prompts.update(runtime.answer_service.get_prompt_versions())
-            return prompts
-        return {
-            name: {
-                **runtime.triage_service.get_prompt_versions(),
-                **runtime.answer_service.get_prompt_versions(),
-            }
-            for name, runtime in runtimes.items()
-        }  # type: ignore[return-value]
-    prompts = backend.state.triage_service.get_prompt_versions()
-    prompts.update(backend.state.answer_service.get_prompt_versions())
-
-    return prompts
+    runtimes = backend.state.usecase_registry.runtimes
+    if len(runtimes) == 1:
+        runtime = next(iter(runtimes.values()))
+        prompts = runtime.triage_service.get_prompt_versions()
+        prompts.update(runtime.answer_service.get_prompt_versions())
+        return prompts
+    return {
+        name: {
+            **runtime.triage_service.get_prompt_versions(),
+            **runtime.answer_service.get_prompt_versions(),
+        }
+        for name, runtime in runtimes.items()
+    }  # type: ignore[return-value]
 
 
 @backend.get("/api/v1/usecases", tags=["status"])
 async def get_usecases() -> list[dict[str, str]]:
-    """Return configured usecases for API clients and the developer frontend.
-
-    Single-usecase deployments report their root usecase.
-    """
-    effective_usecases = settings.usecases or [settings.usecase]
-    return [{"name": usecase.name, "description": usecase.description} for usecase in effective_usecases]
+    """Return configured usecases for API clients and the developer frontend."""
+    return [{"name": usecase.name, "description": usecase.description} for usecase in settings.usecases]
 
 
 @backend.get("/api/v1/health", tags=["health"])
@@ -361,11 +305,7 @@ if settings.frontend.enabled:
     backend = mount_frontend(
         app=backend,
         settings=settings,
-        usecase_settings=(
-            {name: runtime.settings for name, runtime in usecase_registry.runtimes.items()}
-            if usecase_registry is not None
-            else None
-        ),
+        usecase_settings={name: runtime.settings for name, runtime in usecase_registry.runtimes.items()},
     )
 
 if not settings.frontend.enabled and settings.mode == "development":

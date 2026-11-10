@@ -54,10 +54,6 @@ class KafkaSettings(BaseModel):
         default_factory=lambda: DisableKafkaSecurity(),
         discriminator="type",
     )
-    event_processing: "EventProcessingSettings" = Field(
-        description="Settings related to processing of incoming events.",
-        default_factory=lambda: EventProcessingSettings(),
-    )
     max_workers: PositiveInt = Field(
         description="Maximum number of concurrent workers for processing events.",
         default=5,
@@ -116,28 +112,6 @@ class KafkaSettings(BaseModel):
         normalized_data = dict(data)
         normalized_data["security"] = normalized_security
         return normalized_data
-
-
-class EventProcessingSettings(BaseModel):
-    """Settings related to processing of incoming events."""
-
-    valid_request_types: list[str] = Field(
-        default_factory=list,
-        description=(
-            "List of valid request types to process. Events with request types not in this list will be "
-            "acknowledged and skipped. Not applied to events routed via usecase match rules; with usecases "
-            "configured, the usecase match rules decide which events are processed."
-        ),
-    )
-
-    valid_action_types: list[str] = Field(
-        default_factory=list,
-        description=(
-            "List of valid action types to process. Events with action types not in this list will be "
-            "acknowledged and skipped. Not applied to events routed via usecase match rules; with usecases "
-            "configured, the usecase match rules decide which events are processed."
-        ),
-    )
 
 
 class DisableKafkaSecurity(BaseModel):
