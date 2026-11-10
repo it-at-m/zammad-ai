@@ -141,10 +141,9 @@ tickets when more than one usecase is configured and warns at startup. REST
 requests and the developer frontend send the selected usecase explicitly via
 the `usecase` field.
 
-Single-usecase deployments without usecase definition files or explicit
-`usecases` configuration do not use usecase routing: every Kafka event is
-processed by the root `usecase` under the shared `kafka.event_processing`
-filters.
+At least one usecase is required: either configure it inline under `usecases` in
+`config.yaml` or provide one definition file per usecase under
+`router.usecase_config_dir`. A root-level `usecase` block is not supported.
 
 ## Local Development Stack
 

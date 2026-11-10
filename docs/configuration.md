@@ -18,7 +18,8 @@ Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zamm
 
 ### Core Sections
 
-- `usecase`: deployment name and description
+- `usecases`: at least one usecase definition with `name`, `description`, `match`/`polling_match` rules, and optional per-usecase `config` overrides; a root-level `usecase` block is not supported
+- `router`: usecase routing settings (`usecase_config_dir`, `unmatched_policy`, `fallback_usecase`)
 - `genai`: model provider, chat model, embedding model, and retry settings
 - `zammad`: REST API or EAI connection settings, knowledge base ID, and document parsing config
 - `kafka`: broker URL, topic names, retry policy, client ID, group ID, and mTLS security
