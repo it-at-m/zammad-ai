@@ -112,8 +112,7 @@ def run_indexing(
         if snapshot_success:
             logger.info("Qdrant snapshot ready", extra={"stage": "snapshot"})
         else:
-            logger.warning("Failed to create Qdrant snapshot before indexing. Exiting.")
-            return
+            raise RuntimeError("Failed to create Qdrant snapshot before indexing.")
 
         # Step 7: Add documents to Qdrant
         if qdrant_items:
@@ -124,8 +123,7 @@ def run_indexing(
                     "Documents indexed into Qdrant", extra={"stage": "write_documents", "count": len(qdrant_items)}
                 )
             else:
-                logger.error("Failed to index documents into Qdrant.")
-                return
+                raise RuntimeError("Failed to index documents into Qdrant.")
 
         # Step 8: Delete documents from Qdrant for deleted answer IDs
         if deleted_answer_ids:
@@ -289,8 +287,7 @@ def run_target(target: ResolvedTarget) -> None:
             logger.info("Creating Qdrant snapshot before law ingestion")
             snapshot_created = qdrant_client.create_snapshot()
             if not snapshot_created:
-                logger.warning("Failed to create Qdrant snapshot before law ingestion. Exiting.")
-                return
+                raise RuntimeError("Failed to create Qdrant snapshot before law ingestion.")
 
             logger.info("Starting law ingestion for %d configured law(s)", len(target.laws))
             for law in target.laws:
