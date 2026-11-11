@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, Field, NonNegativeFloat, NonNegativeInt, PositiveFloat, PositiveInt
 
 
 class BaseGenAISettings(BaseModel):
@@ -20,6 +20,24 @@ class BaseGenAISettings(BaseModel):
     max_tokens: PositiveInt = Field(
         description="Maximum number of tokens to request from the LLM SDK",
         default=8192,
+    )
+    context_window_tokens: PositiveInt = Field(
+        description=(
+            "Maximum context window of the GenAI model in tokens. The answer agent trims its "
+            "conversation history to stay within this window minus the max_tokens output reserve."
+        ),
+        default=131072,
+    )
+    context_overhead_tokens: PositiveInt = Field(
+        description="Tokens reserved for the agent prompt, tool schemas, and tokenization overhead.",
+        default=8192,
+    )
+    chars_per_token: PositiveFloat = Field(
+        description=(
+            "Estimated number of characters per token used for conservative context trimming. "
+            "Lower values reserve more space by overestimating the token count."
+        ),
+        default=3.0,
     )
     timeout: PositiveInt = Field(
         description="Request timeout in seconds for the LLM SDK",
