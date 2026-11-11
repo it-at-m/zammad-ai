@@ -29,6 +29,7 @@ genai:
   max_tokens: 8096 # Maximum number of tokens requested from the LLM
   context_window_tokens: 131072 # Maximum context window of the model in tokens; the answer agent trims its conversation history to fit (minus max_tokens reserve)
   context_overhead_tokens: 8192 # Additional reserve for the agent prompt, tool schemas, and tokenization overhead
+  chars_per_token: 3.0 # Conservative character-per-token estimate used when trimming context
   timeout: 600 # Request timeout in seconds for the LLM SDK
   chat_model: "gpt-4.1-mini" # Model for chat completions
   triage_model: null # Optional override for triage model (fallback: chat_model)

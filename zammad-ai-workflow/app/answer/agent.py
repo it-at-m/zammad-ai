@@ -258,6 +258,7 @@ def build_agent(
                 context_window_tokens=genai_settings.context_window_tokens,
                 reserved_output_tokens=genai_settings.max_tokens,
                 overhead_tokens=genai_settings.context_overhead_tokens,
+                chars_per_token=genai_settings.chars_per_token,
             ),
         ],
     )
