@@ -19,7 +19,7 @@ from app.settings.polling import PollingSettings
 from app.settings.settings import ZammadAISettings
 from app.triage.triage import TriageService
 from app.usecases.resolver import UseCaseResolver
-from app.utils.logging import getLogger
+from app.utils.logging import getLogger, usecase_logging
 from app.utils.status import track_activity
 from app.zammad.api import ZammadAPIClient
 from app.zammad.base import BaseZammadClient
@@ -62,33 +62,36 @@ class PollingService:
 
     def start(self) -> None:
         """Start the background polling task unless it is already running."""
-        if self._task is not None and not self._task.done():
-            logger.warning("Polling service is already running; ignoring start request.")
-            return
-        self._task = asyncio.create_task(self._run(), name="zammad-ai-polling")
-        logger.info(
-            "Polling-based ticket intake started.",
-            extra={
-                "search_query": self.polling_settings.search_query,
-                "interval_seconds": self.polling_settings.interval_seconds,
-            },
-        )
+        with usecase_logging(self.settings.usecase.name):
+            if self._task is not None and not self._task.done():
+                logger.warning("Polling service is already running; ignoring start request.")
+                return
+            self._task = asyncio.create_task(self._run(), name="zammad-ai-polling")
+            logger.info(
+                "Polling-based ticket intake started.",
+                extra={
+                    "search_query": self.polling_settings.search_query,
+                    "interval_seconds": self.polling_settings.interval_seconds,
+                },
+            )
 
     async def stop(self) -> None:
         """Cancel the background polling task and wait for it to finish."""
-        if self._task is None:
-            return
-        task = self._task
-        self._task = None
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        logger.info("Polling service stopped.")
+        with usecase_logging(self.settings.usecase.name):
+            if self._task is None:
+                return
+            task = self._task
+            self._task = None
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            logger.info("Polling service stopped.")
 
     async def cleanup(self) -> None:
         """Stop the polling task and clear the in-memory deduplication state."""
-        await self.stop()
-        self._processed.clear()
-        logger.info("Polling resources cleaned up.")
+        with usecase_logging(self.settings.usecase.name):
+            await self.stop()
+            self._processed.clear()
+            logger.info("Polling resources cleaned up.")
 
     async def _run(self) -> None:
         """Run polling cycles forever until the task is cancelled."""
@@ -134,22 +137,23 @@ class PollingService:
                     and monotonic() - last_processed < self.polling_settings.processed_ttl_seconds
                 ):
                     continue
-                try:
-                    outcome: str = await self._process_ticket(ticket_id=ticket_id)
-                except PollingRetryableError:
-                    logger.warning(
-                        "Processing of ticket will be retried in a later polling cycle.",
-                        extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
-                        exc_info=True,
-                    )
-                except Exception:
-                    logger.error(
-                        "Polling ticket processing failed unexpectedly.",
-                        extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
-                        exc_info=True,
-                    )
-                else:
-                    logger.info("Polling ticket completed.", extra={"ticket_id": ticket_id, "outcome": outcome})
+                with usecase_logging(self.settings.usecase.name):
+                    try:
+                        outcome: str = await self._process_ticket(ticket_id=ticket_id)
+                    except PollingRetryableError:
+                        logger.warning(
+                            "Processing of ticket will be retried in a later polling cycle.",
+                            extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
+                            exc_info=True,
+                        )
+                    except Exception:
+                        logger.error(
+                            "Polling ticket processing failed unexpectedly.",
+                            extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
+                            exc_info=True,
+                        )
+                    else:
+                        logger.info("Polling ticket completed.", extra={"ticket_id": ticket_id, "outcome": outcome})
 
     def _prune_processed(self) -> None:
         """Remove deduplication entries that are older than the configured TTL."""

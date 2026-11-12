@@ -8,7 +8,7 @@ import httpx
 
 from app.settings import ZammadAISettings
 from app.settings.genai import GenAIProviderSettings
-from app.utils.logging import getLogger
+from app.utils.logging import getLogger, usecase_logging
 
 logger = getLogger("zammad-ai.frontend")
 
@@ -151,67 +151,74 @@ async def process_ticket(
     triage_url = f"{api_base_url}/api/v1/triage"
     answer_url = f"{api_base_url}/api/v1/answer"
 
-    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-        try:
-            triage_payload: dict[str, Any] = {"text": text}
-            if usecase:
-                triage_payload["usecase"] = usecase
-            triage_data = await _request_json(client=client, url=triage_url, payload=triage_payload, headers=api_key)
-        except httpx.ConnectError:
-            raise gr.Error(f"Verbindungsfehler: Backend läuft nicht auf {api_base_url}")
-        except httpx.TimeoutException:
-            raise gr.Error("Timeout: Triage dauert zu lange")
-        except httpx.HTTPStatusError as e:
-            raise gr.Error(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
-        except Exception as e:
-            logger.error("Failed to process triage request.", exc_info=True, extra={"exception_type": type(e).__name__})
-            raise gr.Error("Fehler bei Triage")
+    with usecase_logging(usecase):
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            try:
+                triage_payload: dict[str, Any] = {"text": text}
+                if usecase:
+                    triage_payload["usecase"] = usecase
+                triage_data = await _request_json(
+                    client=client, url=triage_url, payload=triage_payload, headers=api_key
+                )
+            except httpx.ConnectError:
+                raise gr.Error(f"Verbindungsfehler: Backend läuft nicht auf {api_base_url}")
+            except httpx.TimeoutException:
+                raise gr.Error("Timeout: Triage dauert zu lange")
+            except httpx.HTTPStatusError as e:
+                raise gr.Error(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
+            except Exception as e:
+                logger.error(
+                    "Failed to process triage request.", exc_info=True, extra={"exception_type": type(e).__name__}
+                )
+                raise gr.Error("Fehler bei Triage")
 
-        triage_result = triage_data.get("triage", {})
-        session_id = triage_data.get("session_id")
+            triage_result = triage_data.get("triage", {})
+            session_id = triage_data.get("session_id")
 
-        category = triage_result.get("category", {}).get("name", "Unbekannt")
-        action = str(triage_result.get("action", {}).get("name", "Unbekannt"))
-        reasoning = triage_result.get("reasoning", "")
-        try:
-            confidence = float(triage_result.get("confidence", 0.0))
-        except TypeError, ValueError:
-            confidence = 0.0
+            category = triage_result.get("category", {}).get("name", "Unbekannt")
+            action = str(triage_result.get("action", {}).get("name", "Unbekannt"))
+            reasoning = triage_result.get("reasoning", "")
+            try:
+                confidence = float(triage_result.get("confidence", 0.0))
+            except TypeError, ValueError:
+                confidence = 0.0
 
-        answer = "No answer generated."
-        answer_documents = "No supporting documents."
+            answer = "No answer generated."
+            answer_documents = "No supporting documents."
 
-        try:
-            answer_data = await _request_json(
-                client=client,
-                url=answer_url,
-                payload={
-                    "text": text,
-                    "category": category,
-                    "session_id": session_id,
-                    "action": action,
-                    **({"usecase": usecase} if usecase else {}),
-                },
-                headers=api_key,
-            )
-            answer = str(answer_data.get("response", ""))
-            answer = answer.replace("<br>", "\n").strip() if answer else "Keine Antwort generiert."
-            documents = answer_data.get("documents", [])
-            if isinstance(documents, list):
-                answer_documents = _format_documents(documents=documents)
-        except httpx.ConnectError:
-            gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
-            answer = "Fehler bei Answer-Generierung"
-        except httpx.TimeoutException:
-            gr.Warning("Timeout: Answer-Generierung dauert zu lange")
-            answer = "Fehler bei Answer-Generierung"
-        except httpx.HTTPStatusError as e:
-            gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
-            answer = "Fehler bei Answer-Generierung"
-        except Exception as e:
-            logger.error("Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__})
-            gr.Warning("Fehler bei Answer-Generierung")
-            answer = "Fehler bei Answer-Generierung"
+            try:
+                answer_data = await _request_json(
+                    client=client,
+                    url=answer_url,
+                    payload={
+                        "text": text,
+                        "category": category,
+                        "session_id": session_id,
+                        "action": action,
+                        **({"usecase": usecase} if usecase else {}),
+                    },
+                    headers=api_key,
+                )
+                answer = str(answer_data.get("response", ""))
+                answer = answer.replace("<br>", "\n").strip() if answer else "Keine Antwort generiert."
+                documents = answer_data.get("documents", [])
+                if isinstance(documents, list):
+                    answer_documents = _format_documents(documents=documents)
+            except httpx.ConnectError:
+                gr.Warning(f"Verbindungsfehler bei Answer: Backend läuft nicht auf {api_base_url}")
+                answer = "Fehler bei Answer-Generierung"
+            except httpx.TimeoutException:
+                gr.Warning("Timeout: Answer-Generierung dauert zu lange")
+                answer = "Fehler bei Answer-Generierung"
+            except httpx.HTTPStatusError as e:
+                gr.Warning(f"HTTP-Fehler {e.response.status_code}: {e.response.text}")
+                answer = "Fehler bei Answer-Generierung"
+            except Exception as e:
+                logger.error(
+                    "Failed to process answer request.", exc_info=True, extra={"exception_type": type(e).__name__}
+                )
+                gr.Warning("Fehler bei Answer-Generierung")
+                answer = "Fehler bei Answer-Generierung"
 
     confidence_str = f"{confidence * 100:.1f}%"
     return category, action, reasoning, confidence_str, answer, answer_documents

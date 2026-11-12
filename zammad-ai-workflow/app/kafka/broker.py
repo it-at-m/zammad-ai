@@ -34,7 +34,7 @@ from app.settings import ZammadAISettings
 from app.triage.triage import TriageService
 from app.usecases.registry import UseCaseRegistry
 from app.usecases.resolver import UseCaseResolver
-from app.utils.logging import getLogger
+from app.utils.logging import getLogger, usecase_logging
 from app.utils.status import track_activity
 from app.zammad.base import BaseZammadClient, TicketNotFoundError, ZammadConnectionError, ZammadRetryableError
 from app.zammad.processing import ensure_ticket_not_already_processed
@@ -297,52 +297,53 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                 logger.error("Dropping Kafka event with an unresolvable usecase.", exc_info=True)
                 raise AckMessage() from e
 
-            try:
-                logger.debug("Resolved Kafka event usecase", extra={"usecase": usecase})
-                await _process_ticket_event(
-                    settings=active_settings,
-                    triage_service=active_triage,
-                    action_service=active_action,
-                    event=event,
-                    group_state=group_state,
-                    record_processed_event=True,
-                )
-                original_group_id = _get_group_state_int(group_state, "original_group_id")
-                if original_group_id is not None:
-                    ticket_id = (
-                        _safe_ticket_id(event.ticket)
-                        if isinstance(event, Event)
-                        else _safe_ticket_id(event.get("ticket"))
+            with usecase_logging(usecase):
+                try:
+                    logger.debug("Resolved Kafka event usecase")
+                    await _process_ticket_event(
+                        settings=active_settings,
+                        triage_service=active_triage,
+                        action_service=active_action,
+                        event=event,
+                        group_state=group_state,
+                        record_processed_event=True,
                     )
-                    if ticket_id is not None:
-                        await _restore_ticket_group(
-                            zammad_client=active_triage.zammad_client,
-                            ticket_id=ticket_id,
-                            group_id=original_group_id,
-                            handler_stage="restore_ticket_group",
-                            log_message="Moved ticket back to original group",
+                    original_group_id = _get_group_state_int(group_state, "original_group_id")
+                    if original_group_id is not None:
+                        ticket_id = (
+                            _safe_ticket_id(event.ticket)
+                            if isinstance(event, Event)
+                            else _safe_ticket_id(event.get("ticket"))
                         )
-            except AckMessage:
-                raise
-            except Exception as e:
-                assert active_settings.triage is not None
-                await _handle_processing_exception(
-                    e,
-                    ticket_id=_safe_ticket_id(event.ticket)
-                    if isinstance(event, Event)
-                    else _safe_ticket_id(event.get("ticket")),
-                    category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
-                    broker=broker,
-                    settings=active_settings,
-                    zammad_client=active_triage.zammad_client,
-                    event=Event.model_validate(event) if not isinstance(event, Event) else event,
-                    original_group_id=_get_group_state_int(group_state, "original_group_id"),
-                    retry_count=0,
-                    category=_get_group_state_str(group_state, "category"),
-                    action_type=_get_group_state_str(group_state, "action_type"),
-                    session_id=_get_group_state_str(group_state, "session_id"),
-                )
-            raise AckMessage()
+                        if ticket_id is not None:
+                            await _restore_ticket_group(
+                                zammad_client=active_triage.zammad_client,
+                                ticket_id=ticket_id,
+                                group_id=original_group_id,
+                                handler_stage="restore_ticket_group",
+                                log_message="Moved ticket back to original group",
+                            )
+                except AckMessage:
+                    raise
+                except Exception as e:
+                    assert active_settings.triage is not None
+                    await _handle_processing_exception(
+                        e,
+                        ticket_id=_safe_ticket_id(event.ticket)
+                        if isinstance(event, Event)
+                        else _safe_ticket_id(event.get("ticket")),
+                        category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
+                        broker=broker,
+                        settings=active_settings,
+                        zammad_client=active_triage.zammad_client,
+                        event=Event.model_validate(event) if not isinstance(event, Event) else event,
+                        original_group_id=_get_group_state_int(group_state, "original_group_id"),
+                        retry_count=0,
+                        category=_get_group_state_str(group_state, "category"),
+                        action_type=_get_group_state_str(group_state, "action_type"),
+                        session_id=_get_group_state_str(group_state, "session_id"),
+                    )
+                raise AckMessage()
 
     @router.subscriber(
         settings.kafka.retry_topic,
@@ -373,7 +374,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         extra={"usecase": usecase_name},
                     )
                 try:
-                    active_settings, active_triage, active_action, _ = runtime_for_event(event)
+                    active_settings, active_triage, active_action, usecase_name = runtime_for_event(event)
                 except KafkaPayloadError as e:
                     logger.error("Dropping Kafka retry with an unresolved payload.", exc_info=True)
                     raise AckMessage() from e
@@ -383,74 +384,75 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     runtime.triage_service,
                     runtime.action_service,
                 )
-            parsed_retry_count = _parse_retry_count(retry_count)
-            parsed_original_group_id = _parse_original_group_id(original_group_id)
-            parsed_session_id = _parse_session_id(session_id_header)
-            remaining_delay_seconds = await _sleep_until_retry_after(
-                retry_after,
-                retry_delay_seconds=active_settings.kafka.retry_delay_seconds,
-            )
-            if remaining_delay_seconds is not None:
-                await _reschedule_retry_event(
-                    broker=broker,
-                    settings=active_settings,
-                    event=event,
-                    original_group_id=parsed_original_group_id,
-                    retry_count=parsed_retry_count,
-                    remaining_delay_seconds=remaining_delay_seconds,
-                    session_id=parsed_session_id,
-                )
-                raise AckMessage()
-            try:
-                await _process_ticket_event(
-                    settings=active_settings,
-                    triage_service=active_triage,
-                    action_service=active_action,
-                    event=event,
-                    group_state=group_state,
-                    record_processed_event=False,
-                    allow_in_ai_group=True,
-                    session_id=parsed_session_id,
-                )
-                if parsed_original_group_id is None:
-                    parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
-                if parsed_original_group_id is not None:
-                    ticket_id = (
-                        _safe_ticket_id(event.ticket)
-                        if isinstance(event, Event)
-                        else _safe_ticket_id(event.get("ticket"))
-                    )
-                    if ticket_id is not None:
-                        await _restore_ticket_group(
-                            zammad_client=active_triage.zammad_client,
-                            ticket_id=ticket_id,
-                            group_id=parsed_original_group_id,
-                            handler_stage="restore_ticket_group",
-                            log_message="Moved ticket back to original group",
-                        )
-            except AckMessage:
-                raise
-            except Exception as e:
+            with usecase_logging(usecase_name):
+                parsed_retry_count = _parse_retry_count(retry_count)
                 parsed_original_group_id = _parse_original_group_id(original_group_id)
-                if parsed_original_group_id is None:
-                    parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
-                assert active_settings.triage is not None
-                await _handle_processing_exception(
-                    e,
-                    ticket_id=_safe_ticket_id(event.ticket)
-                    if isinstance(event, Event)
-                    else _safe_ticket_id(event.get("ticket")),
-                    category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
-                    broker=broker,
-                    settings=active_settings,
-                    zammad_client=active_triage.zammad_client,
-                    event=Event.model_validate(event) if not isinstance(event, Event) else event,
-                    original_group_id=parsed_original_group_id,
-                    retry_count=parsed_retry_count,
-                    category=_get_group_state_str(group_state, "category"),
-                    action_type=_get_group_state_str(group_state, "action_type"),
-                    session_id=_get_group_state_str(group_state, "session_id") or parsed_session_id,
+                parsed_session_id = _parse_session_id(session_id_header)
+                remaining_delay_seconds = await _sleep_until_retry_after(
+                    retry_after,
+                    retry_delay_seconds=active_settings.kafka.retry_delay_seconds,
                 )
-            raise AckMessage()
+                if remaining_delay_seconds is not None:
+                    await _reschedule_retry_event(
+                        broker=broker,
+                        settings=active_settings,
+                        event=event,
+                        original_group_id=parsed_original_group_id,
+                        retry_count=parsed_retry_count,
+                        remaining_delay_seconds=remaining_delay_seconds,
+                        session_id=parsed_session_id,
+                    )
+                    raise AckMessage()
+                try:
+                    await _process_ticket_event(
+                        settings=active_settings,
+                        triage_service=active_triage,
+                        action_service=active_action,
+                        event=event,
+                        group_state=group_state,
+                        record_processed_event=False,
+                        allow_in_ai_group=True,
+                        session_id=parsed_session_id,
+                    )
+                    if parsed_original_group_id is None:
+                        parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
+                    if parsed_original_group_id is not None:
+                        ticket_id = (
+                            _safe_ticket_id(event.ticket)
+                            if isinstance(event, Event)
+                            else _safe_ticket_id(event.get("ticket"))
+                        )
+                        if ticket_id is not None:
+                            await _restore_ticket_group(
+                                zammad_client=active_triage.zammad_client,
+                                ticket_id=ticket_id,
+                                group_id=parsed_original_group_id,
+                                handler_stage="restore_ticket_group",
+                                log_message="Moved ticket back to original group",
+                            )
+                except AckMessage:
+                    raise
+                except Exception as e:
+                    parsed_original_group_id = _parse_original_group_id(original_group_id)
+                    if parsed_original_group_id is None:
+                        parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
+                    assert active_settings.triage is not None
+                    await _handle_processing_exception(
+                        e,
+                        ticket_id=_safe_ticket_id(event.ticket)
+                        if isinstance(event, Event)
+                        else _safe_ticket_id(event.get("ticket")),
+                        category_wrong_retry_confidence_threshold=active_settings.triage.category_wrong_retry_confidence_threshold,
+                        broker=broker,
+                        settings=active_settings,
+                        zammad_client=active_triage.zammad_client,
+                        event=Event.model_validate(event) if not isinstance(event, Event) else event,
+                        original_group_id=parsed_original_group_id,
+                        retry_count=parsed_retry_count,
+                        category=_get_group_state_str(group_state, "category"),
+                        action_type=_get_group_state_str(group_state, "action_type"),
+                        session_id=_get_group_state_str(group_state, "session_id") or parsed_session_id,
+                    )
+                raise AckMessage()
 
     return router, event_handler

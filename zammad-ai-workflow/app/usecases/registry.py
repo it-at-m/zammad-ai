@@ -11,7 +11,7 @@ from app.settings import ZammadAISettings
 from app.settings.usecase import UseCaseSettings
 from app.triage.triage import TriageService
 from app.usecases.resolver import UseCaseResolver
-from app.utils.logging import getLogger
+from app.utils.logging import getLogger, usecase_logging
 
 logger = getLogger("zammad-ai.usecases.registry")
 
@@ -78,11 +78,13 @@ class UseCaseRegistry:
         self.runtimes: dict[str, UseCaseRuntime] = {}
         for definition in root_settings.usecases:
             settings = self._build_settings(definition)
-            self.runtimes[definition.name] = UseCaseRuntime(
-                name=definition.name,
-                settings=settings,
-                guardrail_service=GuardrailService(settings.guardrails),
-            )
+            with usecase_logging(definition.name):
+                self.runtimes[definition.name] = UseCaseRuntime(
+                    name=definition.name,
+                    settings=settings,
+                    guardrail_service=GuardrailService(settings.guardrails),
+                )
+                logger.info("Initialized usecase runtime")
         self._warn_inert_polling_usecases()
         self._warn_ruleless_usecases()
 
@@ -100,10 +102,11 @@ class UseCaseRegistry:
             if runtime is None:
                 continue
             if runtime.settings.polling.enabled and not definition.polling_match:
-                logger.warning(
-                    f"Usecase '{definition.name}' has polling enabled but defines no polling_match rules; "
-                    "it will never match polled tickets. Add polling_match rules or disable polling for this usecase."
-                )
+                with usecase_logging(definition.name):
+                    logger.warning(
+                        f"Usecase '{definition.name}' has polling enabled but defines no polling_match rules; "
+                        "it will never match polled tickets. Add polling_match rules or disable polling for this usecase."
+                    )
 
     def _warn_ruleless_usecases(self) -> None:
         """Warn about usecases that define neither match nor polling_match rules.
@@ -124,11 +127,12 @@ class UseCaseRegistry:
                 and self.root_settings.router.fallback_usecase == definition.name
             ):
                 continue
-            logger.warning(
-                f"Usecase '{definition.name}' defines neither match nor polling_match rules; "
-                "it will never match Kafka events or polled tickets. "
-                "Add at least one match or polling_match rule to its definition."
-            )
+            with usecase_logging(definition.name):
+                logger.warning(
+                    f"Usecase '{definition.name}' defines neither match nor polling_match rules; "
+                    "it will never match Kafka events or polled tickets. "
+                    "Add at least one match or polling_match rule to its definition."
+                )
 
     def _build_settings(self, definition: UseCaseSettings) -> ZammadAISettings:
         payload: dict[str, Any] = self.root_settings.model_dump(mode="python")
