@@ -17,7 +17,11 @@ class FeedbackSettings(BaseModel):
         default=None,
     )
     score_name: str = Field(
-        description="Name of the Langfuse score written by the feedback frontend.",
+        description=(
+            "Name of the Langfuse score written by the feedback frontend. "
+            "Can be overridden per usecase via the usecase config; the feedback frontend "
+            "resolves the score name from the trace's usecase tag and falls back to this default."
+        ),
         default="user-thumbs",
         min_length=1,
     )

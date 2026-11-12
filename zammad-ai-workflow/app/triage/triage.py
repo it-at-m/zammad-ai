@@ -180,6 +180,7 @@ class TriageService:
             genai_settings=settings.genai,
             prompts=genai_prompts,
             categories_langfuse_prompt=categories_langfuse_prompt,
+            tags=[settings.usecase.name],
         )
 
         self.zammad_client: BaseZammadClient

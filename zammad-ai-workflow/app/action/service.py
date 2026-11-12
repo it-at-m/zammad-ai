@@ -356,7 +356,7 @@ class ActionService:
         try:
             trace_name = "static-answer" if isinstance(response, StaticAnswer) else "no-answer"
             output_text = response.response if isinstance(response, StaticAnswer) else ""
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=[self.settings.usecase.name]):
                 with getattr(langfuse_client.langfuse, "start_as_current_observation")(
                     as_type="span", name=trace_name, input=user_text
                 ) as observation:

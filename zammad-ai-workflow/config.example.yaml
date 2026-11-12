@@ -376,6 +376,7 @@ frontend:
   auth_password: "zammad-ai" # Basic auth password for local development
   feedback:
     language: "de" # Options: "de", "en"
+    score_name: "user-thumbs" # Langfuse score name for feedback; override per usecase to keep scores separable
     tags: [] # Optional predefined feedback tags, e.g. ["outdated information"]
 
 # Logging configuration

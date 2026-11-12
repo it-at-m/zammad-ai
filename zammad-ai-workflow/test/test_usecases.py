@@ -21,7 +21,7 @@ def test_event_resolver_selects_exact_usecase() -> None:
     resolver = UseCaseResolver(
         [
             UseCaseSettings(name="support", match=[UseCaseMatch(request_type="support", action="created")]),
-            UseCaseSettings(name="permits", match=[UseCaseMatch(request_type="permits")]),
+            UseCaseSettings(name="example-usecase", match=[UseCaseMatch(request_type="example-request")]),
         ]
     )
 
@@ -71,7 +71,7 @@ def test_event_resolver_keeps_exact_matching_for_sole_usecase_with_match_rules()
     resolver = UseCaseResolver([UseCaseSettings(name="support", match=[UseCaseMatch(request_type="support")])])
 
     assert resolver.resolve_event(_event("support")) is not None
-    assert resolver.resolve_event(_event("permits")) is None
+    assert resolver.resolve_event(_event("example-request")) is None
 
 
 def test_event_resolver_keeps_unmatched_policy_for_multiple_usecases() -> None:
@@ -84,15 +84,15 @@ def test_event_resolver_keeps_unmatched_policy_for_multiple_usecases() -> None:
     )
 
     assert resolver.resolve_event(_event("support")) is not None
-    assert resolver.resolve_event(_event("permits")) is None
+    assert resolver.resolve_event(_event("example-request")) is None
 
 
 def test_polling_resolver_uses_ticket_metadata() -> None:
     """Route polling tickets using Zammad group metadata."""
-    usecase = UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")])
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
     resolver = UseCaseResolver([usecase])
 
-    assert resolver.resolve_ticket(ZammadTicket(id=1, group_name="Permits")) == usecase
+    assert resolver.resolve_ticket(ZammadTicket(id=1, group_name="Example Group")) == usecase
     assert resolver.resolve_ticket(ZammadTicket(id=2, group_name="Support")) is None
 
 
@@ -213,7 +213,7 @@ def test_registry_warns_when_polling_usecase_has_no_polling_match(
     settings: ZammadAISettings = settings_factory(
         usecases=[
             UseCaseSettings(name="support", match=[UseCaseMatch(request_type="support")]),
-            UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")]),
+            UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")]),
             UseCaseSettings(name="kafka_only", match=[UseCaseMatch(request_type="tax")]),
         ]
     )
@@ -223,7 +223,7 @@ def test_registry_warns_when_polling_usecase_has_no_polling_match(
         dict[str, Any],
         {
             "support": SimpleNamespace(settings=SimpleNamespace(polling=SimpleNamespace(enabled=False))),
-            "permits": SimpleNamespace(settings=SimpleNamespace(polling=SimpleNamespace(enabled=True))),
+            "example-usecase": SimpleNamespace(settings=SimpleNamespace(polling=SimpleNamespace(enabled=True))),
             "kafka_only": SimpleNamespace(settings=SimpleNamespace(polling=SimpleNamespace(enabled=True))),
         },
     )
@@ -232,7 +232,7 @@ def test_registry_warns_when_polling_usecase_has_no_polling_match(
         registry._warn_inert_polling_usecases()
 
     assert "Usecase 'kafka_only' has polling enabled but defines no polling_match rules" in caplog.text
-    assert "Usecase 'permits'" not in caplog.text
+    assert "Usecase 'example-usecase'" not in caplog.text
     assert "Usecase 'support'" not in caplog.text
 
 
@@ -344,7 +344,7 @@ def test_resolve_usecases_loads_definition_files(
 ) -> None:
     """Usecase definition files are loaded and validated when present."""
     settings: ZammadAISettings = settings_factory(usecases=[])
-    definitions = [UseCaseSettings(name="permits", match=[UseCaseMatch(request_type="permits")])]
+    definitions = [UseCaseSettings(name="example-usecase", match=[UseCaseMatch(request_type="example-request")])]
     monkeypatch.setattr("app.settings.settings._load_usecase_definitions", lambda _config_dir: definitions)
 
     assert _resolve_usecases(settings) == definitions

@@ -109,6 +109,7 @@ def _build_answer_service(
             },
         }
     )
+    cast(Any, service).langfuse_tags = [service.settings.usecase.name]
     cast(Any, service).langfuse_client = FakeLangfuseClient()
     cast(Any, service).user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()

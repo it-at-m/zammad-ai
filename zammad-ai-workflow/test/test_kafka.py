@@ -233,8 +233,8 @@ async def test_event_handler_routes_event_to_matching_usecase(
         update={
             "usecases": [
                 UseCaseSettings(
-                    name="auslaenderbehoerde",
-                    match=[UseCaseMatch(request_type="Kontakt Ausländerbehörde", action="ticket_created")],
+                    name="example-usecase",
+                    match=[UseCaseMatch(request_type="example-request", action="ticket_created")],
                 )
             ]
         }
@@ -252,7 +252,7 @@ async def test_event_handler_routes_event_to_matching_usecase(
                 "ticket": "747",
                 "status": "new",
                 "statusId": "1",
-                "anliegenart": "Kontakt Ausländerbehörde",
+                "anliegenart": "example-request",
                 "lhmExtId": "",
             },
         )
@@ -292,8 +292,8 @@ async def test_event_handler_logs_and_acks_unmatched_event_with_skip_policy(
         update={
             "usecases": [
                 UseCaseSettings(
-                    name="auslaenderbehoerde",
-                    match=[UseCaseMatch(request_type="Kontakt Ausländerbehörde", action="ticket_created")],
+                    name="example-usecase",
+                    match=[UseCaseMatch(request_type="example-request", action="ticket_created")],
                 )
             ]
         }

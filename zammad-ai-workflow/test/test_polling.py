@@ -354,19 +354,19 @@ async def test_missing_group_name_resolved_for_group_name_polling_match(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """A missing ticket group name must be resolved when a polling_match rule routes by group name."""
-    usecase = UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")])
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
     settings = _make_settings(settings_factory)
     settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
     client = _fake_client([1])
     client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name=None))
-    client.get_group_name = AsyncMock(return_value="Permits")
+    client.get_group_name = AsyncMock(return_value="Example Group")
     service, perform_triage, _ = _build_service(settings, client)
 
     await service._run_cycle()
 
     client.get_group_name.assert_awaited_once_with(5)
     assert perform_triage.await_count == 1
-    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Permits"
+    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Example Group"
 
 
 @pytest.mark.asyncio
@@ -374,11 +374,11 @@ async def test_existing_group_name_preserved_without_lookup(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Tickets that already include a group name must be routed without an extra group lookup."""
-    usecase = UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")])
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
     settings = _make_settings(settings_factory)
     settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
     client = _fake_client([1])
-    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name="Permits"))
+    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name="Example Group"))
     client.get_group_name = AsyncMock(return_value="Other")
     service, perform_triage, _ = _build_service(settings, client)
 
@@ -386,7 +386,7 @@ async def test_existing_group_name_preserved_without_lookup(
 
     client.get_group_name.assert_not_awaited()
     assert perform_triage.await_count == 1
-    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Permits"
+    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Example Group"
 
 
 @pytest.mark.asyncio
@@ -394,7 +394,7 @@ async def test_transient_group_name_failure_is_retried_without_marking(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """A transient group lookup failure must leave the ticket eligible for a later cycle."""
-    usecase = UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")])
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
     settings = _make_settings(settings_factory)
     settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
     client = _fake_client([1])
@@ -413,7 +413,7 @@ async def test_vanished_group_marks_ticket_processed(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """A ticket whose group no longer exists must be skipped as unmatched and marked processed."""
-    usecase = UseCaseSettings(name="permits", polling_match=[PollingMatch(group_name="Permits")])
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
     settings = _make_settings(settings_factory)
     settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
     client = _fake_client([1])

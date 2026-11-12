@@ -203,6 +203,9 @@ backend = FastAPI(
     description="Backend service for Zammad AI, handling Kafka events and REST API for ticket triage and answer generation.",
     docs_url="/api/docs" if settings.mode == "development" else None,
     redoc_url="/api/redoc" if settings.mode == "development" else None,
+    # Langfuse exports the application spans but not FastAPI's native HTTP spans.
+    # Leaving them enabled makes the unexported HTTP span the OTel root.
+    telemetry={"tracing": False},
 )
 
 
@@ -300,12 +303,13 @@ async def health_check() -> HealthCheckResponse:
 
 
 if settings.frontend.enabled:
+    usecase_settings = {name: runtime.settings for name, runtime in usecase_registry.runtimes.items()}
     # Mount the feedback frontend first so it is not shadowed by the root frontend mount.
-    backend = mount_feedback_frontend(app=backend, settings=settings)
+    backend = mount_feedback_frontend(app=backend, settings=settings, usecase_settings=usecase_settings)
     backend = mount_frontend(
         app=backend,
         settings=settings,
-        usecase_settings={name: runtime.settings for name, runtime in usecase_registry.runtimes.items()},
+        usecase_settings=usecase_settings,
     )
 
 if not settings.frontend.enabled and settings.mode == "development":

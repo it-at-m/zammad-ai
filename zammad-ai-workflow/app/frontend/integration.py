@@ -50,17 +50,31 @@ def mount_frontend(
     )
 
 
-def mount_feedback_frontend(app: FastAPI, settings: ZammadAISettings) -> FastAPI:
+def mount_feedback_frontend(
+    app: FastAPI,
+    settings: ZammadAISettings,
+    usecase_settings: dict[str, ZammadAISettings] | None = None,
+) -> FastAPI:
     """Mount the separate feedback Gradio app at `/feedback` when frontend is enabled.
 
     This route does not use the main frontend basic auth; access is controlled
     inside the feedback UI through the URL query-string secret key.
+
+    Parameters:
+        app (FastAPI): The FastAPI application to mount the feedback frontend onto.
+        settings (ZammadAISettings): Root settings providing the default feedback configuration.
+        usecase_settings (dict[str, ZammadAISettings] | None): Effective settings per usecase name;
+            each usecase's `frontend.feedback.score_name` is used for traces tagged with that
+            usecase, so feedback scores stay separable per usecase in Langfuse.
     """
     if not settings.frontend.enabled:
         return app
 
     logger.info("Mounting feedback frontend at /feedback/")
 
-    feedback = build_feedback_frontend(settings.frontend)
+    feedback_score_names = {
+        name: usecase.frontend.feedback.score_name for name, usecase in (usecase_settings or {}).items()
+    }
+    feedback = build_feedback_frontend(settings.frontend, feedback_score_names=feedback_score_names)
 
     return gr.mount_gradio_app(app=app, blocks=feedback, path="/feedback")

@@ -91,12 +91,35 @@ def _resolve_feedback_request(
     return True, "", query_params
 
 
+def _resolve_score_name(
+    trace_tags: list[str] | None,
+    default_score_name: str,
+    score_names: Mapping[str, str] | None,
+) -> str:
+    """Resolve the feedback score name for a trace from its usecase tag.
+
+    Parameters:
+        trace_tags (list[str] | None): Tags of the trace; the usecase name is carried as a tag.
+        default_score_name (str): Score name used when no tag matches a configured usecase.
+        score_names (Mapping[str, str] | None): Mapping from usecase name to score name.
+
+    Returns:
+        str: The score name configured for the trace's usecase, or the default score name.
+    """
+    for tag in trace_tags or []:
+        score_name = (score_names or {}).get(tag)
+        if score_name:
+            return score_name
+    return default_score_name
+
+
 def _load_feedback_trace(
     request: gr.Request | None,
     lf_factory: Callable[[], LangfuseClient],
     expected_access_key: str | None,
-    score_name: str,
+    default_score_name: str,
     translations: Mapping[str, str],
+    score_names: Mapping[str, str] | None = None,
 ) -> tuple[str, str, str, str]:
     """Resolve validated request query parameters and load the trace for feedback."""
     authorized, status, query_params = _resolve_feedback_request(
@@ -120,13 +143,19 @@ def _load_feedback_trace(
 
     # Load IO first; if the trace is invalid, report that regardless of token
     try:
-        inp, out, used_documents = lf.get_trace_io(trace_id=trace_id)
+        inp, out, used_documents, trace_tags = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while loading feedback trace", exc_info=True)
         return "", "", "", translations["error.trace_not_found"]
     except Exception:
         logger.warning("Failed to load trace", exc_info=True)
         return "", "", "", translations["error.trace_load_failed"]
+
+    score_name = _resolve_score_name(
+        trace_tags=trace_tags,
+        default_score_name=default_score_name,
+        score_names=score_names,
+    )
 
     # Verify per-link token from URL query parameter (key/token)
     expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
@@ -148,13 +177,14 @@ def _submit_feedback(
     request: gr.Request | None,
     lf_factory: Callable[[], LangfuseClient],
     expected_access_key: str | None,
-    score_name: str,
+    default_score_name: str,
     thumbs: str,
     comment: str,
     user_name: str | None,
     tags: list[str] | None,
     allowed_tags: list[str],
     translations: Mapping[str, str],
+    score_names: Mapping[str, str] | None = None,
 ) -> str:
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
@@ -183,13 +213,19 @@ def _submit_feedback(
     # Load IO to compute expected token
     try:
         lf = lf_factory()
-        inp, out, _ = lf.get_trace_io(trace_id=trace_id)
+        inp, out, _, trace_tags = lf.get_trace_io(trace_id=trace_id)
     except LangfuseError:
         logger.warning("Invalid trace id while storing feedback", exc_info=True)
         return translations["error.trace_not_found"]
     except Exception:
         logger.exception("Failed to load trace for feedback submit")
         return translations["error.feedback_save_failed"]
+
+    score_name = _resolve_score_name(
+        trace_tags=trace_tags,
+        default_score_name=default_score_name,
+        score_names=score_names,
+    )
 
     # Verify per-link token from URL query parameter (key/token)
     expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
@@ -228,6 +264,7 @@ def _submit_feedback(
 def build_feedback_frontend(
     settings: FrontendSettings,
     langfuse_client_factory: Callable[[], LangfuseClient] | None = None,
+    feedback_score_names: Mapping[str, str] | None = None,
 ) -> gr.Blocks:
     """Build a compact Gradio UI mounted separately for feedback collection.
 
@@ -237,10 +274,15 @@ def build_feedback_frontend(
             create a Langfuse client per request; defaults to `LangfuseClient`. Each
             open feedback page gets its own client instead of sharing one app-global
             instance across all sessions.
+        feedback_score_names (Mapping[str, str] | None): Optional mapping from usecase
+            name to the Langfuse score name used for its feedback. The usecase is read
+            from the trace's usecase tag; traces without a matching tag fall back to
+            `settings.feedback.score_name`.
     """
     client_factory = langfuse_client_factory or LangfuseClient
     expected_access_key = settings.feedback.salt.get_secret_value() if settings.feedback.salt else None
-    score_name = settings.feedback.score_name
+    default_score_name = settings.feedback.score_name
+    score_names = dict(feedback_score_names or {})
     allowed_tags = settings.feedback.tags
     translations = _load_translations(settings.feedback.language)
 
@@ -249,7 +291,8 @@ def build_feedback_frontend(
             request=request,
             lf_factory=client_factory,
             expected_access_key=expected_access_key,
-            score_name=score_name,
+            default_score_name=default_score_name,
+            score_names=score_names,
             translations=translations,
         )
         if result == translations["status.trace_loaded"]:
@@ -267,7 +310,8 @@ def build_feedback_frontend(
             request=request,
             lf_factory=client_factory,
             expected_access_key=expected_access_key,
-            score_name=score_name,
+            default_score_name=default_score_name,
+            score_names=score_names,
             thumbs=thumbs,
             comment=comment,
             user_name=user_name,

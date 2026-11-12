@@ -78,10 +78,11 @@ class AnswerService:
             If fetching the prompt from Langfuse fails, the process exits with status code 1.
         """
         self.settings: ZammadAISettings = settings
+        self.langfuse_tags: list[str] = [settings.usecase.name]
 
         self.langfuse_client: LangfuseClient | None = None
         if settings.langfuse_enabled:
-            self.langfuse_client = LangfuseClient()
+            self.langfuse_client = LangfuseClient(tags=self.langfuse_tags)
 
         self.agent_prompt, self.agent_prompt_version, self.agent_langfuse_prompt = self._resolve_prompt(
             prompt_config=settings.answer.agent_prompt,
@@ -107,6 +108,7 @@ class AnswerService:
                 prompt=self.judge_prompt,
                 langfuse_client=self.langfuse_client,
                 langfuse_prompt=self.judge_langfuse_prompt,
+                tags=self.langfuse_tags,
             )
             logger.info("Judge handler initialized and enabled for answer evaluation and repair.")
 
@@ -206,7 +208,7 @@ class AnswerService:
             else:
                 per_request_context = getattr(self, "agent_context")
 
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.langfuse_tags or None):
                 agent_result = await self.agent.ainvoke(
                     input={"messages": [user_message]},
                     config=with_recursion_limit(config),
@@ -328,7 +330,7 @@ class AnswerService:
             # Use the provided per-request context for repair invocations so
             # runtime state (e.g. which laws were searched) remains request
             # scoped.
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.langfuse_tags or None):
                 agent_result: dict = await self.agent.ainvoke(
                     input={"messages": messages + [repair_message]},
                     config=(

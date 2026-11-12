@@ -49,3 +49,8 @@ config:
         role: "prompts/usecases/permits/triage/role.prompt.md"
   # polling:
   #   search_query: "state.name:(new OR open)"
+  # Optional: separate Langfuse feedback score for this usecase. The feedback
+  # frontend resolves the score name from the trace's usecase tag.
+  # frontend:
+  #   feedback:
+  #     score_name: "permits-thumbs"

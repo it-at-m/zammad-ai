@@ -70,6 +70,7 @@ class FakeGenAIHandler:
         self.prompts = prompts
         self.langfuse_client = FakeLangfuseClient()
         self.categories_langfuse_prompt: object | None = None
+        self.tags: list[str] | None = None
         self._categorization_chain = self._build_chain(prompt_key="categorization", schema=CategorizationResult)
         self._days_since_request_chain = self._build_chain(
             prompt_key="days_since_request", schema=DaysSinceRequestResponse
