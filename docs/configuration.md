@@ -26,7 +26,7 @@ Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zamm
 - `triage`: categories, actions, rules, prompt sources, and fallback behavior; optional at the root when every configured usecase defines its own triage settings under `config`
 - `answer`: answer prompts, Qdrant settings, optional DLF integration, judge settings, and law tools
 - `frontend`: optional Gradio UI and feedback settings
-- `api`: API key and graceful shutdown timeout
+- `api`: API key, graceful shutdown timeout, and `max_parse_body_bytes` (body size the usecase logging middleware buffers to resolve the usecase; larger bodies skip usecase binding but are still processed)
 - `prometheus`: metrics server toggle and port
 - `guardrails`: remote `slm-guardrails` client settings used by the workflow (`enabled`, `base_url`, `request_timeout_seconds`, `auth_token`, `verify_tls`, `confidence_threshold`, `model`)
 - `log`: log format and level

@@ -10,6 +10,7 @@ from starlette.types import Message, Receive, Scope, Send
 from structlog.contextvars import clear_contextvars, get_contextvars
 
 from app.api.v1.utils import UsecaseLoggingMiddleware
+from app.settings.api import APISettings
 from app.usecases.registry import UseCaseRegistry
 from app.utils.logging import (
     StaticAssetFilter,
@@ -65,6 +66,23 @@ def _body_receive(body: bytes) -> Receive:
     return receive
 
 
+def _chunked_receive(chunks: list[bytes]) -> tuple[Receive, list[int]]:
+    """Return a receive callable yielding the given body chunks plus its call counter."""
+    messages: list[Message] = [
+        {"type": "http.request", "body": chunk, "more_body": index < len(chunks) - 1}
+        for index, chunk in enumerate(chunks)
+    ]
+    calls: list[int] = []
+
+    async def receive() -> Message:
+        calls.append(1)
+        if not messages:
+            return {"type": "http.disconnect"}
+        return messages.pop(0)
+
+    return receive, calls
+
+
 async def _run_middleware(
     registry: UseCaseRegistry,
     scope: Scope,
@@ -84,7 +102,9 @@ async def _run_middleware(
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
-    middleware = UsecaseLoggingMiddleware(app=app, registry=registry)
+    middleware = UsecaseLoggingMiddleware(
+        app=app, registry=registry, max_parse_body_bytes=APISettings().max_parse_body_bytes
+    )
     await middleware(scope, receive, send)
     return captured, b"".join(received)
 
@@ -390,6 +410,115 @@ async def test_middleware_replays_consumed_body_to_the_app() -> None:
     assert received_body == body
 
 
+async def test_middleware_does_not_drain_body_for_unsupported_methods() -> None:
+    """Non-POST requests to usecase paths reach the app with an untouched receive."""
+    clear_contextvars()
+    body = json.dumps({"text": "hello", "usecase": "kb-help"}).encode()
+    receive, calls = _chunked_receive([body])
+    captured: dict[str, Any] = {}
+    received: list[bytes] = []
+    middleware_calls: list[int] = []
+    app_receives: list[Receive] = []
+
+    async def send(message: Message) -> None:
+        return None
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        middleware_calls.append(len(calls))
+        app_receives.append(receive)
+        captured.update(get_contextvars())
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            received.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+
+    middleware = UsecaseLoggingMiddleware(
+        app=app, registry=_fake_registry("kb-help"), max_parse_body_bytes=APISettings().max_parse_body_bytes
+    )
+    await middleware(_http_scope("/api/v1/triage", method="GET"), receive, send)
+
+    assert b"".join(received) == body
+    assert "usecase" not in captured
+    assert middleware_calls == [0]
+    assert app_receives == [receive]
+
+
+async def test_middleware_skips_parsing_for_oversized_body_but_delivers_it() -> None:
+    """Bodies beyond the parse limit are not parsed yet still reach the app in full."""
+    clear_contextvars()
+    body = b'{"text":"0123456789","usecase":"kb-help"}'
+    receive, calls = _chunked_receive([body])
+    captured: dict[str, Any] = {}
+    received: list[bytes] = []
+    middleware_calls: list[int] = []
+
+    async def send(message: Message) -> None:
+        return None
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        middleware_calls.append(len(calls))
+        captured.update(get_contextvars())
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            received.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+
+    middleware = UsecaseLoggingMiddleware(app=app, registry=_fake_registry("kb-help"), max_parse_body_bytes=8)
+    await middleware(_http_scope("/api/v1/triage"), receive, send)
+
+    assert b"".join(received) == body
+    assert "usecase" not in captured
+    assert middleware_calls == [1]
+
+
+async def test_middleware_delivers_remainder_of_oversized_chunked_body() -> None:
+    """Once the parse limit is exceeded, remaining chunks flow through to the app."""
+    clear_contextvars()
+    receive, calls = _chunked_receive([b"aaaa", b"bbbb", b"cccc", b"dddd"])
+    captured: dict[str, Any] = {}
+    received: list[bytes] = []
+    middleware_calls: list[int] = []
+
+    async def send(message: Message) -> None:
+        return None
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        middleware_calls.append(len(calls))
+        captured.update(get_contextvars())
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break
+            received.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+
+    middleware = UsecaseLoggingMiddleware(app=app, registry=_fake_registry("kb-help"), max_parse_body_bytes=8)
+    await middleware(_http_scope("/api/v1/triage"), receive, send)
+
+    assert b"".join(received) == b"aaaabbbbccccdddd"
+    assert "usecase" not in captured
+    assert middleware_calls == [3]
+
+
+async def test_middleware_binds_usecase_for_root_path_requests() -> None:
+    """Requests behind a nonempty root_path still get their usecase bound."""
+    clear_contextvars()
+    body = json.dumps({"text": "hello", "usecase": "kb-help"}).encode()
+    scope = _http_scope("/zammad-ai/api/v1/triage")
+    scope["root_path"] = "/zammad-ai"
+
+    captured, _ = await _run_middleware(_fake_registry("kb-help"), scope, _body_receive(body))
+
+    assert captured["usecase"] == "kb-help"
+
+
 async def test_middleware_leaves_binding_active_for_the_response_phase() -> None:
     """The binding must still be active after the downstream app returned.
 
@@ -405,7 +534,9 @@ async def test_middleware_leaves_binding_active_for_the_response_phase() -> None
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
         return None
 
-    middleware = UsecaseLoggingMiddleware(app=app, registry=_fake_registry("kb-help"))
+    middleware = UsecaseLoggingMiddleware(
+        app=app, registry=_fake_registry("kb-help"), max_parse_body_bytes=APISettings().max_parse_body_bytes
+    )
     await middleware(_http_scope("/api/v1/triage"), _body_receive(body), send)
     payload = json.loads(build_json_formatter().format(_make_record("Access log")))
 

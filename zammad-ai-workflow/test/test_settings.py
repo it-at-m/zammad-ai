@@ -70,6 +70,11 @@ def test_api_shutdown_timeout_defaults_to_10_seconds() -> None:
     assert APISettings().shutdown_timeout_seconds == 10
 
 
+def test_api_max_parse_body_bytes_defaults_to_one_mebibyte() -> None:
+    """Limit the body buffering of the usecase logging middleware."""
+    assert APISettings().max_parse_body_bytes == 1024 * 1024
+
+
 @pytest.mark.parametrize("value", [1, 100, 4096])
 def test_max_user_text_length_accepts_supported_values(monkeypatch, value: int) -> None:
     """Settings should accept configured PositiveInt."""

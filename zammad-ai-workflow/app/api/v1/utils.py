@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import Request
 from fastapi.security import HTTPAuthorizationCredentials
+from starlette.routing import get_route_path
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from structlog.contextvars import clear_contextvars
 
@@ -18,6 +19,7 @@ settings: ZammadAISettings = get_settings()
 logger = getLogger("zammad-ai.api.v1.utils")
 
 USECASE_API_PATHS = frozenset({"/api/v1/triage", "/api/v1/answer"})
+USECASE_BODY_METHODS = frozenset({"POST"})
 
 
 def check_api_key(provided_key: str | HTTPAuthorizationCredentials | None) -> bool:
@@ -78,13 +80,17 @@ class UsecaseLoggingMiddleware:
     unrelated requests. Requests without a resolvable usecase log without one.
 
     Endpoints whose usecase is resolved from the JSON body must be listed in
-    `USECASE_API_PATHS` for the binding to apply.
+    `USECASE_API_PATHS` for the binding to apply. Only requests with a method
+    in `USECASE_BODY_METHODS` have their body collected for that resolution,
+    and only up to `max_parse_body_bytes`; other requests pass their receive
+    through untouched.
     """
 
-    def __init__(self, app: ASGIApp, registry: UseCaseRegistry) -> None:
+    def __init__(self, app: ASGIApp, registry: UseCaseRegistry, max_parse_body_bytes: int) -> None:
         """Wrap the ASGI app with usecase-aware request logging."""
         self.app = app
         self.registry = registry
+        self.max_parse_body_bytes = max_parse_body_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Clear the logging context and bind the resolved usecase for HTTP requests."""
@@ -92,21 +98,25 @@ class UsecaseLoggingMiddleware:
             await self.app(scope, receive, send)
             return
         clear_contextvars()
-        if scope["path"] in USECASE_API_PATHS:
-            usecase, receive = await self._resolve_usecase(receive)
+        if get_route_path(scope) in USECASE_API_PATHS:
+            usecase, receive = await self._resolve_usecase(scope, receive)
             bind_usecase(usecase)
         await self.app(scope, receive, send)
 
-    async def _resolve_usecase(self, receive: Receive) -> tuple[str | None, Receive]:
+    async def _resolve_usecase(self, scope: Scope, receive: Receive) -> tuple[str | None, Receive]:
         """Consume the request body once and resolve the requested usecase name.
 
-        Returns the usecase name when it is known (an explicitly requested
-        configured usecase, or the sole configured usecase) and a receive
-        callable that replays the consumed body for the downstream app.
+        Requests without a method that carries a parseable JSON body on the
+        usecase endpoints are not parsed and pass their receive through
+        untouched, so their bodies are never drained. Returns the usecase name
+        when it is known (an explicitly requested configured usecase, or the
+        sole configured usecase) and a receive callable that replays the
+        consumed body for the downstream app.
         """
-        body, disconnected = await _read_body(receive)
-        replay_receive = _replay_receive(body, disconnected)
-        if disconnected:
+        if scope["method"] not in USECASE_BODY_METHODS:
+            return None, receive
+        body, disconnected, over_limit, replay_receive = await _read_body(receive, self.max_parse_body_bytes)
+        if disconnected or over_limit:
             return None, replay_receive
         try:
             payload: Any = json.loads(body) if body else {}
@@ -122,29 +132,61 @@ class UsecaseLoggingMiddleware:
         return None, replay_receive
 
 
-async def _read_body(receive: Receive) -> tuple[bytes, bool]:
-    """Drain the ASGI receive stream and return the full body plus a disconnect flag."""
-    chunks: list[bytes] = []
+async def _read_body(receive: Receive, max_parse_body_bytes: int) -> tuple[bytes, bool, bool, Receive]:
+    """Consume the body stream up to max_parse_body_bytes and return the parseable prefix.
+
+    Messages consumed while the accumulated body stays within the limit are
+    cached for parsing and replay. The first message that would exceed the
+    limit is cached as well and ends the collection, so buffering stays
+    bounded; the returned receive then delegates further reads to the original
+    receive so the downstream app still receives the complete body. Returns
+    the buffered body (empty when the limit was exceeded), a disconnect flag,
+    an over-limit flag, and that receive callable.
+    """
+    cached: list[Message] = []
+    size = 0
+    disconnected = False
+    over_limit = False
+    delegate = False
     while True:
         message: Message = await receive()
         if message["type"] == "http.request":
-            chunks.append(message.get("body", b""))
+            chunk = message.get("body", b"")
+            if not over_limit and size + len(chunk) > max_parse_body_bytes:
+                over_limit = True
+                delegate = bool(message.get("more_body", False))
+                cached.append(message)
+                break
+            cached.append(message)
+            size += len(chunk)
             if not message.get("more_body", False):
-                return b"".join(chunks), False
+                break
         elif message["type"] == "http.disconnect":
-            return b"".join(chunks), True
+            disconnected = True
+            break
+    body = b"" if over_limit else b"".join(message.get("body", b"") for message in cached)
+    replay_receive = _replay_receive([] if disconnected else cached, receive, delegate)
+    return body, disconnected, over_limit, replay_receive
 
 
-def _replay_receive(body: bytes, disconnected: bool) -> Receive:
-    """Return a receive callable that replays a fully consumed body once."""
-    sent = False
+def _replay_receive(cached: list[Message], receive: Receive, delegate: bool) -> Receive:
+    """Return a receive callable that replays cached body messages once.
 
-    async def receive() -> Message:
-        nonlocal sent
-        if disconnected or sent:
-            sent = True
-            return {"type": "http.disconnect"}
-        sent = True
-        return {"type": "http.request", "body": body, "more_body": False}
+    After the cached messages are replayed, the returned receive either
+    delegates to the original receive (when body messages beyond the cache
+    still have to reach the downstream app) or reports a disconnect, matching
+    the previous fully-drained replay behavior.
+    """
+    index = 0
 
-    return receive
+    async def replay() -> Message:
+        nonlocal index
+        if index < len(cached):
+            message = cached[index]
+            index += 1
+            return message
+        if delegate:
+            return await receive()
+        return {"type": "http.disconnect"}
+
+    return replay

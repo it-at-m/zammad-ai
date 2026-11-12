@@ -243,7 +243,11 @@ async def prometheus_http_metrics_middleware(
 # Registered after the metrics middleware so it wraps it: the usecase binding
 # must be active in the outer request task, because uvicorn emits the access
 # log from the response send call after the endpoint has returned.
-backend.add_middleware(UsecaseLoggingMiddleware, registry=usecase_registry)
+backend.add_middleware(
+    UsecaseLoggingMiddleware,
+    registry=usecase_registry,
+    max_parse_body_bytes=settings.api.max_parse_body_bytes,
+)
 
 
 if kafka_router is not None:

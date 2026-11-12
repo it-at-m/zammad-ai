@@ -433,6 +433,7 @@ preparser:
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
   shutdown_timeout_seconds: 10 # Maximum wait for open requests during graceful shutdown
+  max_parse_body_bytes: 1048576 # Maximum body size in bytes the middleware buffers to resolve the usecase; larger bodies skip usecase binding but are still processed
 
 # ============================================================================
 # Guardrail Service Configuration
