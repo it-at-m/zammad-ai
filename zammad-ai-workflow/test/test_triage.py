@@ -315,6 +315,23 @@ async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
 
 
 @pytest.mark.asyncio
+async def test_perform_triage_reuses_provided_session_id(patched_triage: TriageService) -> None:
+    """A provided session ID must be reused instead of generating a new one."""
+    ticket = ZammadTicket(
+        id=42,
+        articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
+    )
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
+    patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
+        category=Category(name="General"),
+        reasoning="hardware issue",
+        confidence=0.9,
+    )
+    result = await patched_triage.perform_triage(ticket=ticket, session_id="retry-session")
+    assert result.session_id == "retry-session"
+
+
+@pytest.mark.asyncio
 async def test_perform_triage_in_progress_gauge_returns_to_baseline_on_success(patched_triage: TriageService) -> None:
     """The in-progress gauge should return to baseline after a successful run."""
     baseline = _get_triage_runs_in_progress_value()

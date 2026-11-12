@@ -18,6 +18,7 @@ from langfuse.model import PromptClient
 from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.observe import LangfuseClient
+from app.observe.langfuse import generate_session_id
 from app.settings.genai import GenAIProviderSettings
 from app.utils.genai_provider import get_chat_model
 from app.utils.langchain import extract_structured_response, with_recursion_limit
@@ -298,7 +299,7 @@ class GenAIHandler:
         """
         resolved_session_id: str | None = session_id.strip() if session_id is not None else None
         if not resolved_session_id:
-            resolved_session_id = self.langfuse_client.generate_session_id()
+            resolved_session_id = generate_session_id()
 
         config: RunnableConfig = self.langfuse_client.build_config(session_id=resolved_session_id)
         return resolved_session_id, config

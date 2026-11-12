@@ -18,6 +18,7 @@ from app.kafka.helper import (
     _handle_processing_exception,
     _parse_original_group_id,
     _parse_retry_count,
+    _parse_session_id,
     _parse_usecase,
     _reschedule_retry_event,
     _restore_ticket_group,
@@ -28,6 +29,7 @@ from app.metrics import record_processed_main_kafka_event
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
+from app.observe.langfuse import generate_session_id
 from app.settings import ZammadAISettings
 from app.triage.triage import TriageService
 from app.usecases.registry import UseCaseRegistry
@@ -51,6 +53,7 @@ async def _process_ticket_event(
     group_state: dict[str, int | str | None],
     record_processed_event: bool = False,
     allow_in_ai_group: bool = False,
+    session_id: str | None = None,
 ) -> None:
     """Parse and process a Kafka event.
 
@@ -62,7 +65,11 @@ async def _process_ticket_event(
         group_state (dict[str, int | str | None]): Mutable state shared with the caller across processing steps.
         record_processed_event (bool): Whether to increment the main-topic ingress metric.
         allow_in_ai_group (bool): Whether tickets already located in the AI group may be processed.
+        session_id (str | None): Langfuse session ID to reuse from a previous failed attempt; if None a new one is generated. Retries pass the original ID so all attempts share one Langfuse session.
     """
+    if not session_id:
+        session_id = generate_session_id()
+    group_state["session_id"] = session_id
     if isinstance(event, Event):
         raw_request_type = event.request_type
         raw_action = event.action
@@ -163,7 +170,7 @@ async def _process_ticket_event(
     else:
         original_group_id = None
 
-    result: TriageResult = await triage_service.perform_triage(ticket=ticket)
+    result: TriageResult = await triage_service.perform_triage(ticket=ticket, session_id=session_id)
     group_state["category"] = result.category.name
     group_state["action_type"] = result.action.type.value
     logger.debug(
@@ -333,6 +340,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     retry_count=0,
                     category=_get_group_state_str(group_state, "category"),
                     action_type=_get_group_state_str(group_state, "action_type"),
+                    session_id=_get_group_state_str(group_state, "session_id"),
                 )
             raise AckMessage()
 
@@ -349,6 +357,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
         original_group_id: object | None = Context("message.headers.original_group_id"),
         retry_count: object | None = Context("message.headers.retry_count"),
         usecase_header: object | None = Context(f"message.headers.{USECASE_HEADER}"),
+        session_id_header: object | None = Context("message.headers.session_id"),
     ) -> None:
         """Process retryable Kafka events after waiting for their retry window."""
         async with track_activity():
@@ -376,6 +385,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                 )
             parsed_retry_count = _parse_retry_count(retry_count)
             parsed_original_group_id = _parse_original_group_id(original_group_id)
+            parsed_session_id = _parse_session_id(session_id_header)
             remaining_delay_seconds = await _sleep_until_retry_after(
                 retry_after,
                 retry_delay_seconds=active_settings.kafka.retry_delay_seconds,
@@ -388,6 +398,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     original_group_id=parsed_original_group_id,
                     retry_count=parsed_retry_count,
                     remaining_delay_seconds=remaining_delay_seconds,
+                    session_id=parsed_session_id,
                 )
                 raise AckMessage()
             try:
@@ -399,6 +410,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     group_state=group_state,
                     record_processed_event=False,
                     allow_in_ai_group=True,
+                    session_id=parsed_session_id,
                 )
                 if parsed_original_group_id is None:
                     parsed_original_group_id = _get_group_state_int(group_state, "original_group_id")
@@ -437,6 +449,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     retry_count=parsed_retry_count,
                     category=_get_group_state_str(group_state, "category"),
                     action_type=_get_group_state_str(group_state, "action_type"),
+                    session_id=_get_group_state_str(group_state, "session_id") or parsed_session_id,
                 )
             raise AckMessage()
 

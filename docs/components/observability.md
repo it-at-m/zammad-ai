@@ -46,4 +46,6 @@ For internal feedback notes, the workflow also creates explicit Langfuse traces 
 
 These feedback traces reuse the session ID from the related triage run so categorization and feedback stay grouped together in Langfuse.
 
+Retried Kafka events stay in the same session as the first failed attempt: when an event fails and is republished to the retry topic, the workflow carries its Langfuse session ID in the `session_id` Kafka header. The retry consumer reads that header and passes the session ID back into triage, so the first failure and all retry attempts are grouped under one session in the Langfuse UI. If the header is missing (for example on events published by older versions), a new session ID is generated as before.
+
 Feedback scores are written under the score name configured for the trace's usecase (`frontend.feedback.score_name`, overridable per usecase). The feedback frontend resolves the usecase from the trace's usecase tag and falls back to the root score name for untagged traces.

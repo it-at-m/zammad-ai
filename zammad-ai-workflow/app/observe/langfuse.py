@@ -14,6 +14,15 @@ from app.utils.logging import getLogger
 logger: Logger = getLogger(name="zammad-ai.observe.observer")
 
 
+def generate_session_id() -> str:
+    """Generate a unique session ID for Langfuse tracing.
+
+    Returns:
+        session_id (str): A newly generated UUID4-based session identifier.
+    """
+    return str(uuid4())
+
+
 class LangfuseError(Exception):
     """Raised when Langfuse client encounters an error."""
 
@@ -141,7 +150,7 @@ class LangfuseClient:
                 set to the tags configured on this client (for example the usecase name).
         """
         if session_id is None:
-            session_id = self.generate_session_id()
+            session_id = generate_session_id()
 
         metadata: dict[str, object] = {
             "langfuse_session_id": session_id,
@@ -152,14 +161,6 @@ class LangfuseClient:
             metadata["langfuse_prompt"] = langfuse_prompt
 
         return RunnableConfig(callbacks=[self.langfuse_handler], metadata=metadata)
-
-    def generate_session_id(self) -> str:
-        """Generate a unique session ID for Langfuse tracing.
-
-        Returns:
-            session_id (str): A newly generated UUID4-based session identifier.
-        """
-        return str(uuid4())
 
     def attach_evaluation_to_trace(
         self,

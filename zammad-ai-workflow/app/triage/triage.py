@@ -25,6 +25,7 @@ from app.models.triage import (
     TriageResult,
 )
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.observe.langfuse import generate_session_id
 from app.preparser.service import PreparserService, get_preparser_service
 from app.settings import ZammadAISettings
 from app.settings.triage import (
@@ -195,11 +196,12 @@ class TriageService:
 
         logger.info("Triage initialized successfully.")
 
-    async def perform_triage(self, ticket: ZammadTicket) -> TriageResult:
+    async def perform_triage(self, ticket: ZammadTicket, session_id: str | None = None) -> TriageResult:
         """Triage a Zammad ticket by analyzing its customer message to determine category, action, and any extracted values.
 
         Parameters:
             ticket (ZammadTicket): The Zammad ticket to triage.
+            session_id (str | None): Langfuse session identifier to reuse for this run; if None a new session ID is generated. Retries pass the original session ID so all attempts share one Langfuse session.
 
         Returns:
             TriageResult: Result containing the resolved category, selected action, human-readable reasoning, confidence score, and any extracted values (or `None`).
@@ -287,7 +289,8 @@ class TriageService:
 
                     customer_message += attachment_message
 
-            session_id: str = self.genai_handler.langfuse_client.generate_session_id()
+            if not session_id:
+                session_id = generate_session_id()
 
             # Step 3: Predict category using LLM
             categorization: CategorizationResult = await self.predict_category(

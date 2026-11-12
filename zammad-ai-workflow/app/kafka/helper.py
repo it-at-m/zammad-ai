@@ -19,6 +19,7 @@ RETRY_AFTER_HEADER = "retry_after"
 RETRY_COUNT_HEADER = "retry_count"
 ORIGINAL_GROUP_ID_HEADER = "original_group_id"
 USECASE_HEADER = "usecase"
+SESSION_ID_HEADER = "session_id"
 AIOKAFKA_MAX_POLL_INTERVAL_MS = 300_000
 MAX_RETRY_HANDLER_SLEEP_SECONDS = (AIOKAFKA_MAX_POLL_INTERVAL_MS - 1_000) / 1000
 
@@ -31,12 +32,15 @@ def _safe_ticket_id(ticket: Any) -> int | None:
         return None
 
 
-def _build_retry_headers(retry_after_ms: int, retry_count: int) -> dict[str, str]:
+def _build_retry_headers(retry_after_ms: int, retry_count: int, session_id: str | None = None) -> dict[str, str]:
     """Return outgoing retry headers."""
-    return {
+    headers = {
         RETRY_AFTER_HEADER: str(retry_after_ms),
         RETRY_COUNT_HEADER: str(retry_count),
     }
+    if session_id:
+        headers[SESSION_ID_HEADER] = session_id
+    return headers
 
 
 def _parse_original_group_id(original_group_id: object | None) -> int | None:
@@ -99,6 +103,15 @@ def _parse_usecase(usecase: object | None) -> str | None:
     return None
 
 
+def _parse_session_id(session_id: object | None) -> str | None:
+    """Read the Langfuse session id carried by a retry message."""
+    if isinstance(session_id, bytes):
+        return session_id.decode(errors="ignore") or None
+    if isinstance(session_id, str):
+        return session_id or None
+    return None
+
+
 async def _sleep_until_retry_after(retry_after: object | None, *, retry_delay_seconds: float) -> float | None:
     """Delay retry processing until the retry-after timestamp is reached.
 
@@ -135,10 +148,11 @@ async def _reschedule_retry_event(
     original_group_id: int | None,
     retry_count: int,
     remaining_delay_seconds: float,
+    session_id: str | None = None,
 ) -> None:
     """Requeue a retry event without advancing the retry count."""
     retry_after_ms = int((time.time() + remaining_delay_seconds) * 1000)
-    retry_headers = _build_retry_headers(retry_after_ms, retry_count)
+    retry_headers = _build_retry_headers(retry_after_ms, retry_count, session_id=session_id)
     if original_group_id is not None:
         retry_headers[ORIGINAL_GROUP_ID_HEADER] = str(original_group_id)
     retry_headers[USECASE_HEADER] = settings.usecase.name
@@ -165,12 +179,13 @@ async def _republish_retry_event(
     event: Event,
     original_group_id: int | None,
     retry_count: int,
+    session_id: str | None = None,
 ) -> None:
     """Republish a failed event to the configured retry topic."""
     next_retry_count = retry_count + 1
     retry_delay_seconds = settings.kafka.retry_delay_seconds * (2**retry_count)
     retry_after_ms = int((time.time() + retry_delay_seconds) * 1000)
-    retry_headers = _build_retry_headers(retry_after_ms, next_retry_count)
+    retry_headers = _build_retry_headers(retry_after_ms, next_retry_count, session_id=session_id)
     if original_group_id is not None:
         retry_headers[ORIGINAL_GROUP_ID_HEADER] = str(original_group_id)
     retry_headers[USECASE_HEADER] = settings.usecase.name
@@ -242,6 +257,7 @@ async def _handle_processing_exception(
     retry_count: int,
     category: str | None = None,
     action_type: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """Classify processing errors and either republish or acknowledge them."""
     decision: ExceptionDecision = classify_exception(
@@ -300,6 +316,7 @@ async def _handle_processing_exception(
                 event=event,
                 original_group_id=original_group_id,
                 retry_count=retry_count,
+                session_id=session_id,
             )
         except Exception:
             logger.error(

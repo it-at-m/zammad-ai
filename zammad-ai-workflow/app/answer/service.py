@@ -17,6 +17,7 @@ from app.errors import AnswerServiceError, AppError
 from app.guardrails.http_client import GuardrailService
 from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
+from app.observe.langfuse import generate_session_id
 from app.settings import ZammadAISettings
 from app.settings.answer import (
     FilePromptConfig,
@@ -172,7 +173,7 @@ class AnswerService:
         logger.debug(f"Answer generation with payload:\nuser_text: {user_text}\ncategory: {category}")
         try:
             if session_id is None and self.langfuse_client is not None:
-                session_id = self.langfuse_client.generate_session_id()
+                session_id = generate_session_id()
             trace_id: str | None = None
             agent_langfuse_prompt = getattr(self, "agent_langfuse_prompt", None)
             user_message = HumanMessage(
