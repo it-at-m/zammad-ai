@@ -69,7 +69,7 @@ def _request_query_params(request: gr.Request | None) -> Mapping[str, str]:
 
 def _resolve_feedback_request(
     request: gr.Request | None,
-    expected_access_key: str | None,
+    access_key_configured: bool,
     translations: Mapping[str, str],
 ) -> tuple[bool, str, FeedbackRequestQueryParams | None]:
     """Resolve validated request query parameters and configuration."""
@@ -79,7 +79,7 @@ def _resolve_feedback_request(
         logger.warning("Invalid feedback request query parameters", exc_info=True)
         return False, translations["error.feedback_invalid"], None
 
-    if expected_access_key is None:
+    if not access_key_configured:
         return False, translations["error.access_key_not_configured"], None
 
     if query_params.trace_id is None:
@@ -113,18 +113,41 @@ def _resolve_score_name(
     return default_score_name
 
 
+def _resolve_access_key(
+    trace_tags: list[str] | None,
+    default_access_key: str | None,
+    access_keys: Mapping[str, str] | None,
+) -> str | None:
+    """Resolve the feedback token salt for a trace from its usecase tag.
+
+    Parameters:
+        trace_tags (list[str] | None): Tags of the trace; the usecase name is carried as a tag.
+        default_access_key (str | None): Salt used when no tag matches a configured usecase.
+        access_keys (Mapping[str, str] | None): Mapping from usecase name to token salt.
+
+    Returns:
+        str | None: The salt configured for the trace's usecase, or the default salt.
+    """
+    for tag in trace_tags or []:
+        access_key = (access_keys or {}).get(tag)
+        if access_key:
+            return access_key
+    return default_access_key
+
+
 def _load_feedback_trace(
     request: gr.Request | None,
     lf_factory: Callable[[], LangfuseClient],
-    expected_access_key: str | None,
+    default_access_key: str | None,
     default_score_name: str,
     translations: Mapping[str, str],
     score_names: Mapping[str, str] | None = None,
+    access_keys: Mapping[str, str] | None = None,
 ) -> tuple[str, str, str, str]:
     """Resolve validated request query parameters and load the trace for feedback."""
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
-        expected_access_key=expected_access_key,
+        access_key_configured=default_access_key is not None or bool(access_keys),
         translations=translations,
     )
     if not authorized or query_params is None:
@@ -156,9 +179,16 @@ def _load_feedback_trace(
         default_score_name=default_score_name,
         score_names=score_names,
     )
+    access_key = _resolve_access_key(
+        trace_tags=trace_tags,
+        default_access_key=default_access_key,
+        access_keys=access_keys,
+    )
+    if access_key is None:
+        return "", "", "", translations["error.access_key_not_configured"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", (out or trace_id), access_key)
 
     if not compare_digest(provided_key, expected_token):
         return "", "", "", translations["error.access_key_invalid"]
@@ -176,7 +206,7 @@ def _load_feedback_trace(
 def _submit_feedback(
     request: gr.Request | None,
     lf_factory: Callable[[], LangfuseClient],
-    expected_access_key: str | None,
+    default_access_key: str | None,
     default_score_name: str,
     thumbs: str,
     comment: str,
@@ -185,10 +215,11 @@ def _submit_feedback(
     allowed_tags: list[str],
     translations: Mapping[str, str],
     score_names: Mapping[str, str] | None = None,
+    access_keys: Mapping[str, str] | None = None,
 ) -> str:
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
-        expected_access_key=expected_access_key,
+        access_key_configured=default_access_key is not None or bool(access_keys),
         translations=translations,
     )
     if not authorized or query_params is None:
@@ -226,9 +257,16 @@ def _submit_feedback(
         default_score_name=default_score_name,
         score_names=score_names,
     )
+    access_key = _resolve_access_key(
+        trace_tags=trace_tags,
+        default_access_key=default_access_key,
+        access_keys=access_keys,
+    )
+    if access_key is None:
+        return translations["error.access_key_not_configured"]
 
     # Verify per-link token from URL query parameter (key/token)
-    expected_token = compute_feedback_token(inp or "", (out or trace_id), expected_access_key or "")
+    expected_token = compute_feedback_token(inp or "", (out or trace_id), access_key)
     if not compare_digest(provided_key, expected_token):
         return translations["error.access_key_invalid"]
 
@@ -265,6 +303,7 @@ def build_feedback_frontend(
     settings: FrontendSettings,
     langfuse_client_factory: Callable[[], LangfuseClient] | None = None,
     feedback_score_names: Mapping[str, str] | None = None,
+    feedback_salts: Mapping[str, str] | None = None,
 ) -> gr.Blocks:
     """Build a compact Gradio UI mounted separately for feedback collection.
 
@@ -278,11 +317,16 @@ def build_feedback_frontend(
             name to the Langfuse score name used for its feedback. The usecase is read
             from the trace's usecase tag; traces without a matching tag fall back to
             `settings.feedback.score_name`.
+        feedback_salts (Mapping[str, str] | None): Optional mapping from usecase name
+            to the token salt used for its feedback links. The usecase is read from
+            the trace's usecase tag; traces without a matching tag fall back to
+            `settings.feedback.salt`.
     """
     client_factory = langfuse_client_factory or LangfuseClient
-    expected_access_key = settings.feedback.salt.get_secret_value() if settings.feedback.salt else None
+    default_access_key = settings.feedback.salt.get_secret_value() if settings.feedback.salt else None
     default_score_name = settings.feedback.score_name
     score_names = dict(feedback_score_names or {})
+    access_keys = dict(feedback_salts or {})
     allowed_tags = settings.feedback.tags
     translations = _load_translations(settings.feedback.language)
 
@@ -290,9 +334,10 @@ def build_feedback_frontend(
         input_text, output_text, used_documents, result = _load_feedback_trace(
             request=request,
             lf_factory=client_factory,
-            expected_access_key=expected_access_key,
+            default_access_key=default_access_key,
             default_score_name=default_score_name,
             score_names=score_names,
+            access_keys=access_keys,
             translations=translations,
         )
         if result == translations["status.trace_loaded"]:
@@ -309,9 +354,10 @@ def build_feedback_frontend(
         return _submit_feedback(
             request=request,
             lf_factory=client_factory,
-            expected_access_key=expected_access_key,
+            default_access_key=default_access_key,
             default_score_name=default_score_name,
             score_names=score_names,
+            access_keys=access_keys,
             thumbs=thumbs,
             comment=comment,
             user_name=user_name,

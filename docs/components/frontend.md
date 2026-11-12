@@ -48,6 +48,11 @@ separate Langfuse score (for example `frontend.feedback.score_name:
 "permits-thumbs"`). Traces without a matching usecase tag fall back to the
 root `frontend.feedback.score_name`.
 
+The token salt (`frontend.feedback.salt`) can likewise be overridden per
+usecase. Feedback links for a usecase are validated against that usecase's
+salt, falling back to the root `frontend.feedback.salt` for traces without a
+matching usecase tag.
+
 Environment variable overrides follow the usual nested settings pattern, e.g.:
 
 - `ZAMMAD_AI_FRONTEND__ENABLED`
