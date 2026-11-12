@@ -18,7 +18,8 @@ from app.models.zammad import ZammadTicket
 from app.settings.polling import PollingSettings
 from app.settings.settings import ZammadAISettings
 from app.triage.triage import TriageService
-from app.utils.logging import getLogger
+from app.usecases.resolver import UseCaseResolver
+from app.utils.logging import getLogger, usecase_logging
 from app.utils.status import track_activity
 from app.zammad.api import ZammadAPIClient
 from app.zammad.base import BaseZammadClient
@@ -39,7 +40,11 @@ class PollingService:
     """Poll the Zammad search API and process matching tickets through triage and action."""
 
     def __init__(
-        self, settings: ZammadAISettings, triage_service: TriageService, action_service: ActionService
+        self,
+        settings: ZammadAISettings,
+        triage_service: TriageService,
+        action_service: ActionService,
+        resolver: UseCaseResolver,
     ) -> None:
         """Initialize the polling service with settings and processing services."""
         if settings.zammad.type == "eai":
@@ -47,39 +52,46 @@ class PollingService:
         self.settings: ZammadAISettings = settings
         self.triage_service: TriageService = triage_service
         self.action_service: ActionService = action_service
+        self.resolver = resolver
+        self._resolve_group_names: bool = any(
+            match.group_name is not None for usecase in resolver.usecases for match in usecase.polling_match
+        )
         self.polling_settings: PollingSettings = settings.polling
         self._processed: dict[int, float] = {}
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
         """Start the background polling task unless it is already running."""
-        if self._task is not None and not self._task.done():
-            logger.warning("Polling service is already running; ignoring start request.")
-            return
-        self._task = asyncio.create_task(self._run(), name="zammad-ai-polling")
-        logger.info(
-            "Polling-based ticket intake started.",
-            extra={
-                "search_query": self.polling_settings.search_query,
-                "interval_seconds": self.polling_settings.interval_seconds,
-            },
-        )
+        with usecase_logging(self.settings.usecase.name):
+            if self._task is not None and not self._task.done():
+                logger.warning("Polling service is already running; ignoring start request.")
+                return
+            self._task = asyncio.create_task(self._run(), name="zammad-ai-polling")
+            logger.info(
+                "Polling-based ticket intake started.",
+                extra={
+                    "search_query": self.polling_settings.search_query,
+                    "interval_seconds": self.polling_settings.interval_seconds,
+                },
+            )
 
     async def stop(self) -> None:
         """Cancel the background polling task and wait for it to finish."""
-        if self._task is None:
-            return
-        task = self._task
-        self._task = None
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        logger.info("Polling service stopped.")
+        with usecase_logging(self.settings.usecase.name):
+            if self._task is None:
+                return
+            task = self._task
+            self._task = None
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            logger.info("Polling service stopped.")
 
     async def cleanup(self) -> None:
         """Stop the polling task and clear the in-memory deduplication state."""
-        await self.stop()
-        self._processed.clear()
-        logger.info("Polling resources cleaned up.")
+        with usecase_logging(self.settings.usecase.name):
+            await self.stop()
+            self._processed.clear()
+            logger.info("Polling resources cleaned up.")
 
     async def _run(self) -> None:
         """Run polling cycles forever until the task is cancelled."""
@@ -125,22 +137,23 @@ class PollingService:
                     and monotonic() - last_processed < self.polling_settings.processed_ttl_seconds
                 ):
                     continue
-                try:
-                    outcome: str = await self._process_ticket(ticket_id=ticket_id)
-                except PollingRetryableError:
-                    logger.warning(
-                        "Processing of ticket will be retried in a later polling cycle.",
-                        extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
-                        exc_info=True,
-                    )
-                except Exception:
-                    logger.error(
-                        "Polling ticket processing failed unexpectedly.",
-                        extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
-                        exc_info=True,
-                    )
-                else:
-                    logger.info("Polling ticket completed.", extra={"ticket_id": ticket_id, "outcome": outcome})
+                with usecase_logging(self.settings.usecase.name):
+                    try:
+                        outcome: str = await self._process_ticket(ticket_id=ticket_id)
+                    except PollingRetryableError:
+                        logger.warning(
+                            "Processing of ticket will be retried in a later polling cycle.",
+                            extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
+                            exc_info=True,
+                        )
+                    except Exception:
+                        logger.error(
+                            "Polling ticket processing failed unexpectedly.",
+                            extra={"handler_stage": "ticket_processing", "ticket_id": ticket_id},
+                            exc_info=True,
+                        )
+                    else:
+                        logger.info("Polling ticket completed.", extra={"ticket_id": ticket_id, "outcome": outcome})
 
     def _prune_processed(self) -> None:
         """Remove deduplication entries that are older than the configured TTL."""
@@ -153,11 +166,40 @@ class PollingService:
         for ticket_id in expired:
             self._processed.pop(ticket_id, None)
 
+    async def _with_resolved_group_name(self, ticket: ZammadTicket, zammad_client: BaseZammadClient) -> ZammadTicket:
+        """Resolve a missing ticket group name when polling_match rules route by group name.
+
+        Tickets that already include a group name are returned unchanged. A vanished
+        group leaves the name unresolved so the ticket is skipped as unmatched, while
+        transient lookup errors propagate so the ticket is retried in a later cycle.
+        """
+        if not self._resolve_group_names or ticket.group_name is not None or ticket.group_id is None:
+            return ticket
+        if not isinstance(zammad_client, ZammadAPIClient):
+            return ticket
+        try:
+            group_name = await zammad_client.get_group_name(ticket.group_id)
+        except TicketNotFoundError:
+            logger.warning(
+                "Group of polled ticket no longer exists.",
+                extra={"ticket_id": ticket.id, "group_id": ticket.group_id},
+            )
+            return ticket
+        if group_name is None:
+            return ticket
+        return ticket.model_copy(update={"group_name": group_name})
+
     async def _process_ticket(self, ticket_id: int) -> str:
         """Fetch, triage, and execute the action for a single ticket and return its outcome."""
+        assert self.settings.triage is not None
         zammad_client: BaseZammadClient = self.triage_service.zammad_client
         try:
             ticket: ZammadTicket = await zammad_client.get_ticket(id=ticket_id)
+            ticket = await self._with_resolved_group_name(ticket, zammad_client)
+            resolved_usecase = self.resolver.resolve_ticket(ticket)
+            if resolved_usecase is None or resolved_usecase.name != self.settings.usecase.name:
+                self._processed[ticket_id] = monotonic()
+                return "skipped_unmatched_usecase"
             ensure_ticket_not_already_processed(
                 ticket,
                 ai_group_id=self.settings.zammad.ai_ticket_group_id,
@@ -191,7 +233,12 @@ class PollingService:
                     exc_info=True,
                 )
                 self._processed[ticket_id] = monotonic()
-                record_polling_ticket_outcome(category=None, action_type=None, outcome="aborted_with_error")
+                record_polling_ticket_outcome(
+                    category=None,
+                    action_type=None,
+                    outcome="aborted_with_error",
+                    usecase=self.settings.usecase.name,
+                )
                 return "error_permanent"
             logger.error(
                 "Error connecting to Zammad during polling.",
@@ -220,6 +267,7 @@ class PollingService:
                     category=result.category.name if result is not None else None,
                     action_type=result.action.type if result is not None else None,
                     outcome="aborted_with_error",
+                    usecase=self.settings.usecase.name,
                 )
                 return "error_permanent"
             logger.error(
@@ -233,6 +281,7 @@ class PollingService:
             category=result.category.name,
             action_type=result.action.type,
             outcome="processed",
+            usecase=self.settings.usecase.name,
         )
         self._processed[ticket_id] = monotonic()
         logger.info(
@@ -240,31 +289,3 @@ class PollingService:
             extra={"ticket_id": ticket_id, "category": result.category.name, "action_type": result.action.type.value},
         )
         return "processed"
-
-
-_service: PollingService | None = None
-
-
-def get_polling_service(
-    settings: ZammadAISettings, triage_service: TriageService, action_service: ActionService
-) -> PollingService:
-    """Get or create the shared PollingService instance.
-
-    Args:
-        settings: Application settings containing the polling configuration.
-        triage_service: The TriageService used to triage polled tickets.
-        action_service: The ActionService used for post-triage ticket handling.
-
-    Returns:
-        PollingService: The shared PollingService instance.
-    """
-    global _service
-    if _service is None:
-        _service = PollingService(settings=settings, triage_service=triage_service, action_service=action_service)
-    return _service
-
-
-def reset_polling_service() -> None:
-    """Reset the module-level polling service reference so a new instance can be created."""
-    global _service
-    _service = None

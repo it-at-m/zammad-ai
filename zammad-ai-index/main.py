@@ -19,7 +19,7 @@ from job.law.ingest import ingest_law
 from job.models.qdrant import QdrantDocumentItem
 from job.models.zammad import KnowledgeBaseAnswer
 from job.qdrant.qdrant import QdrantKBClient
-from job.settings.settings import ZammadAIIndexSettings, get_settings
+from job.settings.settings import ResolvedTarget, ZammadAIIndexSettings, get_settings
 from job.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from job.utils.logging import getLogger
 from job.zammad.api import ZammadAPIClient
@@ -30,11 +30,12 @@ logger: Logger = getLogger("zammad-ai-index")
 
 
 def run_indexing(
+    settings: ZammadAIIndexSettings,
     qdrant_client: QdrantKBClient,
     zammad_client: ZammadAPIClient | ZammadEAIClient,
     snapshot_already_created: bool = False,
 ) -> None:
-    """Execute the complete indexing workflow.
+    """Execute the complete indexing workflow for one target.
 
     Performs a nine-step process:
     0. Retrieves answer IDs of filtered categories if category filtering is enabled
@@ -84,7 +85,7 @@ def run_indexing(
         all_points: list[Record] = qdrant_client.get_all_points()
 
         # Step 4: Prepare and filter data for Qdrant
-        qdrant_items: list[QdrantDocumentItem] = _prepare_and_filter_data(answers, all_points, zammad_client)
+        qdrant_items: list[QdrantDocumentItem] = _prepare_and_filter_data(settings, answers, all_points, zammad_client)
 
         # Step 5: Check for deleted documents
         deleted_answer_ids: list[UUID] = retrieve_deleted_answer_ids(all_points, zammad_client, answer_ids_in_category)
@@ -111,20 +112,18 @@ def run_indexing(
         if snapshot_success:
             logger.info("Qdrant snapshot ready", extra={"stage": "snapshot"})
         else:
-            logger.warning("Failed to create Qdrant snapshot before indexing. Exiting.")
-            return
+            raise RuntimeError("Failed to create Qdrant snapshot before indexing.")
 
         # Step 7: Add documents to Qdrant
         if qdrant_items:
-            success: bool = add_documents_to_qdrant(qdrant_items, qdrant_client)
+            success: bool = add_documents_to_qdrant(settings, qdrant_items, qdrant_client)
 
             if success:
                 logger.info(
                     "Documents indexed into Qdrant", extra={"stage": "write_documents", "count": len(qdrant_items)}
                 )
             else:
-                logger.error("Failed to index documents into Qdrant.")
-                return
+                raise RuntimeError("Failed to index documents into Qdrant.")
 
         # Step 8: Delete documents from Qdrant for deleted answer IDs
         if deleted_answer_ids:
@@ -145,7 +144,10 @@ def run_indexing(
 
 
 def _prepare_and_filter_data(
-    answers: dict[int, KnowledgeBaseAnswer], all_points: list[Record], zammad_client: ZammadAPIClient | ZammadEAIClient
+    settings: ZammadAIIndexSettings,
+    answers: dict[int, KnowledgeBaseAnswer],
+    all_points: list[Record],
+    zammad_client: ZammadAPIClient | ZammadEAIClient,
 ) -> list[QdrantDocumentItem]:
     """Prepare data for Qdrant and filter for changed documents only.
 
@@ -154,6 +156,7 @@ def _prepare_and_filter_data(
     to avoid unnecessary re-processing.
 
     Args:
+        settings: Effective settings of the indexing target being processed
         answers: Dictionary mapping answer IDs to KnowledgeBaseAnswer objects
         all_points: List of all points in the Qdrant collection
         zammad_client: Zammad API client instance
@@ -165,6 +168,7 @@ def _prepare_and_filter_data(
     """
     # Prepare data for Qdrant indexing
     qdrant_data: list[QdrantDocumentItem] = prepare_qdrant_data(
+        settings=settings,
         answers=answers,
         client=zammad_client,
     )
@@ -179,10 +183,13 @@ def _prepare_and_filter_data(
     return filtered_items
 
 
-def add_documents_to_qdrant(qdrant_items: list[QdrantDocumentItem], qdrant_client: QdrantKBClient) -> bool:
+def add_documents_to_qdrant(
+    settings: ZammadAIIndexSettings, qdrant_items: list[QdrantDocumentItem], qdrant_client: QdrantKBClient
+) -> bool:
     """Add documents to Qdrant in batches for optimal performance.
 
     Args:
+        settings: Effective settings of the indexing target being processed
         qdrant_items: List of QdrantDocumentItem objects containing id, content, and metadata for indexing
         qdrant_client: Instance of QdrantKBClient for interacting with Qdrant
 
@@ -224,7 +231,7 @@ def cleanup(zammad_client, qdrant_client) -> None:
     """Clean up resources and close connections.
 
     Properly closes Zammad client and Qdrant client connections to prevent
-    resource leaks. This method is called in the finally block of run_indexing
+    resource leaks. This method is called in the finally block of run_target
     to ensure cleanup occurs even if errors are encountered.
     """
     cleanup_errors: list[Exception] = []
@@ -249,50 +256,71 @@ def cleanup(zammad_client, qdrant_client) -> None:
         logger.warning("Cleanup finished with %d error(s).", len(cleanup_errors))
 
 
-def main() -> None:
-    """Run the index job once using the configured Zammad and Qdrant clients."""
+def run_target(target: ResolvedTarget) -> None:
+    """Run laws ingestion and knowledge base indexing for one target."""
+    target_settings = target.settings
+    zammad_client: ZammadAPIClient | ZammadEAIClient | None = None
+    qdrant_client: QdrantKBClient | None = None
     try:
         # Initialize Zammad client based on configuration
-        if isinstance(settings.zammad, ZammadAPISettings):
-            zammad_client = ZammadAPIClient(settings.zammad)
+        if isinstance(target_settings.zammad, ZammadAPISettings):
+            zammad_client = ZammadAPIClient(target_settings.zammad)
             logger.info("Initialized Zammad API-Client")
-        elif isinstance(settings.zammad, ZammadEAISettings):
-            zammad_client = ZammadEAIClient(settings.zammad)
+        elif isinstance(target_settings.zammad, ZammadEAISettings):
+            zammad_client = ZammadEAIClient(target_settings.zammad)
             logger.info("Initialized Zammad EAI-Client")
         else:
-            raise ValueError(f"Unsupported Zammad client type: {settings.zammad.type}")
+            raise ValueError(f"Unsupported Zammad client type: {target_settings.zammad.type}")
 
         # Initialize Qdrant client
-        qdrant_client: QdrantKBClient = QdrantKBClient(
-            settings,
+        qdrant_client = QdrantKBClient(
+            target_settings,
         )
-        logger.info("Initialized Qdrant client")
+        logger.info("Initialized Qdrant client", extra={"collection": target_settings.qdrant.collection_name})
 
         # Optional: Ingest configured laws into the same collection before KB indexing
         # Create a single Qdrant snapshot before any writes (laws + KB) so we can
         # roll back in case of failure. This avoids creating one snapshot per
         # law which is unnecessary and can be slow.
         snapshot_created = False
-        if settings.laws:
+        if target.laws:
             logger.info("Creating Qdrant snapshot before law ingestion")
             snapshot_created = qdrant_client.create_snapshot()
             if not snapshot_created:
-                logger.warning("Failed to create Qdrant snapshot before law ingestion. Exiting.")
-                return
+                raise RuntimeError("Failed to create Qdrant snapshot before law ingestion.")
 
-            logger.info("Starting law ingestion for %d configured law(s)", len(settings.laws))
-            for law in settings.laws:
+            logger.info("Starting law ingestion for %d configured law(s)", len(target.laws))
+            for law in target.laws:
                 ingest_law(law, qdrant_client)
             logger.info("Completed law ingestion stage")
 
         # Run the indexing process. If we already created a snapshot above we
         # tell run_indexing to skip creating another one.
-        run_indexing(qdrant_client, zammad_client, snapshot_already_created=snapshot_created)
+        run_indexing(target_settings, qdrant_client, zammad_client, snapshot_already_created=snapshot_created)
     except Exception:
-        getLogger("zammad-ai-index").error("Application encountered a critical error", exc_info=True)
+        logger.error("Application encountered a critical error", exc_info=True)
         raise
     finally:
         cleanup(zammad_client, qdrant_client)
+
+
+def main() -> None:
+    """Run the index job once for every configured target."""
+    targets: list[ResolvedTarget] = settings.resolve_targets()
+    if len(targets) > 1:
+        logger.info("Multi-target indexing started for %d targets", len(targets))
+
+    failed_targets: list[str] = []
+    for target in targets:
+        logger.info("Starting indexing run for target '%s'", target.name)
+        try:
+            run_target(target)
+        except Exception:
+            logger.error("Indexing failed for target '%s'", target.name, exc_info=True)
+            failed_targets.append(target.name)
+
+    if failed_targets:
+        raise RuntimeError(f"Indexing failed for targets: {', '.join(failed_targets)}")
 
 
 if __name__ == "__main__":

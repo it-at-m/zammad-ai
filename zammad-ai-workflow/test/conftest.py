@@ -10,7 +10,6 @@ from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 from faststream.kafka import TestKafkaBroker
 from pydantic import HttpUrl, SecretStr
 
@@ -24,8 +23,8 @@ from app.settings import (
     ZammadAISettings,
     ZammadAPISettings,
 )
-from app.settings.kafka import EventProcessingSettings
 from app.settings.triage import Action, ActionRule, ActionTypes, Category, StringTriagePrompts
+from app.settings.usecase import UseCaseMatch, UseCaseSettings
 from test.fakes import FakeGenAIHandler, FakeLangfuseClient, FakeZammadClient
 
 _TEST_ENV_DEFAULTS: dict[str, str] = {
@@ -37,6 +36,10 @@ _TEST_ENV_DEFAULTS: dict[str, str] = {
     "ZAMMAD_AI_ZAMMAD__AUTH_TOKEN": "test-token",
     "ZAMMAD_AI_TRIAGE": '{"categories":[{"name":"Unknown"}],"no_category_name":"Unknown","actions":[{"name":"No Action","description":"No action","type":"NoAction"}],"no_action_name":"No Action","action_rules":[],"prompts":{"type":"string","prompt_map":{"categories":"List of categories: {{categories}}","examples":"Examples: {{examples}}","role":"You are a helpful assistant that categorizes support requests into the above categories based on the content of the request."}}}',
     "ZAMMAD_AI_QDRANT__API_KEY": "test-key",
+    "ZAMMAD_AI_USECASES": (
+        '[{"name": "default", "description": "Default use case", '
+        '"match": [{"request_type": "technischer Bürgersupport"}]}]'
+    ),
 }
 
 DEFAULT_GENAI_PROMPTS = {
@@ -47,54 +50,6 @@ DEFAULT_GENAI_PROMPTS = {
     "days_since_request": "Given the following support request and the current date, determine how many days have passed since the request was made. ",
     "processing_id": "Given the following support request, determine a unique processing identifier that can be used to group related requests together.",
 }
-
-
-class _ApiTriageStub:
-    def __init__(self) -> None:
-        """Initialize the triage stub with default category and action placeholders.
-
-        Attributes:
-            no_category (Category): A fallback Category named "Unknown".
-            no_action (Action): A fallback Action named "No Action".
-        """
-        self.no_category = Category(name="Unknown")
-        self.no_action = Action(name="No Action", description="No action", type=ActionTypes.NoAction)
-
-    async def predict_category(self, *_args, **_kwargs) -> Any:
-        """Provide a stubbed CategorizationResult representing an "Unknown" category prediction.
-
-        Returns:
-            CategorizationResult: Result with `category` set to the module's `no_category` placeholder, `reasoning` equal to "stub", and `confidence` 1.0.
-        """
-        from app.models.triage import CategorizationResult
-
-        return CategorizationResult(category=self.no_category, reasoning="stub", confidence=1.0)
-
-    async def get_action_name(self, *_args, **_kwargs) -> str:
-        """Get the default action name used by the triage stub.
-
-        @returns
-            Action name of the stub's default action as a `str`.
-        """
-        return self.no_action.name
-
-    def _name_to_action(self, _action_name: str) -> Action:
-        """Return the default stub Action regardless of the provided action name.
-
-        Parameters:
-            _action_name (str): Ignored action name.
-
-        Returns:
-            Action: The default Action instance used by the stub.
-        """
-        return self.no_action
-
-    async def cleanup(self) -> None:
-        """Perform any asynchronous cleanup required by the triage service.
-
-        This stub implementation performs no actions.
-        """
-        return None
 
 
 def pytest_configure() -> None:
@@ -121,10 +76,6 @@ def base_settings() -> ZammadAISettings:
             retry_topic="test-retry-topic",
             retry_delay_seconds=300,
             max_retry_attempts=3,
-            event_processing=EventProcessingSettings.model_construct(
-                valid_request_types=["support", "technischer Bürgersupport"],
-                valid_action_types=["created", "updated"],
-            ),
         ),
         triage=TriageSettings.model_construct(
             categories=[Category(name="Unknown"), Category(name="General")],
@@ -151,7 +102,13 @@ def base_settings() -> ZammadAISettings:
         answer=AnswerSettings(
             ai_answer_disclaimer="",
         ),
-        valid_request_types=["support", "technischer Bürgersupport"],
+        usecases=[
+            UseCaseSettings(
+                name="default",
+                description="Default use case",
+                match=[UseCaseMatch(request_type="technischer Bürgersupport")],
+            )
+        ],
     )
 
 
@@ -161,28 +118,24 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
 
     The returned callable builds a deep copy of the provided base settings and applies optional overrides:
     - `action_rules`: replace the triage action rules.
-    - `valid_request_types`: replace the list of valid request types.
     - arbitrary keyword overrides are applied via a deep update to the settings model.
 
     Parameters:
         base_settings (ZammadAISettings): Template settings used as the basis for produced instances.
 
     Returns:
-        Callable[..., ZammadAISettings]: A factory callable that accepts `action_rules`, `valid_request_types`, and other keyword overrides and returns a new ZammadAISettings with those changes applied.
+        Callable[..., ZammadAISettings]: A factory callable that accepts `action_rules` and other keyword overrides and returns a new ZammadAISettings with those changes applied.
     """
 
     def _factory(
         *,
         action_rules: list[ActionRule] | None = None,
-        valid_request_types: list[str] | None = None,
-        valid_action_types: list[str] | None = None,
         **overrides: Any,
     ) -> ZammadAISettings:
         """Create a modified copy of the base ZammadAISettings with optional overrides.
 
         Parameters:
             action_rules (list[ActionRule] | None): If provided, replace the triage.action_rules list on the returned settings.
-            valid_request_types (list[str] | None): If provided, set the settings.valid_request_types to this list.
             **overrides (Any): Arbitrary model field updates applied via a deep model copy; keys are setting attribute names.
 
         Returns:
@@ -190,11 +143,8 @@ def settings_factory(base_settings: ZammadAISettings) -> Callable[..., ZammadAIS
         """
         settings = base_settings.model_copy(deep=True)
         if action_rules is not None:
+            assert settings.triage is not None
             settings.triage.action_rules = action_rules
-        if valid_request_types is not None:
-            settings.kafka.event_processing.valid_request_types = valid_request_types
-        if valid_action_types is not None:
-            settings.kafka.event_processing.valid_action_types = valid_action_types
         if overrides:
             settings = settings.model_copy(update=overrides, deep=True)
         return settings
@@ -407,29 +357,3 @@ def fake_zammad_client(settings_factory: Callable[..., ZammadAISettings]) -> Fak
     settings = settings_factory()
     assert isinstance(settings.zammad, ZammadAPISettings)
     return FakeZammadClient(settings=settings.zammad)
-
-
-@pytest.fixture
-def test_client(
-    monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]
-) -> Generator[TestClient, None, None]:
-    """Provide a TestClient for the backend application with settings and triage replaced for testing.
-
-    Returns:
-        TestClient: A TestClient for the backend application configured with the test settings and a triage stub.
-    """
-    import importlib
-
-    settings = settings_factory()
-    triage_stub = _ApiTriageStub()
-
-    monkeypatch.setattr("app.settings.settings.get_settings", lambda: settings)
-    monkeypatch.setattr("app.settings.get_settings", lambda: settings)
-
-    import app.api.backend as backend_module
-
-    backend_module = importlib.reload(backend_module)
-    monkeypatch.setattr(backend_module, "get_triage_service", lambda settings=None: triage_stub)
-
-    with TestClient(backend_module.backend) as client:
-        yield client

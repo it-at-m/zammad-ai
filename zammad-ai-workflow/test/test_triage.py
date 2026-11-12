@@ -165,6 +165,7 @@ def patched_triage(
 
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        fake_genai_handler.tags = kwargs.get("tags")
         return fake_genai_handler
 
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
@@ -190,6 +191,7 @@ def triage_factory(
 
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        fake_genai_handler.tags = kwargs.get("tags")
         return fake_genai_handler
 
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
@@ -310,6 +312,23 @@ async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
     assert result.category.name == "General"
     assert result.reasoning == "hardware issue"
     assert result.confidence == 0.9
+
+
+@pytest.mark.asyncio
+async def test_perform_triage_reuses_provided_session_id(patched_triage: TriageService) -> None:
+    """A provided session ID must be reused instead of generating a new one."""
+    ticket = ZammadTicket(
+        id=42,
+        articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
+    )
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
+    patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
+        category=Category(name="General"),
+        reasoning="hardware issue",
+        confidence=0.9,
+    )
+    result = await patched_triage.perform_triage(ticket=ticket, session_id="retry-session")
+    assert result.session_id == "retry-session"
 
 
 @pytest.mark.asyncio
@@ -714,6 +733,14 @@ async def test_triage_links_categories_prompt_reference(
         getattr(fake_genai_handler.langfuse_client, "last_langfuse_prompt")
         is fake_genai_handler.categories_langfuse_prompt
     )
+
+
+def test_triage_passes_usecase_tag_to_genai_handler(
+    patched_triage: TriageService,
+    fake_genai_handler: FakeGenAIHandler,
+) -> None:
+    """Triage should forward the usecase name as Langfuse trace tag."""
+    assert fake_genai_handler.tags == [patched_triage.settings.usecase.name]
 
 
 # ---------------------------------------------------------------------------

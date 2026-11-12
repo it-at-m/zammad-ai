@@ -14,6 +14,15 @@ from app.utils.logging import getLogger
 logger: Logger = getLogger(name="zammad-ai.observe.observer")
 
 
+def generate_session_id() -> str:
+    """Generate a unique session ID for Langfuse tracing.
+
+    Returns:
+        session_id (str): A newly generated UUID4-based session identifier.
+    """
+    return str(uuid4())
+
+
 class LangfuseError(Exception):
     """Raised when Langfuse client encounters an error."""
 
@@ -23,12 +32,17 @@ class LangfuseError(Exception):
 class LangfuseClient:
     """Client for interacting with Langfuse to fetch prompts and build RunnableConfig with Langfuse callbacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, tags: list[str] | None = None) -> None:
         """Initialize the LangfuseClient with a callback handler and Langfuse client.
 
         Creates a new CallbackHandler used for Runnable callbacks and instantiates a Langfuse client.
         The Langfuse client is expected to be configured externally (for example via environment variables or other application configuration).
+
+        Parameters:
+            tags (list[str] | None): Tags applied to every trace created through this client,
+                for example the usecase name to make traces filterable by usecase in Langfuse.
         """
+        self.tags: list[str] = [tag for tag in (tags or []) if tag]
         self.langfuse_handler: CallbackHandler = CallbackHandler()
         self.langfuse: Langfuse = Langfuse()  # Assumes Langfuse is configured via environment variables or other means
 
@@ -132,26 +146,21 @@ class LangfuseClient:
 
         Returns:
             RunnableConfig: Config with `callbacks` containing the Langfuse callback handler and `metadata`
-                containing `"langfuse_session_id"` set to the session ID.
+                containing `"langfuse_session_id"` set to the session ID and `"langfuse_tags"`
+                set to the tags configured on this client (for example the usecase name).
         """
         if session_id is None:
-            session_id = self.generate_session_id()
+            session_id = generate_session_id()
 
         metadata: dict[str, object] = {
             "langfuse_session_id": session_id,
         }
+        if self.tags:
+            metadata["langfuse_tags"] = list(self.tags)
         if langfuse_prompt is not None:
             metadata["langfuse_prompt"] = langfuse_prompt
 
         return RunnableConfig(callbacks=[self.langfuse_handler], metadata=metadata)
-
-    def generate_session_id(self) -> str:
-        """Generate a unique session ID for Langfuse tracing.
-
-        Returns:
-            session_id (str): A newly generated UUID4-based session identifier.
-        """
-        return str(uuid4())
 
     def attach_evaluation_to_trace(
         self,
@@ -224,10 +233,11 @@ class LangfuseClient:
             logger.warning("Failed to check existing scores on trace.", exc_info=True)
             raise LangfuseError("Failed to check existing scores on trace.") from e
 
-    def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None, str | None]:
-        """Fetch a trace and try to extract a representative input/output pair.
+    def get_trace_io(self, trace_id: str) -> tuple[str | None, str | None, str | None, list[str]]:
+        """Fetch a trace and try to extract a representative input/output pair and its tags.
 
-        Returns a tuple (input, output, used_documents) where values may be None if not found.
+        Returns a tuple (input, output, used_documents, tags) where values may be None or empty if not found.
+        The tags allow callers to resolve trace attributes such as the usecase name.
         """
         try:
             trace = self.langfuse.api.trace.get(trace_id=trace_id, fields="core,io")
@@ -250,6 +260,9 @@ class LangfuseClient:
                 inp_str: str = input_data
             else:
                 inp_str = str(_nested_get(input_data, "kwargs", "user_text")) if input_data is not None else ""
+
+            tags_data = trace_dict.get("tags") if isinstance(trace_dict, dict) else None
+            tags: list[str] = [str(tag) for tag in tags_data] if isinstance(tags_data, list) else []
 
             output_data = trace_dict.get("output") if isinstance(trace_dict, dict) else None
             if isinstance(output_data, str):
@@ -280,7 +293,7 @@ class LangfuseClient:
                 inp_str,
                 out_str,
             )
-            return inp_str, out_str, used_documents
+            return inp_str, out_str, used_documents, tags
         except Exception as e:
             logger.warning(f"Failed to fetch trace {trace_id}", exc_info=True)
             raise LangfuseError(f"Failed to fetch trace {trace_id}") from e

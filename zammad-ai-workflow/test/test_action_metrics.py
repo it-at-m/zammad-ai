@@ -283,6 +283,7 @@ async def test_execute_action_posts_static_answer_feedback_note_with_fresh_trace
     cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(last_trace_id)
     service.guardrail_service.evaluate = AsyncMock(return_value=True)
     service.guardrail_service.settings = MagicMock(enabled=False, block_on_high_risk=False)
+    assert settings.triage is not None
     settings.triage.actions = [
         Action(name="Standard", description="Standard", type=ActionTypes.StaticAnswer, answer="Standardantwort")
     ]
@@ -355,6 +356,7 @@ async def test_execute_action_swallows_guardrail_block_when_note_post_fails(
     settings = settings_factory()
     settings.frontend.feedback.post_internal_note = True
     settings.frontend.base_url = "https://example.com"
+    assert settings.triage is not None
     settings.triage.no_action_internal_note = "Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
     post_answer_mock.side_effect = RuntimeError("note failed")
@@ -410,6 +412,7 @@ async def test_execute_action_counts_manual_metric_for_no_action(
     """Kafka NoAction execution should increment the manual counter."""
     baseline = _get_outcome_counter_value(category="General", action_type="no_action", outcome="manual")
     settings = settings_factory()
+    assert settings.triage is not None
     settings.triage.no_action_internal_note = None
     service, _, _ = _build_action_service(settings)
     setattr(
@@ -487,6 +490,7 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
     settings = settings_factory()
     settings.frontend.feedback.post_internal_note = True
     settings.frontend.base_url = "https://example.com"
+    assert settings.triage is not None
     settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
     feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
@@ -528,6 +532,7 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
     settings = settings_factory()
     settings.frontend.feedback.post_internal_note = True
     settings.frontend.base_url = "https://example.com"
+    assert settings.triage is not None
     settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
     service, post_answer_mock, _ = _build_action_service(settings)
     feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
@@ -566,6 +571,7 @@ async def test_execute_action_counts_guardrail_block_as_manual_metric(
     """Guardrail-blocked answers should increment the Kafka manual counter."""
     baseline = _get_outcome_counter_value(category="General", action_type="ai_answer", outcome="manual")
     settings = settings_factory()
+    assert settings.triage is not None
     settings.triage.no_action_internal_note = None
     service, _, _ = _build_action_service(settings)
     setattr(service, "get_answer", AsyncMock(side_effect=GuardrailBlockedError("Input failed safety checks")))

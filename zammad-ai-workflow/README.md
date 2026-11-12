@@ -111,6 +111,40 @@ Notes:
 - Prometheus metrics default to port `9090`
 - Guardrails default to `http://localhost:8081` and use the `SLM_GUARDRAIL_` config prefix in the guardrail service
 
+### Multiple usecases
+
+The service supports multiple usecases on the same Kafka topic. Configure the shared
+settings in `config.yaml` and set `router.usecase_config_dir` to a directory containing
+one YAML file per usecase. Each file defines exact Kafka `match` rules and optional
+`polling_match` rules based on Zammad group metadata. Usecase-specific settings are
+provided below `config` and override the shared defaults.
+
+```yaml
+name: permits
+description: Permit requests
+match:
+  - request_type: permits
+    action: created
+polling_match:
+  - group_name: Permits
+config:
+  answer:
+    qdrant:
+      collection_name: permits
+```
+
+Kafka events without a matching rule are acknowledged and skipped. Ambiguous or
+overlapping routes fail startup. A usecase without `match` rules never matches
+Kafka events, whether it is the only configured usecase or one of many. A
+polling-enabled usecase without `polling_match` rules never matches polled
+tickets when more than one usecase is configured and warns at startup. REST
+requests and the developer frontend send the selected usecase explicitly via
+the `usecase` field.
+
+At least one usecase is required: either configure it inline under `usecases` in
+`config.yaml` or provide one definition file per usecase under
+`router.usecase_config_dir`. A root-level `usecase` block is not supported.
+
 ## Local Development Stack
 
 From repository root, start infrastructure:

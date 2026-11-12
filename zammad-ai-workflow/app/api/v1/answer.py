@@ -20,15 +20,16 @@ header_scheme = HTTPBearer(auto_error=False)
 
 
 def action_dependency(request: Request) -> ActionService:
-    """Retrieve the request-scoped ActionService instance stored on the FastAPI application state.
+    """Retrieve the default ActionService instance from the usecase registry.
 
     Parameters:
-        request (Request): FastAPI request whose application state contains the ActionService instance.
+        request (Request): FastAPI request whose application state contains the usecase registry.
 
     Returns:
-        ActionService: The ActionService instance found at request.app.state.action_service.
+        ActionService: The ActionService of the first configured usecase runtime.
     """
-    return request.app.state.action_service
+    registry = request.app.state.usecase_registry
+    return next(iter(registry.runtimes.values())).action_service
 
 
 answer_router = APIRouter(
@@ -56,9 +57,21 @@ async def answer(
         logger.warning("Unauthorized answer request with invalid API key.")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    registry = request.app.state.usecase_registry
+    if input.usecase:
+        try:
+            runtime = registry.get(input.usecase)
+            service = runtime.action_service
+        except KeyError as e:
+            raise HTTPException(status_code=422, detail="Unknown usecase") from e
+    elif len(registry.runtimes) > 1:
+        raise HTTPException(status_code=422, detail="usecase is required when multiple usecases are configured")
+    else:
+        runtime = next(iter(registry.runtimes.values()))
+
     try:
-        # Preparse input text via shared helper
-        user_text = get_preparsed_text(request, input.text)
+        # Preparse input text via the selected runtime's preparser when available
+        user_text = get_preparsed_text(request, input.text, preparser_service=runtime.preparser_service)
 
         answer_result = await service.get_answer(
             ticket_id=input.ticket_id,

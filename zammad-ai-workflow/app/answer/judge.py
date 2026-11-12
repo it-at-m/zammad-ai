@@ -31,10 +31,21 @@ class JudgeHandler:
         prompt: str,
         langfuse_client: LangfuseClient | None = None,
         langfuse_prompt: PromptClient | None = None,
+        tags: list[str] | None = None,
     ) -> None:
-        """Initialize the judge chain for the configured GenAI backend."""
+        """Initialize the judge chain for the configured GenAI backend.
+
+        Parameters:
+            genai_settings (GenAIProviderSettings): GenAI settings used to build the judge chat model.
+            prompt (str): Judge system prompt.
+            langfuse_client (LangfuseClient | None): Optional Langfuse client used for tracing and prompt linkage.
+            langfuse_prompt (PromptClient | None): Optional Langfuse prompt reference linked to the judge generation.
+            tags (list[str] | None): Optional tags applied to Langfuse traces created by this handler,
+                for example the usecase name to make traces filterable by usecase in Langfuse.
+        """
         self.langfuse_client: LangfuseClient | None = langfuse_client
         self.langfuse_prompt: PromptClient | None = langfuse_prompt
+        self.tags: list[str] = [tag for tag in (tags or []) if tag]
 
         if not prompt.strip():
             raise ValueError("Judge prompt cannot be empty.")
@@ -66,12 +77,10 @@ class JudgeHandler:
         session_id, config = self._build_runnable_config(session_id=session_id)
 
         try:
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.tags or None):
                 agent_result: dict[str, Any] = await self._judge_agent.ainvoke(
                     input={
-                        "messages": [
-                            HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}")
-                        ],
+                        "messages": [HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}")],
                     },
                     config=config,
                 )

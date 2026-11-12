@@ -16,9 +16,42 @@
 # ============================================================================
 # Use Case Configuration
 # ============================================================================
-usecase:
-  name: "my_usecase"
-  description: "Description of your use case"
+# At least one usecase is required. Either configure it directly under
+# `usecases` below or provide one definition file per usecase under
+# config/usecases/ (see config/usecases/README.md and
+# config/usecases/permits.yaml.example). A root-level `usecase` block is not
+# supported anymore.
+#
+# Each usecase needs at least one `match` rule (Kafka intake) or
+# `polling_match` rule (polling intake). Events and tickets that match no
+# usecase are handled according to `router.unmatched_policy` below.
+usecases:
+  - name: "my_usecase"
+    description: "Description of your use case"
+    match:
+      - request_type: "support" # matches any action for this request type
+        # action: "created" # optional: also require a specific event action
+    # Optional: route polling-based tickets to this usecase by group metadata.
+    # polling_match:
+    #   - group_name: "Support"
+    # Optional: per-usecase overrides for triage, answer, genai, polling, or
+    # zammad settings. Triage settings are required here when the root
+    # configuration does not define any.
+    # config:
+    #   triage:
+    #     categories:
+    #       - name: "General Questions"
+
+# For multiple usecases, either add more entries to the list above or create
+# one file per usecase below config/usecases/. Each file contains name,
+# description, match, polling_match, and a `config` mapping with overrides for
+# triage, answer, genai, polling, or zammad.
+# See config/usecases/permits.yaml.example for a complete, ready-to-copy example.
+router:
+  usecase_config_dir: "config/usecases"
+  unmatched_policy: "skip" # Options: "skip" (drop unmatched events), "error" (raise), "fallback" (route to fallback_usecase)
+  # For unmatched_policy: "fallback", set the target usecase name here.
+  # fallback_usecase: "my_usecase"
 
 # ============================================================================
 # GenAI Configuration
@@ -182,9 +215,6 @@ kafka:
   group_id: null # Consumer group ID (defaults to null)
   max_workers: 5 # Maximum number of concurrent workers for processing events
   retry_topic: "ticket-events-retry" # Kafka topic for retrying failed events
-  event_processing:
-    valid_request_types: [] # List of request types to process (example: ["support"])
-    valid_action_types: [] # List of action types to process (example: ["created", "updated"])
 
   # mTLS Security Configuration (optional)
   # Option 1: File-based mTLS (type: "file")
@@ -203,8 +233,6 @@ kafka:
   #   pkcs12_pw: "<PKCS#12 password (cleartext)>"
 
   security: null
-
-# Note: `valid_request_types` moved under `kafka.event_processing.valid_request_types`
 
 # ============================================================================
 # Polling Configuration (alternative ticket intake to Kafka)
@@ -235,6 +263,8 @@ max_user_text_length: 2000
 # ============================================================================
 # Triage Configuration
 # ============================================================================
+# Triage may instead be defined per usecase under `config.triage` in a
+# usecase file (config/usecases/*.yaml); it is then required there.
 triage:
   # Category setup: Define the categories for ticket classification
   # Each category requires only a unique name.
@@ -346,6 +376,7 @@ frontend:
   auth_password: "zammad-ai" # Basic auth password for local development
   feedback:
     language: "de" # Options: "de", "en"
+    score_name: "user-thumbs" # Langfuse score name for feedback; override per usecase to keep scores separable
     tags: [] # Optional predefined feedback tags, e.g. ["outdated information"]
 
 # Logging configuration
@@ -402,6 +433,7 @@ preparser:
 api:
   api_key: null # Set in .env: ZAMMAD_AI_API__API_KEY
   shutdown_timeout_seconds: 10 # Maximum wait for open requests during graceful shutdown
+  max_parse_body_bytes: 1048576 # Maximum body size in bytes the middleware buffers to resolve the usecase; larger bodies skip usecase binding but are still processed
 
 # ============================================================================
 # Guardrail Service Configuration

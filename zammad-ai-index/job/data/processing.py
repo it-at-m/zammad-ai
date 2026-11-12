@@ -10,7 +10,7 @@ from job.data.retrieval import fetch_attachments_for_answer
 from job.models.qdrant import QdrantDocumentItem, QdrantVectorMetadata
 from job.models.zammad import KnowledgeBaseAnswer
 from job.qdrant.qdrant import ZAMMAD_AI_NAMESPACE
-from job.settings.settings import ZammadAIIndexSettings, get_settings
+from job.settings.settings import ZammadAIIndexSettings
 from job.utils.hash import hash_content, normalize_content
 from job.utils.keywords import format_keywords_content, generate_keywords
 from job.utils.logging import getLogger
@@ -18,15 +18,17 @@ from job.zammad.api import ZammadAPIClient
 from job.zammad.eai import ZammadEAIClient
 
 logger: Logger = getLogger("zammad-ai-index.data-processing")
-settings: ZammadAIIndexSettings = get_settings()
 
 
 def prepare_qdrant_data(
-    answers: dict[int, KnowledgeBaseAnswer], client: ZammadAPIClient | ZammadEAIClient
+    settings: ZammadAIIndexSettings,
+    answers: dict[int, KnowledgeBaseAnswer],
+    client: ZammadAPIClient | ZammadEAIClient,
 ) -> list[QdrantDocumentItem]:
     """Prepare data for Qdrant indexing based on knowledge base answers.
 
     Args:
+        settings: Effective settings of the indexing target being processed
         answers: Dictionary of answer ID to KnowledgeBaseAnswer objects
         client: Zammad API client instance
 
@@ -48,7 +50,7 @@ def prepare_qdrant_data(
                 page_content += f"\n\n{attachments_content}"
 
             # Create metadata
-            metadata: QdrantVectorMetadata = _create_vector_metadata(answer, page_content)
+            metadata: QdrantVectorMetadata = _create_vector_metadata(settings, answer, page_content)
             vector_id: UUID = uuid5(ZAMMAD_AI_NAMESPACE, f"KB-{metadata.answer_kb_id}-Answer-{metadata.answer_id}")
             item = QdrantDocumentItem(
                 vector_id=vector_id,
@@ -111,7 +113,9 @@ def _format_attachments_content(attachment_data: dict[int, tuple[str, str | None
     return content
 
 
-def _create_vector_metadata(answer: KnowledgeBaseAnswer, page_content: str) -> QdrantVectorMetadata:
+def _create_vector_metadata(
+    settings: ZammadAIIndexSettings, answer: KnowledgeBaseAnswer, page_content: str
+) -> QdrantVectorMetadata:
     """Create vector metadata from answer data.
 
     Builds comprehensive metadata for the vector document including answer details,
@@ -119,6 +123,7 @@ def _create_vector_metadata(answer: KnowledgeBaseAnswer, page_content: str) -> Q
     The vector ID is generated as a UUID5 based on the knowledge base ID and answer ID.
 
     Args:
+        settings: Effective settings of the indexing target being processed
         answer: KnowledgeBaseAnswer object containing the source data
         page_content: Processed content string for hash calculation
 
@@ -127,6 +132,7 @@ def _create_vector_metadata(answer: KnowledgeBaseAnswer, page_content: str) -> Q
 
     """
     answer_url = None
+    assert settings.zammad.knowledge_base_id is not None
     if settings.zammad.base_url:
         answer_url = f"{settings.zammad.base_url}#knowledge_base/{settings.zammad.knowledge_base_id}/locale/de-de/answer/{answer.id}"
 

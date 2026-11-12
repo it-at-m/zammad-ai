@@ -1,9 +1,10 @@
 """Tests for Kafka event routing and triage invocation."""
 
-import logging
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Protocol, cast
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from faststream.exceptions import AckMessage, NackMessage
@@ -13,6 +14,7 @@ from pydantic import HttpUrl, SecretStr
 from app.errors import TriageCategoryWrongError, TriageError
 from app.kafka.broker import _process_ticket_event, build_router
 from app.kafka.helper import (
+    SESSION_ID_HEADER,
     _handle_processing_exception,
     _republish_retry_event,
     _reschedule_retry_event,
@@ -25,7 +27,7 @@ from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
 from app.settings import ZammadAISettings
 from app.settings.answer import AnswerSettings, QdrantSettings
-from app.settings.kafka import EventProcessingSettings, KafkaSettings
+from app.settings.kafka import KafkaSettings
 from app.settings.triage import (
     Action,
     ActionTypes,
@@ -33,7 +35,10 @@ from app.settings.triage import (
     StringTriagePrompts,
     TriageSettings,
 )
+from app.settings.usecase import UseCaseMatch, UseCaseSettings
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.usecases.registry import UseCaseRegistry
+from app.zammad.base import ZammadConnectionError
 
 
 class _KafkaSubscriberInspection(Protocol):
@@ -47,7 +52,7 @@ def create_mock_settings() -> ZammadAISettings:
     Temporarily replaces sys.argv to avoid CLI argument parsing during construction.
 
     Returns:
-        ZammadAISettings: Settings populated with zammad, qdrant, kafka, triage configuration, and valid_request_types suitable for tests.
+        ZammadAISettings: Settings populated with zammad, qdrant, kafka, and triage configuration suitable for tests.
     """
     import sys
 
@@ -72,10 +77,6 @@ def create_mock_settings() -> ZammadAISettings:
                 broker_url="localhost:9092",
                 group_id="test-group",
                 topic="test-topic",
-                event_processing=EventProcessingSettings(
-                    valid_request_types=["technischer Bürgersupport"],
-                    valid_action_types=["created", "updated"],
-                ),
             ),
             triage=TriageSettings(
                 categories=[Category(name="Test")],
@@ -85,7 +86,6 @@ def create_mock_settings() -> ZammadAISettings:
                 action_rules=[],
                 prompts=StringTriagePrompts(),
             ),
-            # keep compatibility: valid request types are set on kafka.event_processing
         )
     finally:
         sys.argv = original_argv
@@ -155,42 +155,65 @@ def mock_triage() -> MagicMock:
 
 
 @pytest.fixture
-def mock_get_triage(monkeypatch: pytest.MonkeyPatch, mock_triage: MagicMock) -> None:
-    """Patch Kafka router triage lookup to return a mocked triage object."""
-    monkeypatch.setattr("app.kafka.broker.get_triage_service", lambda *args, **kwargs: mock_triage)
-
-
-@pytest.fixture(autouse=True)
-def mock_get_answer_service(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch Kafka router answer lookup to return a mocked answer service."""
-    answer_service = MagicMock()
-    answer_service.generate_answer = AsyncMock()
-    monkeypatch.setattr("app.kafka.broker.get_answer_service", lambda *args, **kwargs: answer_service)
-    return answer_service
-
-
-@pytest.fixture(autouse=True)
-def mock_get_action_service(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch Kafka router action lookup to return a mocked action service."""
+def mock_action_service() -> MagicMock:
+    """Create a MagicMock that simulates an ActionService with an async `execute_action`."""
     action_service = MagicMock()
     action_service.execute_action = AsyncMock()
-    monkeypatch.setattr("app.kafka.broker.get_action_service", lambda *args, **kwargs: action_service)
     return action_service
+
+
+@pytest.fixture
+def mock_registry(
+    mock_triage: MagicMock,
+    mock_action_service: MagicMock,
+) -> Callable[[ZammadAISettings], UseCaseRegistry]:
+    """Provide a factory for a mock usecase registry with one mocked runtime per configured usecase.
+
+    Returns:
+        factory (Callable[[ZammadAISettings], UseCaseRegistry]): A callable that accepts settings and
+        returns a registry-like object whose `runtimes` map every configured usecase name to a
+        runtime exposing the mocked triage and action services.
+    """
+
+    def _factory(settings: ZammadAISettings) -> UseCaseRegistry:
+        """Create a mock registry for the given settings.
+
+        Parameters:
+            settings (ZammadAISettings): Settings whose `usecases` define the runtime names.
+
+        Returns:
+            UseCaseRegistry: A registry-like object with one mocked runtime per configured usecase.
+        """
+        return cast(
+            UseCaseRegistry,
+            SimpleNamespace(
+                runtimes={
+                    usecase.name: SimpleNamespace(
+                        settings=settings,
+                        triage_service=mock_triage,
+                        action_service=mock_action_service,
+                    )
+                    for usecase in settings.usecases
+                }
+            ),
+        )
+
+    return _factory
 
 
 @pytest.mark.asyncio
 async def test_event_handler_valid_message(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Verifies that a valid Kafka message causes the triage service to be invoked with the ticket ID from the message.
 
-    Publishes a message to the router's broker configured with a single allowed request type and asserts that `perform_triage` is called once with `id=3720`.
+    Publishes a message to the router's broker configured with a usecase matching the message's request type and asserts that `perform_triage` is called once with `id=3720`.
     """
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
@@ -201,17 +224,114 @@ async def test_event_handler_valid_message(
 
 
 @pytest.mark.asyncio
+async def test_event_handler_routes_event_to_matching_usecase(
+    mock_triage: MagicMock,
+    mock_action_service: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Usecase match rules route events to the runtime of the matching usecase."""
+    settings = settings_factory().model_copy(
+        update={
+            "usecases": [
+                UseCaseSettings(
+                    name="example-usecase",
+                    match=[UseCaseMatch(request_type="example-request", action="ticket_created")],
+                )
+            ]
+        }
+    )
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(id=747, articles=[ZammadArticle(id=1, ticket_id=747, text="msg")])
+    )
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.topic,
+            message={
+                "action": "ticket_created",
+                "ticket": "747",
+                "status": "new",
+                "statusId": "1",
+                "anliegenart": "example-request",
+                "lhmExtId": "",
+            },
+        )
+
+    mock_triage.perform_triage.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_drops_events_for_sole_usecase_without_match_rules(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """A sole usecase without match rules must match no event."""
+    settings = settings_factory().model_copy(update={"usecases": [UseCaseSettings(name="default")]})
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("INFO"):
+            await test_broker.publish(topic=settings.kafka.topic, message=kafka_message_factory())
+
+    assert "Skipping Kafka event that matched no configured usecase." in caplog.text
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_logs_and_acks_unmatched_event_with_skip_policy(
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """Events that match no usecase must be acknowledged with an explicit skip log."""
+    settings = settings_factory().model_copy(
+        update={
+            "usecases": [
+                UseCaseSettings(
+                    name="example-usecase",
+                    match=[UseCaseMatch(request_type="example-request", action="ticket_created")],
+                )
+            ]
+        }
+    )
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("INFO"):
+            await test_broker.publish(
+                topic=settings.kafka.topic,
+                message={
+                    "action": "ticket_created",
+                    "ticket": "747",
+                    "status": "new",
+                    "statusId": "1",
+                    "anliegenart": "Unbekanntes Anliegen",
+                    "lhmExtId": "",
+                },
+            )
+
+    assert "Skipping Kafka event that matched no configured usecase." in caplog.text
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_event_handler_ack_on_already_processed_ticket(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Tickets already in the AI group should be dropped before triage or writes."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.zammad.ai_ticket_group_id = 99
     settings.zammad.ai_ticket_group_name = "AI-Group"
-    router, event_handler = build_router(settings=settings)
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.zammad_client.get_ticket = AsyncMock(
         return_value=ZammadTicket(
             id=3720,
@@ -243,15 +363,15 @@ async def test_event_handler_ack_on_already_processed_ticket(
 async def test_event_handler_processes_already_processed_ticket_when_duplicate_detection_disabled(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Duplicate detection can be disabled without blocking triage."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.zammad.ai_ticket_group_id = 99
     settings.zammad.ai_ticket_group_name = "AI-Group"
     settings.zammad.duplicate_detection_enabled = False
-    router, _ = build_router(settings=settings)
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.zammad_client.get_ticket = AsyncMock(
         return_value=ZammadTicket(
             id=3720,
@@ -281,8 +401,7 @@ async def test_event_handler_processes_already_processed_ticket_when_duplicate_d
 @pytest.mark.asyncio
 async def test_event_handler_passes_original_group_context_for_eai_self_move(
     mock_triage: MagicMock,
-    mock_get_triage: None,
-    mock_get_action_service: MagicMock,
+    mock_action_service: MagicMock,
 ) -> None:
     """The EAI flow should preserve the original group when handing off to the action service."""
     settings = create_mock_settings()
@@ -316,7 +435,7 @@ async def test_event_handler_passes_original_group_context_for_eai_self_move(
     await _process_ticket_event(
         settings=settings,
         triage_service=mock_triage,
-        action_service=mock_get_action_service,
+        action_service=mock_action_service,
         event=Event.model_validate(
             {
                 "action": "created",
@@ -332,8 +451,8 @@ async def test_event_handler_passes_original_group_context_for_eai_self_move(
     )
 
     mock_triage.zammad_client.update_ticket_group.assert_awaited_once_with(ticket_id=3720, group_id=99)
-    cast(AsyncMock, mock_get_action_service.execute_action).assert_awaited_once()
-    kwargs = cast(dict[str, object], mock_get_action_service.execute_action.await_args.kwargs)
+    cast(AsyncMock, mock_action_service.execute_action).assert_awaited_once()
+    kwargs = cast(dict[str, object], mock_action_service.execute_action.await_args.kwargs)
     assert kwargs["original_group_id"] == 31
     assert kwargs["original_group_name"] == "Sales"
 
@@ -342,12 +461,12 @@ async def test_event_handler_passes_original_group_context_for_eai_self_move(
 async def test_event_handler_with_requestType_alias(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Test event handler accepts requestType as alias for anliegenart."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory()
         # Use alias instead of anliegenart
@@ -361,39 +480,14 @@ async def test_event_handler_with_requestType_alias(
 
 
 @pytest.mark.asyncio
-async def test_event_handler_invalid_request_type(
-    kafka_message_factory: Callable[..., dict[str, str]],
-    mock_triage: MagicMock,
-    mock_get_triage: None,
-    settings_factory: Callable[..., ZammadAISettings],
-    caplog,
-) -> None:
-    """Verify that messages whose request type is not listed in the configured valid_request_types are skipped by the event handler.
-
-    When a message contains an invalid request type, the handler emits the broker's unsupported-request-type INFO log and does not invoke the triage service.
-    """
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    settings.kafka.log_level = logging.INFO
-    router, _ = build_router(settings=settings)
-    async with TestKafkaBroker(router.broker) as test_broker:
-        message = kafka_message_factory(anliegenart="invalid_request_type")
-        message["anliegenart"] = "invalid_request_type"
-        with caplog.at_level("INFO"):
-            await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping event with unsupported request type" in caplog.text
-        # Verify triage was NOT called for invalid request types
-        mock_triage.perform_triage.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_event_handler_invalid_message_format(
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Malformed payloads should be treated as permanent payload errors and dropped."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         # Missing required fields
         invalid_message: dict = {
@@ -406,18 +500,30 @@ async def test_event_handler_invalid_message_format(
 
 
 @pytest.mark.asyncio
-async def test_event_handler_with_multiple_valid_request_types(
+async def test_event_handler_routes_event_matching_any_match_rule(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """Verify the event handler invokes triage when the message's request type matches any of multiple allowed types.
+    """Verify the event handler invokes triage when the message matches any of a usecase's match rules.
 
-    Publishes a Kafka message with `anliegenart` set to "general support" while the settings allow ["technischer Bürgersupport", "general support", "other"], and asserts `perform_triage` was called with `id=3720`.
+    Publishes a Kafka message with `anliegenart` set to "general support" while the usecase defines match rules for ["technischer Bürgersupport", "general support"], and asserts `perform_triage` was called with `id=3720`.
     """
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport", "general support", "other"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory().model_copy(
+        update={
+            "usecases": [
+                UseCaseSettings(
+                    name="default",
+                    match=[
+                        UseCaseMatch(request_type="technischer Bürgersupport"),
+                        UseCaseMatch(request_type="general support"),
+                    ],
+                )
+            ]
+        }
+    )
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="general support")
         await test_broker.publish(topic=settings.kafka.topic, message=message)
@@ -431,13 +537,13 @@ async def test_event_handler_with_multiple_valid_request_types(
 async def test_event_handler_counts_processed_main_events(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """Only main-topic events that pass filtering should increment the ingress counter."""
+    """Only main-topic events routed to a usecase should increment the ingress counter."""
     baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     async with TestKafkaBroker(router.broker) as test_broker:
         await test_broker.publish(topic=settings.kafka.topic, message=kafka_message_factory())
@@ -447,16 +553,16 @@ async def test_event_handler_counts_processed_main_events(
 
 
 @pytest.mark.asyncio
-async def test_event_handler_does_not_count_filtered_events(
+async def test_event_handler_does_not_count_unmatched_events(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
-    """Filtered main-topic events should not increment the ingress counter."""
+    """Unmatched main-topic events should not increment the ingress counter."""
     baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     async with TestKafkaBroker(router.broker) as test_broker:
         await test_broker.publish(
@@ -472,13 +578,13 @@ async def test_event_handler_does_not_count_filtered_events(
 async def test_retry_event_handler_does_not_count_main_event_metric(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Retry-topic events should not increment the main ingress counter."""
     baseline = _get_counter_value(KAFKA_EVENTS_TOTAL, "zammad_ai_kafka_events_total")
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     async with TestKafkaBroker(router.broker) as test_broker:
         await test_broker.publish(
@@ -495,13 +601,13 @@ async def test_retry_event_handler_does_not_count_main_event_metric(
 async def test_retry_event_handler_processes_ticket_in_ai_group(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
-    mock_get_action_service: MagicMock,
+    mock_action_service: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Retry-topic events should not be dropped just because the ticket is already in the AI group."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.zammad_client.get_ticket = AsyncMock(
         return_value=ZammadTicket(
             id=3720,
@@ -522,26 +628,25 @@ async def test_retry_event_handler_processes_ticket_in_ai_group(
         )
 
     mock_triage.perform_triage.assert_called_once()
-    cast(AsyncMock, mock_get_action_service.execute_action).assert_awaited_once()
+    cast(AsyncMock, mock_action_service.execute_action).assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_event_handler_case_sensitive_request_type(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     caplog,
 ) -> None:
-    """Test that request type validation is case sensitive."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    settings.kafka.log_level = logging.INFO
-    router, event_handler = build_router(settings=settings)
+    """Test that usecase match rules match request types case sensitively."""
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory(anliegenart="TECHNISCHER BÜRGERSUPPORT")
         with caplog.at_level("INFO"):
             await test_broker.publish(topic=settings.kafka.topic, message=message)
-        assert "Skipping event with unsupported request type" in caplog.text
+        assert "Skipping Kafka event that matched no configured usecase." in caplog.text
         # Verify triage was NOT called for case mismatch
         mock_triage.perform_triage.assert_not_called()
 
@@ -550,13 +655,13 @@ async def test_event_handler_case_sensitive_request_type(
 async def test_event_handler_ack_on_retryable_typed_error_after_republish(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retryable typed triage errors must be republished and then acknowledged."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
     publish_mock = AsyncMock()
     fixed_now = 1_000.0
@@ -574,21 +679,22 @@ async def test_event_handler_ack_on_retryable_typed_error_after_republish(
     assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
     assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
     assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+    assert UUID(publish_mock.await_args.kwargs["headers"][SESSION_ID_HEADER]).version == 4
 
 
 @pytest.mark.asyncio
 async def test_event_handler_republishes_retryable_error_to_configured_retry_topic(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retryable failures from the main topic must be republished to the configured retry topic."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.kafka.retry_topic = "custom-retry-topic"
     settings.kafka.retry_delay_seconds = 30
-    router, event_handler = build_router(settings=settings)
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
     publish_mock = AsyncMock()
     fixed_now = 1_000.0
@@ -609,17 +715,48 @@ async def test_event_handler_republishes_retryable_error_to_configured_retry_top
 
 
 @pytest.mark.asyncio
+async def test_event_handler_republishes_retryable_payload_error(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retryable Kafka payload errors from processing should still go through retry handling."""
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
+    mock_triage.zammad_client.get_ticket.side_effect = ZammadConnectionError("temporary outage")
+    publish_mock = AsyncMock()
+    fixed_now = 1_000.0
+    expected_retry_after = str(int((fixed_now + settings.kafka.retry_delay_seconds) * 1000))
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args is not None
+    assert publish_mock.await_args.kwargs["topic"] == settings.kafka.retry_topic
+    assert publish_mock.await_args.kwargs["message"]["ticket"] == "3720"
+    assert publish_mock.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
+    assert publish_mock.await_args.kwargs["headers"]["retry_count"] == "1"
+    mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_event_handler_stops_retrying_after_max_attempts(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retryable failures must be dropped once the retry limit is reached."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.kafka.max_retry_attempts = 0
-    router, event_handler = build_router(settings=settings)
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
 
     publish_mock = AsyncMock()
@@ -638,7 +775,7 @@ async def test_retry_sleep_chunks_delays_above_poll_interval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retry sleeps should be bounded to half the configured retry delay."""
-    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    settings = settings_factory()
     fixed_now = 1_000.0
     retry_after_ms = int((fixed_now + 600.0) * 1000)
     sleep_mock = AsyncMock()
@@ -661,14 +798,14 @@ async def test_retry_sleep_chunks_delays_above_poll_interval(
 async def test_retry_event_handler_reschedules_long_waits_after_half_retry_window(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retry consumer should bound long waits and requeue the remainder."""
-    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
+    settings = settings_factory()
     settings.kafka.retry_delay_seconds = 60
-    router, _ = build_router(settings=settings)
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     retry_handler = next(
         call.handler._original_call
         for subscriber in router.broker.subscribers
@@ -712,7 +849,7 @@ async def test_reschedule_retry_event_keeps_retry_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rescheduling a retry event should preserve the retry count and target the retry topic."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     broker = AsyncMock()
     fixed_now = 1_000.0
     monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
@@ -725,6 +862,7 @@ async def test_reschedule_retry_event_keeps_retry_count(
         original_group_id=17,
         retry_count=2,
         remaining_delay_seconds=301.0,
+        session_id="session-abc",
     )
 
     broker.publish.assert_awaited_once()
@@ -733,6 +871,7 @@ async def test_reschedule_retry_event_keeps_retry_count(
     assert broker.publish.await_args.kwargs["headers"]["retry_after"] == str(int((fixed_now + 301.0) * 1000))
     assert broker.publish.await_args.kwargs["headers"]["retry_count"] == "2"
     assert broker.publish.await_args.kwargs["headers"]["original_group_id"] == "17"
+    assert broker.publish.await_args.kwargs["headers"][SESSION_ID_HEADER] == "session-abc"
 
 
 @pytest.mark.asyncio
@@ -741,7 +880,8 @@ async def test_retry_limit_restores_original_group(
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """When the retry limit is reached, the ticket should be moved back to its original group."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -805,7 +945,8 @@ async def test_retry_limit_counts_aborted_with_error(
     """Final retry aborts should increment the aborted-with-error counter."""
     labels = {"category": "Test", "action_type": "no_action", "outcome": "aborted_with_error"}
     baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 1
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -839,7 +980,8 @@ async def test_intermediate_retry_does_not_count_aborted_with_error(
     """Intermediate retries should not increment the aborted-with-error counter."""
     labels = {"category": "unknown", "action_type": "unknown", "outcome": "aborted_with_error"}
     baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
+    assert settings.triage is not None
     settings.kafka.max_retry_attempts = 2
     broker = AsyncMock()
     zammad_client = AsyncMock()
@@ -868,7 +1010,7 @@ async def test_retry_event_handler_uses_exponential_backoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retry republishing should increase the delay for each completed retry."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.kafka.retry_delay_seconds = 30
     settings.kafka.max_retry_attempts = 5
     fixed_now = 1_000.0
@@ -889,20 +1031,48 @@ async def test_retry_event_handler_uses_exponential_backoff(
     assert broker.publish.await_args is not None
     assert broker.publish.await_args.kwargs["headers"]["retry_after"] == expected_retry_after
     assert broker.publish.await_args.kwargs["headers"]["retry_count"] == "3"
+    assert SESSION_ID_HEADER not in broker.publish.await_args.kwargs["headers"]
+
+
+@pytest.mark.asyncio
+async def test_republish_retry_event_carries_session_id(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Republished retry events must carry the session ID of the failed attempt."""
+    settings = settings_factory()
+    fixed_now = 1_000.0
+    monkeypatch.setattr("app.kafka.helper.time.time", lambda: fixed_now)
+    broker = AsyncMock()
+    event = Event.model_validate(kafka_message_factory())
+
+    await _republish_retry_event(
+        broker=broker,
+        settings=settings,
+        event=event,
+        original_group_id=None,
+        retry_count=0,
+        session_id="session-abc",
+    )
+
+    broker.publish.assert_awaited_once()
+    assert broker.publish.await_args is not None
+    assert broker.publish.await_args.kwargs["headers"][SESSION_ID_HEADER] == "session-abc"
 
 
 @pytest.mark.asyncio
 async def test_event_handler_ack_on_permanent_typed_error(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Permanent typed triage errors must be dropped with ACK."""
     labels = {"category": "unknown", "action_type": "unknown", "outcome": "dropped"}
     baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageError("permanent triage", retryable=False)
 
     event = Event.model_validate(kafka_message_factory())
@@ -918,12 +1088,12 @@ async def test_event_handler_ack_on_permanent_typed_error(
 async def test_event_handler_ack_on_invalid_ticket_id(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Non-numeric ticket ids are treated as payload errors and dropped."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, event_handler = build_router(settings=settings)
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
 
     event = Event.model_validate(kafka_message_factory(ticket="bad-ticket-id"))
     with pytest.raises(AckMessage):
@@ -936,12 +1106,12 @@ async def test_event_handler_ack_on_invalid_ticket_id(
 async def test_event_handler_ack_on_non_finite_raw_ticket_id(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Non-finite raw ticket ids should be dropped instead of retried."""
-    settings = settings_factory(valid_request_types=["technischer B\u00fcrgersupport"])
-    _, event_handler = build_router(settings=settings)
+    settings = settings_factory()
+    _, event_handler = build_router(settings=settings, registry=mock_registry(settings))
 
     raw_event: dict[str, object] = {**kafka_message_factory()}
     raw_event["ticket"] = float("inf")
@@ -956,13 +1126,14 @@ async def test_event_handler_ack_on_non_finite_raw_ticket_id(
 async def test_event_handler_category_wrong_retries_below_threshold(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Category wrong errors with low confidence are retried."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
+    assert settings.triage is not None
     settings.triage.category_wrong_retry_confidence_threshold = 0.7
-    router, event_handler = build_router(settings=settings)
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageCategoryWrongError(
         "category mismatch",
         confidence=0.2,
@@ -977,13 +1148,14 @@ async def test_event_handler_category_wrong_retries_below_threshold(
 async def test_event_handler_category_wrong_drops_above_threshold(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
 ) -> None:
     """Category wrong errors with high confidence are dropped."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
+    assert settings.triage is not None
     settings.triage.category_wrong_retry_confidence_threshold = 0.7
-    router, event_handler = build_router(settings=settings)
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
     mock_triage.perform_triage.side_effect = TriageCategoryWrongError(
         "category mismatch",
         confidence=0.9,
@@ -998,14 +1170,14 @@ async def test_event_handler_category_wrong_drops_above_threshold(
 async def test_retry_event_handler_waits_for_retry_after_before_processing(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retry consumer should delay processing until the retry_after timestamp expires."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.kafka.retry_delay_seconds = 30
-    router, _ = build_router(settings=settings)
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     fixed_now = 1_000.0
     retry_after_ms = int((fixed_now + 5.0) * 1000)
@@ -1018,38 +1190,88 @@ async def test_retry_event_handler_waits_for_retry_after_before_processing(
         await test_broker.publish(
             topic=settings.kafka.retry_topic,
             message=message,
-            headers={"retry_after": str(retry_after_ms), "retry_count": "1"},
+            headers={"retry_after": str(retry_after_ms), "retry_count": "1", SESSION_ID_HEADER: "session-123"},
         )
 
     sleep_mock.assert_awaited_once()
     assert sleep_mock.await_args is not None
     assert sleep_mock.await_args.args[0] == pytest.approx(5.0)
     assert mock_triage.perform_triage.call_count == 1
+    assert mock_triage.perform_triage.call_args.kwargs.get("session_id") == "session-123"
+
+
+@pytest.mark.asyncio
+async def test_retry_reuses_session_id_from_first_failed_attempt(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retries must reuse the Langfuse session ID generated by the first failed attempt."""
+    settings = settings_factory()
+    router, event_handler = build_router(settings=settings, registry=mock_registry(settings))
+    retry_handler = next(
+        call.handler._original_call
+        for subscriber in router.broker.subscribers
+        for call in subscriber.calls
+        if getattr(call.handler._original_call, "__name__", "") == "retry_event_handler"
+    )
+
+    mock_triage.perform_triage.side_effect = TriageError("retryable triage", retryable=True)
+    publish_mock = AsyncMock()
+    monkeypatch.setattr(router.broker, "publish", publish_mock)
+
+    event = Event.model_validate(kafka_message_factory())
+    with pytest.raises(AckMessage):
+        await event_handler(event=event)
+
+    publish_mock.assert_awaited_once()
+    assert publish_mock.await_args is not None
+    first_session_id = publish_mock.await_args.kwargs["headers"][SESSION_ID_HEADER]
+    assert UUID(first_session_id).version == 4
+
+    mock_triage.perform_triage.side_effect = None
+    mock_triage.perform_triage.reset_mock()
+    with pytest.raises(AckMessage):
+        await retry_handler(
+            event=event,
+            retry_after=None,
+            original_group_id=None,
+            retry_count="1",
+            session_id_header=first_session_id,
+        )
+
+    mock_triage.perform_triage.assert_awaited_once()
+    assert mock_triage.perform_triage.call_args.kwargs.get("session_id") == first_session_id
 
 
 @pytest.mark.asyncio
 async def test_event_handler_executes_action_when_triage_returns_action(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
-    mock_get_triage: None,
+    mock_action_service: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
     settings_factory: Callable[..., ZammadAISettings],
-    mock_get_action_service: MagicMock,
 ) -> None:
     """Verify that when triage returns a result, the action service is invoked."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
-    router, _ = build_router(settings=settings)
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
     async with TestKafkaBroker(router.broker) as test_broker:
         message = kafka_message_factory()
         await test_broker.publish(topic=settings.kafka.topic, message=message)
-        mock_get_action_service.execute_action.assert_called_once()
+        mock_action_service.execute_action.assert_called_once()
 
 
-def test_router_uses_configured_max_poll_interval(settings_factory: Callable[..., ZammadAISettings]) -> None:
+def test_router_uses_configured_max_poll_interval(
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
     """Kafka subscribers should inherit the configured poll interval budget."""
-    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings = settings_factory()
     settings.kafka.max_poll_interval_ms = 900_000
 
-    router, _ = build_router(settings=settings)
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
 
     connection_args_by_topic = {
         tuple(getattr(topic, "name", topic) for topic in typed_subscriber._topics): typed_subscriber._connection_args

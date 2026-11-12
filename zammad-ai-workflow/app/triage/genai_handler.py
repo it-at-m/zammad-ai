@@ -18,6 +18,7 @@ from langfuse.model import PromptClient
 from app.errors import classify_provider_error
 from app.models.triage import CategorizationResult, DaysSinceRequestResponse, ProcessingIdResponse
 from app.observe import LangfuseClient
+from app.observe.langfuse import generate_session_id
 from app.settings.genai import GenAIProviderSettings
 from app.utils.genai_provider import get_chat_model
 from app.utils.langchain import extract_structured_response, with_recursion_limit
@@ -45,6 +46,7 @@ class GenAIHandler:
         genai_settings: GenAIProviderSettings,
         prompts: dict[str, str],
         categories_langfuse_prompt: PromptClient | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         """Initialize model configuration and durable operation chains.
 
@@ -54,13 +56,17 @@ class GenAIHandler:
             prompts: Mapping of prompt keys to prompt template strings.
             categories_langfuse_prompt: Optional Langfuse prompt reference used to
                 link the categorization generation to a prompt version in Langfuse.
+            tags: Optional tags applied to every Langfuse trace created by this
+                handler, for example the usecase name to make traces filterable
+                by usecase in Langfuse.
 
         Raises:
             ValueError: If prompts are missing/empty or the configured SDK is
                 not supported.
         """
         # TODO: Refactor langfuse client as optional argument, if not passed there is no tracing and no handler is passed to the chains
-        self.langfuse_client = LangfuseClient()
+        self.langfuse_client = LangfuseClient(tags=tags)
+        self.tags: list[str] = self.langfuse_client.tags
         self.categories_langfuse_prompt = categories_langfuse_prompt
 
         # Validate that prompts are properly configured
@@ -135,7 +141,7 @@ class GenAIHandler:
 
         try:
             logger.debug("Categorization invocation started", extra={"stage": "categorize_ticket"})
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.tags or None):
                 response: CategorizationResult = await self._ainvoke_structured_agent(
                     structured_agent=self._categorization_chain,
                     input={
@@ -173,7 +179,7 @@ class GenAIHandler:
 
         try:
             logger.debug("Days-since-request invocation started", extra={"stage": "extract_days_since_request"})
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.tags or None):
                 response: DaysSinceRequestResponse = await self._ainvoke_structured_agent(
                     structured_agent=self._days_since_request_chain,
                     input={
@@ -205,7 +211,7 @@ class GenAIHandler:
 
         try:
             logger.debug("Processing-id invocation started", extra={"stage": "extract_processing_id"})
-            with propagate_attributes(session_id=session_id):
+            with propagate_attributes(session_id=session_id, tags=self.tags or None):
                 response: ProcessingIdResponse = await self._ainvoke_structured_agent(
                     structured_agent=self._processing_id_chain,
                     input={
@@ -293,7 +299,7 @@ class GenAIHandler:
         """
         resolved_session_id: str | None = session_id.strip() if session_id is not None else None
         if not resolved_session_id:
-            resolved_session_id = self.langfuse_client.generate_session_id()
+            resolved_session_id = generate_session_id()
 
         config: RunnableConfig = self.langfuse_client.build_config(session_id=resolved_session_id)
         return resolved_session_id, config

@@ -54,6 +54,7 @@ def test_get_settings_ignores_local_yaml_in_unittest_mode(tmp_path, monkeypatch)
         get_settings.cache_clear()
 
     assert settings.mode == "unittest"
+    assert settings.triage is not None
     assert settings.triage.prompts.type == "string"
 
 
@@ -67,6 +68,11 @@ def test_max_user_text_length_defaults_to_2000() -> None:
 def test_api_shutdown_timeout_defaults_to_10_seconds() -> None:
     """Limit the wait for browser connections during graceful shutdown."""
     assert APISettings().shutdown_timeout_seconds == 10
+
+
+def test_api_max_parse_body_bytes_defaults_to_one_mebibyte() -> None:
+    """Limit the body buffering of the usecase logging middleware."""
+    assert APISettings().max_parse_body_bytes == 1024 * 1024
 
 
 @pytest.mark.parametrize("value", [1, 100, 4096])

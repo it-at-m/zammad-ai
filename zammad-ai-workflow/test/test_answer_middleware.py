@@ -186,7 +186,9 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
         def __init__(self) -> None:
             self.last_langfuse_prompt: object | None = None
 
-        def build_config(self, session_id: str | None = None, langfuse_prompt: object | None = None) -> dict[str, object]:
+        def build_config(
+            self, session_id: str | None = None, langfuse_prompt: object | None = None
+        ) -> dict[str, object]:
             self.last_langfuse_prompt = langfuse_prompt
             return {"session_id": session_id}
 
@@ -229,7 +231,7 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
 
         def __or__(self, other: RunnableLambda) -> RunnableLambda:
             async def _ainvoke(prompt_input: object, config: object | None = None) -> AnswerCandidate:
-                return await other.ainvoke(prompt_input, config=config) # ty: ignore
+                return await other.ainvoke(prompt_input, config=config)  # ty: ignore
 
             return RunnableLambda(_ainvoke)
 
