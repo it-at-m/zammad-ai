@@ -216,6 +216,7 @@ async def test_execute_action_posts_feedback_note_for_standard_shared_draft(
         response=StaticAnswer(response="Standardantwort"),
         trace_id="fresh-trace-id",
         allow_in_ai_group=False,
+        allow_no_answer_internal_note=False,
     )
 
 
@@ -266,6 +267,7 @@ async def test_execute_action_posts_feedback_note_for_ai_shared_draft_with_captu
         ),
         trace_id="fresh-trace-id",
         allow_in_ai_group=False,
+        allow_no_answer_internal_note=False,
     )
 
 
@@ -345,6 +347,65 @@ async def test_post_feedback_internal_note_allows_ticket_already_in_ai_group(
 
     post_answer_mock.assert_awaited_once()
     assert cast(Any, post_answer_mock).await_args.kwargs["internal"] is True
+
+
+@pytest.mark.asyncio
+async def test_execute_action_retry_skips_duplicate_no_answer_note_and_posts_feedback(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """A retry after a failed feedback note must not duplicate the no-answer note and must post the feedback note."""
+    settings = settings_factory()
+    settings.frontend.feedback.post_internal_note = True
+    settings.frontend.base_url = "https://example.com"
+    settings.triage.no_action_internal_note = "Kategorie: {category}; Aktion: {action}; Grund: {reason}"
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    service, post_answer_mock, _ = _build_action_service(settings)
+    feedback_note_mock = cast(AsyncMock, service._post_feedback_internal_note)
+    cast(Any, service.answer_service).langfuse_client = _FakeLangfuseClient(None)
+    service.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=1,
+            group_id=99,
+            group_name="AI-Group",
+            articles=[
+                ZammadArticle(id=1, ticket_id=1, text="Frage", internal=False),
+                ZammadArticle(
+                    id=2,
+                    ticket_id=1,
+                    text="No answer possible. Explanation: insufficient data.",
+                    internal=True,
+                    subject="No answer generation possible",
+                ),
+            ],
+        )
+    )
+    response = NoAnswerPossible(reasoning="Keine Antwort moeglich. " * 5)
+    setattr(service, "get_answer", AsyncMock(return_value=response))
+    triage = TriageResult(
+        user_text="Frage",
+        category=Category(name="General", auto_publish=False),
+        action=Action(name="AI", description="AI", type=ActionTypes.AIAnswer),
+        reasoning="reason",
+        confidence=1.0,
+    )
+
+    await service.execute_action(
+        ticket_id=1,
+        triage=triage,
+        allow_in_ai_group=True,
+        allow_no_answer_internal_note=True,
+    )
+
+    post_answer_mock.assert_not_awaited()
+    feedback_note_mock.assert_awaited_once_with(
+        ticket_id=1,
+        user_text="Frage",
+        response=response,
+        trace_id="fresh-trace-id",
+        allow_in_ai_group=True,
+        allow_no_answer_internal_note=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -516,6 +577,7 @@ async def test_execute_action_posts_no_action_note_for_no_answer_possible(
         response=response,
         trace_id="fresh-trace-id",
         allow_in_ai_group=False,
+        allow_no_answer_internal_note=False,
     )
     assert answer_service.langfuse_client.langfuse_handler.last_trace_id == "fresh-trace-id"
 
@@ -556,6 +618,7 @@ async def test_execute_action_posts_no_action_note_for_guardrail_block(
         response=NoAnswerPossible(reasoning=blocked_reasoning),
         trace_id="fresh-trace-id",
         allow_in_ai_group=False,
+        allow_no_answer_internal_note=False,
     )
 
 

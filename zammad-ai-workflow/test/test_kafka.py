@@ -10,7 +10,7 @@ from faststream.exceptions import AckMessage, NackMessage
 from faststream.kafka import TestKafkaBroker, Topic
 from pydantic import HttpUrl, SecretStr
 
-from app.errors import TriageCategoryWrongError, TriageError
+from app.errors import KafkaPayloadError, TriageCategoryWrongError, TriageError
 from app.kafka.broker import _process_ticket_event, build_router
 from app.kafka.helper import (
     _handle_processing_exception,
@@ -34,6 +34,7 @@ from app.settings.triage import (
     TriageSettings,
 )
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.zammad.base import ZammadRetryableError
 
 
 class _KafkaSubscriberInspection(Protocol):
@@ -526,6 +527,51 @@ async def test_retry_event_handler_processes_ticket_in_ai_group(
 
 
 @pytest.mark.asyncio
+async def test_retry_event_handler_processes_ticket_with_existing_no_answer_note(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_get_triage: None,
+    mock_get_action_service: MagicMock,
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retry-topic events must not be dropped when a previous attempt already posted the no-answer note."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.zammad.ai_ticket_group_id = 99
+    settings.zammad.ai_ticket_group_name = "AI-Group"
+    router, _ = build_router(settings=settings)
+    mock_triage.zammad_client.get_ticket = AsyncMock(
+        return_value=ZammadTicket(
+            id=3720,
+            group_id=99,
+            group_name="AI-Group",
+            articles=[
+                ZammadArticle(id=1, ticket_id=3720, text="Inhalt des Anliegens", internal=False),
+                ZammadArticle(id=2, ticket_id=3720, text="Eingang Ihres Anliegens", internal=False),
+                ZammadArticle(
+                    id=3,
+                    ticket_id=3720,
+                    text="No answer possible. Explanation: insufficient data.",
+                    internal=True,
+                    subject="No answer generation possible",
+                ),
+            ],
+        )
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.retry_topic,
+            message=kafka_message_factory(),
+            headers={"retry_count": "1"},
+        )
+
+    mock_triage.perform_triage.assert_called_once()
+    cast(AsyncMock, mock_get_action_service.execute_action).assert_awaited_once()
+    kwargs = cast(dict[str, object], mock_get_action_service.execute_action.await_args.kwargs)
+    assert kwargs["allow_no_answer_internal_note"] is True
+
+
+@pytest.mark.asyncio
 async def test_event_handler_case_sensitive_request_type(
     kafka_message_factory: Callable[..., dict[str, str]],
     mock_triage: MagicMock,
@@ -795,6 +841,69 @@ async def test_restore_ticket_group_uses_metadata_without_articles() -> None:
         group_id=17,
         pending_time="2026-10-05T07:35:41.000Z",
     )
+
+
+@pytest.mark.asyncio
+async def test_restore_ticket_group_retries_transient_errors_with_backoff(
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transient Zammad failures while restoring the group are retried with exponential backoff."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.group_restore_retry_attempts = 2
+    settings.kafka.group_restore_retry_delay_seconds = 5.0
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+    zammad_client.update_ticket_group = AsyncMock(side_effect=[ZammadRetryableError("boom"), None])
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+
+    await _restore_ticket_group(
+        zammad_client=zammad_client,
+        ticket_id=3720,
+        group_id=17,
+        handler_stage="restore_ticket_group",
+        log_message="Moved ticket back to original group",
+        retry_attempts=settings.kafka.group_restore_retry_attempts,
+        retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
+    )
+
+    sleep_mock.assert_awaited_once_with(5.0)
+    assert zammad_client.update_ticket_group.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_restore_ticket_group_raises_after_retry_attempts_exhausted(
+    settings_factory: Callable[..., ZammadAISettings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The group restore escalates to the retry topic only after all configured attempts failed."""
+    settings = settings_factory(valid_request_types=["technischer Bürgersupport"])
+    settings.kafka.group_restore_retry_attempts = 1
+    settings.kafka.group_restore_retry_delay_seconds = 5.0
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+    zammad_client.update_ticket_group = AsyncMock(side_effect=ZammadRetryableError("boom"))
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("app.kafka.helper.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(KafkaPayloadError):
+        await _restore_ticket_group(
+            zammad_client=zammad_client,
+            ticket_id=3720,
+            group_id=17,
+            handler_stage="restore_ticket_group",
+            log_message="Moved ticket back to original group",
+            retry_attempts=settings.kafka.group_restore_retry_attempts,
+            retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
+        )
+
+    sleep_mock.assert_awaited_once_with(5.0)
+    assert zammad_client.update_ticket_group.await_count == 2
 
 
 @pytest.mark.asyncio

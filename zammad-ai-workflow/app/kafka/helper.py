@@ -185,15 +185,47 @@ async def _restore_ticket_group(
     group_id: int,
     handler_stage: str,
     log_message: str,
+    retry_attempts: int = 0,
+    retry_delay_seconds: float = 5.0,
 ) -> None:
-    """Move a ticket back to its original group."""
-    try:
-        ticket = await zammad_client.get_ticket_metadata(ticket_id)
-        await zammad_client.update_ticket_group(
-            ticket_id=ticket_id,
-            group_id=group_id,
-            pending_time=ticket.pending_time,
-        )
+    """Move a ticket back to its original group, retrying transient Zammad errors with backoff."""
+    for attempt in range(retry_attempts + 1):
+        try:
+            ticket = await zammad_client.get_ticket_metadata(ticket_id)
+            await zammad_client.update_ticket_group(
+                ticket_id=ticket_id,
+                group_id=group_id,
+                pending_time=ticket.pending_time,
+            )
+        except (ZammadRetryableError, ZammadConnectionError) as e:
+            if attempt >= retry_attempts:
+                logger.error(
+                    "Error connecting to Zammad while moving ticket back to original group",
+                    extra={
+                        "handler_stage": handler_stage,
+                        "ticket_id": ticket_id,
+                        "original_group_id": group_id,
+                    },
+                    exc_info=True,
+                )
+                raise KafkaPayloadError(
+                    "Failed due to Zammad connection error while moving ticket back to original group",
+                    retryable=True,
+                ) from e
+            wait_seconds = retry_delay_seconds * (2**attempt)
+            logger.warning(
+                "Retrying after error connecting to Zammad while moving ticket back to original group",
+                extra={
+                    "handler_stage": handler_stage,
+                    "ticket_id": ticket_id,
+                    "original_group_id": group_id,
+                    "attempt": attempt + 1,
+                    "wait_seconds": wait_seconds,
+                },
+                exc_info=True,
+            )
+            await asyncio.sleep(wait_seconds)
+            continue
         logger.info(
             log_message,
             extra={
@@ -202,20 +234,7 @@ async def _restore_ticket_group(
                 "original_group_id": group_id,
             },
         )
-    except (ZammadRetryableError, ZammadConnectionError) as e:
-        logger.error(
-            "Error connecting to Zammad while moving ticket back to original group",
-            extra={
-                "handler_stage": handler_stage,
-                "ticket_id": ticket_id,
-                "original_group_id": group_id,
-            },
-            exc_info=True,
-        )
-        raise KafkaPayloadError(
-            "Failed due to Zammad connection error while moving ticket back to original group",
-            retryable=True,
-        ) from e
+        return
 
 
 async def _handle_processing_exception(
@@ -277,6 +296,8 @@ async def _handle_processing_exception(
                         group_id=original_group_id,
                         handler_stage="restore_ticket_group",
                         log_message="Moved ticket back to original group",
+                        retry_attempts=settings.kafka.group_restore_retry_attempts,
+                        retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
                     )
             raise AckMessage()
 
@@ -312,6 +333,8 @@ async def _handle_processing_exception(
                 group_id=original_group_id,
                 handler_stage="restore_ticket_group",
                 log_message="Moved ticket back to original group",
+                retry_attempts=settings.kafka.group_restore_retry_attempts,
+                retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
             )
     record_kafka_ticket_outcome(
         category=category,
