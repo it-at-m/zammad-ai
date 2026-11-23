@@ -6,15 +6,55 @@ on:
 permissions:
   contents: read
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.all.outputs.modules || steps.matrix.outputs.modules }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+
+      - name: Run all modules on push to main
+        id: all
+        if: github.event_name == 'push'
+        run: echo 'modules=["./zammad-ai-workflow", "./slm-guardrails"]' >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect changed subprojects
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        with:
+          filters: |
+            workflow:
+              - 'zammad-ai-workflow/**'
+              - '.github/workflows/pytest.yaml'
+            guardrails:
+              - 'slm-guardrails/**'
+              - '.github/workflows/pytest.yaml'
+
+      - name: Build module matrix
+        id: matrix
+        if: github.event_name == 'pull_request'
+        run: |
+          modules=$(jq -nc --arg w "${{ steps.filter.outputs.workflow }}" --arg g "${{ steps.filter.outputs.guardrails }}" \
+            '[[$w, "./zammad-ai-workflow"], [$g, "./slm-guardrails"]] | map(select(.[0] == "true") | .[1])')
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        working-directory:
-          - ./zammad-ai-workflow
-          - ./slm-guardrails
+        working-directory: ${{ fromJSON(needs.changes.outputs.modules) }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
