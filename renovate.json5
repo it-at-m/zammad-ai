@@ -20,6 +20,12 @@
   reviewers: ["nharbig", "pilitz"],
   packageRules: [
     {
+      // Python 3.15 is not yet widely supported (e.g. onnxruntime ships no cp315 wheels).
+      // Allow 3.14.x patch updates only; block minor bumps like 3.15 for the time being.
+      matchDepNames: ["python"],
+      allowedVersions: "<3.15",
+    },
+    {
       matchManagers: ["pep621"],
       matchUpdateTypes: ["minor", "patch"],
       groupName: "Python: non-major updates",
