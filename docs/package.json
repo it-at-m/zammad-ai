@@ -7,7 +7,7 @@
     "fix": "prettier . --write"
   },
   "engines": {
-    "node": ">=20 <=24"
+    "node": ">=20 <=26"
   },
   "devDependencies": {
     "@mdi/font": "7.4.47",
