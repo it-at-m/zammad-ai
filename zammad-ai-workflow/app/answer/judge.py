@@ -69,9 +69,7 @@ class JudgeHandler:
             with propagate_attributes(session_id=session_id):
                 agent_result: dict[str, Any] = await self._judge_agent.ainvoke(
                     input={
-                        "messages": [
-                            HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}")
-                        ],
+                        "messages": [HumanMessage(content=f"Question: {question}\n\nAnswer: {answer}")],
                     },
                     config=config,
                 )

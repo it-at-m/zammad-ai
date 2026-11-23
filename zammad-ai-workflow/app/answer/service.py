@@ -15,7 +15,7 @@ from prometheus_client import Gauge, Histogram
 
 from app.errors import AnswerServiceError, AppError
 from app.guardrails.http_client import GuardrailService
-from app.models.answer import AnswerCandidate, AnswerResult, NoAnswerPossible
+from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict, NoAnswerPossible
 from app.observe import LangfuseClient, LangfuseError
 from app.settings import ZammadAISettings
 from app.settings.answer import (
@@ -263,6 +263,7 @@ class AnswerService:
                 structured_response.response = _sanitize_asterisks(structured_response.response)
                 if structured_response.subject:
                     structured_response.subject = _sanitize_asterisks(structured_response.subject)
+                self._craft_kb_document_urls(structured_response.documents)
             if isinstance(structured_response, NoAnswerPossible):
                 outcome = "no_answer"
             else:
@@ -278,6 +279,38 @@ class AnswerService:
         finally:
             ANSWER_RUN_DURATION_SECONDS.labels(outcome=outcome).observe(perf_counter() - start_time)
             ANSWER_RUNS_IN_PROGRESS.dec()
+
+    def _craft_kb_document_urls(self, documents: list[DocumentDict]) -> None:
+        """Craft Zammad knowledge-base URLs for used documents referenced by article ID.
+
+        Knowledge base article URLs are never exposed to the agent; the agent only sees and
+        cites article IDs. The public deep link is crafted here from the configured Zammad
+        base URL and knowledge base ID, matching the URL format used by the index job.
+
+        Parameters:
+            documents (list[DocumentDict]): Documents cited in the answer; modified in place.
+        """
+        knowledge_base_id = self.settings.zammad.knowledge_base_id
+        if not knowledge_base_id:
+            cited_kb_article = False
+            for document in documents:
+                if document.id:
+                    cited_kb_article = True
+                    # Drop any agent-supplied URL so knowledge base article
+                    # URLs are only ever crafted server-side.
+                    document.url = None
+            if cited_kb_article:
+                logger.warning(
+                    "Agent cited knowledge base article IDs but 'zammad.knowledge_base_id' is not"
+                    " configured; no document URLs could be crafted."
+                )
+            return
+        for document in documents:
+            if document.id:
+                document.url = (
+                    f"{self.settings.zammad.base_url}"
+                    f"#knowledge_base/{knowledge_base_id}/locale/de-de/answer/{document.id}"
+                )
 
     @observe(as_type="span")
     async def _judge_and_repair(

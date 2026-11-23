@@ -48,7 +48,11 @@ class FakeQdrantClient:
             (
                 Document(
                     page_content="Der Antrag ist online moglich.",
-                    metadata={"title": "Personalausweis", "url": "https://example.com/ausweis"},
+                    metadata={
+                        "answer_title": "Personalausweis",
+                        "answer_body": "Der Antrag ist online moglich.",
+                        "answer_id": 42,
+                    },
                 ),
                 0.91,
             )
@@ -111,7 +115,8 @@ async def test_knowledgebase_middleware_injects_context_once() -> None:
     assert isinstance(message, SystemMessage)
     assert "Knowledge-base context" in message.content
     assert "Personalausweis" in message.content
-    assert "https://example.com/ausweis" in message.content
+    assert "Knowledge base article ID: 42" in message.content
+    assert "https://" not in message.content
     assert runtime.context.knowledgebase_context == message.content
     assert "Der Antrag ist online moglich." in message.content
 
@@ -186,7 +191,9 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
         def __init__(self) -> None:
             self.last_langfuse_prompt: object | None = None
 
-        def build_config(self, session_id: str | None = None, langfuse_prompt: object | None = None) -> dict[str, object]:
+        def build_config(
+            self, session_id: str | None = None, langfuse_prompt: object | None = None
+        ) -> dict[str, object]:
             self.last_langfuse_prompt = langfuse_prompt
             return {"session_id": session_id}
 
@@ -229,7 +236,7 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
 
         def __or__(self, other: RunnableLambda) -> RunnableLambda:
             async def _ainvoke(prompt_input: object, config: object | None = None) -> AnswerCandidate:
-                return await other.ainvoke(prompt_input, config=config) # ty: ignore
+                return await other.ainvoke(prompt_input, config=config)  # ty: ignore
 
             return RunnableLambda(_ainvoke)
 

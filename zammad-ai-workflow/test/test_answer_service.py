@@ -1,6 +1,7 @@
 """Tests for answer service metrics behavior."""
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any, cast
@@ -320,3 +321,61 @@ def test_extract_structured_response_ignores_human_json() -> None:
     # raise a KeyError.
     with pytest.raises(ValueError):
         extract_structured_response(agent_result, (AnswerCandidate, NoAnswerPossible))
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_crafts_kb_urls_for_used_documents(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """KB article IDs cited by the agent should be turned into Zammad KB URLs server-side."""
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[
+                    DocumentDict(title="KB article", id=42),
+                    DocumentDict(title="Zero ID article", id=0),
+                    DocumentDict(title="Law", url="https://www.gesetze-im-internet.de/fev/"),
+                ],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
+    service.settings.zammad.knowledge_base_id = "1"
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result.response, AnswerCandidate)
+    kb_document, zero_document, law_document = result.response.documents
+    assert kb_document.url == "https://example.com/#knowledge_base/1/locale/de-de/answer/42"
+    assert zero_document.url is None
+    assert law_document.url == "https://www.gesetze-im-internet.de/fev/"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_leaves_kb_documents_without_url_when_kb_disabled(
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Without a configured knowledge base, cited article IDs must not produce URLs."""
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[DocumentDict(title="KB article", id=42, url="https://attacker.example/")],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
+    service.settings.zammad.knowledge_base_id = None
+
+    with caplog.at_level(logging.WARNING, logger="zammad-ai.answer.service"):
+        result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.documents[0].url is None
+    assert any("zammad.knowledge_base_id" in record.message for record in caplog.records)

@@ -270,7 +270,10 @@ class LangfuseClient:
                 documents_data = answer_data.documents if answer_data is not None else []
             used_documents: str = ""
             for doc in documents_data:
-                used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
+                if doc.url:
+                    used_documents += "- [" + doc.title + "](" + doc.url + ")\n"
+                else:
+                    used_documents += "- " + doc.title + "\n"
             out_str: str = (subject + "\n\n" + response) if subject and response else (subject or response or "")
             out_str = out_str.replace("<br>", "\n").strip()
 

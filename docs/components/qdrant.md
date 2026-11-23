@@ -21,7 +21,7 @@ The workflow service configures Qdrant under `answer.qdrant`. The index job conf
 
 ## Data Models
 
-The workflow stores answer documents with `title` and `url` fields. The index job stores knowledge base and law metadata in Qdrant payloads.
+The workflow stores answer documents with `title`, `id` (knowledge base article ID), and `url` fields. Knowledge base article URLs are not exposed to the agent; the agent cites articles by ID and the workflow crafts the public Zammad deep link server-side when assembling the used documents of an answer. The index job stores knowledge base and law metadata in Qdrant payloads.
 
 - Knowledge base entries are compared by content hash before being written.
 - Law entries use deterministic IDs and store metadata such as `law_id`, `paragraph`, `annex`, and `chunk`.
