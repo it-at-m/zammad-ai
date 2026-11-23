@@ -268,7 +268,9 @@ class AnswerService:
                 outcome = "no_answer"
             else:
                 if self.settings.answer.ai_answer_disclaimer:
-                    structured_response.response += f"\n\n{self.settings.answer.ai_answer_disclaimer}"
+                    structured_response.response = (
+                        f"{self.settings.answer.ai_answer_disclaimer}\n\n{structured_response.response}"
+                    )
                 outcome = "success"
             return AnswerResult(response=structured_response, trace_id=trace_id)
         except AppError:

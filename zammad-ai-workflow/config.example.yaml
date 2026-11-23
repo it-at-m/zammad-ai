@@ -168,7 +168,7 @@ answer:
       type: "file" # Options: "string", "file", "langfuse"
       prompt: "prompts/answer/repair.prompt.md"
     max_repairs: 0
-  ai_answer_disclaimer: "" # Optional: disclaimer text for AI-generated answers
+  ai_answer_disclaimer: "" # Optional: disclaimer text prepended as first sentence to AI-generated answers
 
 # ============================================================================
 # Kafka Configuration

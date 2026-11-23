@@ -13,7 +13,7 @@ from langchain.messages import HumanMessage
 from app.answer import service as answer_module
 from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
-from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict
+from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict, NoAnswerPossible
 from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, LangfusePromptConfig, StringPromptConfig
 from app.settings.langfuse import LangfusePrompt
@@ -101,15 +101,11 @@ def _get_answer_runs_in_progress_value() -> float:
 def _build_answer_service(
     ainvoke: Callable[..., Awaitable[dict]],
     settings_factory: Callable[..., ZammadAISettings],
+    disclaimer: str = "",
 ) -> AnswerService:
     service = AnswerService.__new__(AnswerService)
-    service.settings = settings_factory(
-        overrides={
-            "answer": {
-                "ai_answer_disclaimer": "",
-            },
-        }
-    )
+    service.settings = settings_factory()
+    service.settings.answer.ai_answer_disclaimer = disclaimer
     cast(Any, service).langfuse_client = FakeLangfuseClient()
     cast(Any, service).user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()
@@ -200,6 +196,60 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
     assert isinstance(result.response, AnswerCandidate)
     assert result.response.response == VALID_RESPONSE
     assert result.trace_id == "trace-id"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_prepends_ai_answer_disclaimer(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Successful answers should start with the configured AI answer disclaimer."""
+    disclaimer = (
+        "Hinweis: Diese Antwort wurde mit Unterstützung von Künstlicher Intelligenz (KI) "
+        "erstellt und kann Fehler enthalten."
+    )
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory, disclaimer=disclaimer)
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.response == f"{disclaimer}\n\n{VALID_RESPONSE}"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_does_not_prepend_disclaimer_to_no_answer(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """NoAnswerPossible responses should not receive the AI answer disclaimer."""
+    reasoning = (
+        "Die verfügbaren Informationen reichen nicht aus, um eine belastbare Antwort zu geben. "
+        "Es liegen keine passenden Dokumente oder Quellen fuer die Anfrage des Nutzers vor."
+    )
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {"structured_response": NoAnswerPossible(reasoning=reasoning)}
+
+    service = _build_answer_service(
+        ainvoke=_ainvoke,
+        settings_factory=settings_factory,
+        disclaimer="Hinweis: KI-generiert.",
+    )
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, NoAnswerPossible)
+    assert result.response.reasoning == reasoning
 
 
 @pytest.mark.asyncio
