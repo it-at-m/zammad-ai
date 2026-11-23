@@ -4,7 +4,7 @@ license = "MIT"
 version = "0.4.22"
 description = "GenAI-powered agent for Zammad"
 readme = "README.md"
-requires-python = "==3.14.10"
+requires-python = "==3.15.2"
 authors = [
     { name = "freinold", email = "fabian.reinold@muenchen.de" },
     { name = "nharbig", email = "nico.harbig@muenchen.de" },
