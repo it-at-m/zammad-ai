@@ -291,9 +291,9 @@ def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:
     paths = sorted([*config_dir.glob("*.yaml"), *config_dir.glob("*.yml")])
     for path in paths:
         with path.open(encoding="utf-8") as file:
-            payload: Any = yaml.safe_load(file) or {}
+            payload: Any = yaml.safe_load(file)
         if not isinstance(payload, dict):
-            raise ValueError(f"Usecase configuration must be a mapping: {path}")
+            raise ValueError(f"Usecase configuration must be a YAML mapping: {path}")
         definitions.append(UseCaseSettings.model_validate(payload))
     return definitions
 
@@ -301,6 +301,8 @@ def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:
 def _validate_usecases(usecases: list[UseCaseSettings], router: RouterSettings | None = None) -> None:
     """Reject duplicate names, overlapping route definitions, and forbidden per-usecase overrides."""
     names = [usecase.name for usecase in usecases]
+    if any(not name.strip() for name in names):
+        raise ValueError("Usecase names must not be empty")
     if len(names) != len(set(names)):
         raise ValueError("Usecase names must be unique")
 
@@ -320,6 +322,8 @@ def _validate_usecases(usecases: list[UseCaseSettings], router: RouterSettings |
     for usecase in usecases:
         for match in usecase.match:
             for request_type, action, previous_name in routes:
+                if previous_name == usecase.name:
+                    continue
                 if (match.request_type is None or request_type is None or match.request_type == request_type) and (
                     match.action is None or action is None or match.action == action
                 ):
@@ -332,6 +336,8 @@ def _validate_usecases(usecases: list[UseCaseSettings], router: RouterSettings |
     for usecase in usecases:
         for match in usecase.polling_match:
             for group_id, group_name, previous_name in polling_routes:
+                if previous_name == usecase.name:
+                    continue
                 if (match.group_id is None or group_id is None or match.group_id == group_id) and (
                     match.group_name is None or group_name is None or match.group_name == group_name
                 ):

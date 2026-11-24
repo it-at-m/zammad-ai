@@ -10,7 +10,7 @@ import pytest
 from app.models.kafka import Event
 from app.models.zammad import ZammadTicket
 from app.settings import ZammadAISettings
-from app.settings.settings import _resolve_usecases, _validate_usecases
+from app.settings.settings import _load_usecase_definitions, _resolve_usecases, _validate_usecases
 from app.settings.usecase import PollingMatch, RouterSettings, UseCaseMatch, UseCaseSettings
 from app.usecases.registry import UseCaseRegistry
 from app.usecases.resolver import UseCaseResolver
@@ -108,6 +108,87 @@ def test_overlapping_wildcard_routes_are_rejected() -> None:
                 ),
             ]
         )
+
+
+def test_overlapping_rules_within_one_usecase_are_allowed() -> None:
+    """Redundant rules inside one usecase resolve deterministically and must not be rejected."""
+    _validate_usecases(
+        [
+            UseCaseSettings(
+                name="support",
+                match=[
+                    UseCaseMatch(request_type="support"),
+                    UseCaseMatch(request_type="support", action="created"),
+                ],
+            )
+        ]
+    )
+
+
+def test_overlapping_polling_rules_within_one_usecase_are_allowed() -> None:
+    """Redundant polling rules inside one usecase resolve deterministically and must not be rejected."""
+    _validate_usecases(
+        [
+            UseCaseSettings(
+                name="support",
+                polling_match=[
+                    PollingMatch(group_id=9),
+                    PollingMatch(group_id=9, group_name="Support"),
+                ],
+            )
+        ]
+    )
+
+
+def test_validate_usecases_rejects_empty_names() -> None:
+    """Empty usecase names must fail startup validation."""
+    with pytest.raises(ValueError, match="must not be empty"):
+        _validate_usecases([UseCaseSettings(name=""), UseCaseSettings(name="support")])
+
+
+def test_validate_usecases_rejects_whitespace_names() -> None:
+    """Whitespace-only usecase names must fail startup validation."""
+    with pytest.raises(ValueError, match="must not be empty"):
+        _validate_usecases([UseCaseSettings(name="   ")])
+
+
+def test_load_usecase_definitions_rejects_falsey_documents(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Falsey YAML documents must be rejected instead of silently becoming a default usecase."""
+    monkeypatch.setattr("app.settings.settings._is_test_mode", lambda: False)
+    (tmp_path / "false.yaml").write_text("false\n", encoding="utf-8")
+    (tmp_path / "list.yaml").write_text("- a\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be a YAML mapping"):
+        _load_usecase_definitions(tmp_path)
+
+
+def test_load_usecase_definitions_rejects_blank_documents(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank YAML documents must be rejected instead of silently becoming a default usecase."""
+    monkeypatch.setattr("app.settings.settings._is_test_mode", lambda: False)
+    (tmp_path / "empty.yaml").write_text("\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be a YAML mapping"):
+        _load_usecase_definitions(tmp_path)
+
+
+def test_load_usecase_definitions_loads_valid_documents(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid usecase definition files are loaded in sorted order."""
+    monkeypatch.setattr("app.settings.settings._is_test_mode", lambda: False)
+    (tmp_path / "support.yaml").write_text("name: support\n", encoding="utf-8")
+    (tmp_path / "permits.yaml").write_text("name: permits\n", encoding="utf-8")
+
+    definitions = _load_usecase_definitions(tmp_path)
+
+    assert [definition.name for definition in definitions] == ["permits", "support"]
 
 
 def test_fallback_usecase_must_exist() -> None:
