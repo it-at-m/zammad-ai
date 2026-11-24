@@ -7,6 +7,7 @@ import pytest
 from langchain.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.runnables import RunnableLambda
 
 from app.answer.middleware import (
@@ -411,8 +412,8 @@ async def test_context_trimming_middleware_applies_best_effort_trim_when_budget_
 
 
 @pytest.mark.asyncio
-async def test_context_trimming_middleware_preserves_kb_context_when_trimming_frees_space() -> None:
-    """Exchanges should be trimmed before the KB context is sized against the remaining messages."""
+async def test_context_trimming_middleware_truncates_kb_to_keep_latest_tool_exchange() -> None:
+    """The KB context is reduced before the latest completed tool exchange is dropped."""
     middleware: Any = build_context_trimming_middleware(
         context_window_tokens=1200,
         reserved_output_tokens=0,
@@ -435,10 +436,54 @@ async def test_context_trimming_middleware_preserves_kb_context_when_trimming_fr
 
     assert result is not None
     kept = result["messages"][1:]
-    assert len(kept) == 3
+    assert len(kept) == 4
     assert isinstance(kept[0], SystemMessage)
-    assert kept[0].content == kb_context
-    assert "truncated" not in kept[0].content
+    assert kept[0].content.startswith("Knowledge-base context")
+    assert KB_CONTEXT_TRUNCATED in kept[0].content
+    assert len(kept[0].content) < len(kb_context)
+    assert isinstance(kept[1], AIMessage)
+    assert kept[1].tool_calls[0]["id"] == "call_2"
+    assert isinstance(kept[2], ToolMessage)
+    assert kept[2].tool_call_id == "call_2"
+    assert kept[3].content == "Folgefrage"
+    assert count_tokens_approximately(kept, chars_per_token=3.0) <= 1200
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_keeps_latest_tool_exchange_when_kb_exceeds_budget() -> None:
+    """Two successive retrieval calls keep the latest tool exchange when the KB context exceeds the budget."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    kb_context = "Knowledge-base context\n\n" + "x" * 10000
+    state = {
+        "messages": [
+            SystemMessage(content=kb_context),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 4
+    assert isinstance(kept[0], SystemMessage)
+    assert kept[0].content.startswith("Knowledge-base context")
+    assert KB_CONTEXT_TRUNCATED in kept[0].content
+    assert isinstance(kept[1], AIMessage)
+    assert kept[1].tool_calls[0]["id"] == "call_2"
+    assert isinstance(kept[2], ToolMessage)
+    assert kept[2].tool_call_id == "call_2"
+    assert kept[3].content == "Folgefrage"
+    assert count_tokens_approximately(kept, chars_per_token=3.0) <= 1200
 
 
 @pytest.mark.asyncio
@@ -468,6 +513,41 @@ async def test_context_trimming_middleware_truncates_kb_when_budget_cannot_be_me
     assert isinstance(kept[1], SystemMessage)
     assert kept[1].content == "Knowledge-base context\n\n" + KB_CONTEXT_TRUNCATED
     assert kept[2].content == "Ich brauche einen Personalausweis."
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_restores_kb_context_after_dropping_latest_tool_exchange() -> None:
+    """Giving up the latest tool exchange frees space, so the KB context is re-grown instead of staying minimal."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    kb_context = "Knowledge-base context\n\n" + "x" * 6000
+    state = {
+        "messages": [
+            SystemMessage(content=kb_context),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage")]),
+            ToolMessage(content="z" * 6000, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 2
+    assert isinstance(kept[0], SystemMessage)
+    assert kept[0].content.startswith("Knowledge-base context")
+    assert KB_CONTEXT_TRUNCATED in kept[0].content
+    assert len(kept[0].content) > len("Knowledge-base context\n\n") + len(KB_CONTEXT_TRUNCATED)
+    assert "x" * 100 in kept[0].content
+    assert kept[1].content == "Folgefrage"
+    assert count_tokens_approximately(kept, chars_per_token=3.0) <= 1200
 
 
 @pytest.mark.asyncio
