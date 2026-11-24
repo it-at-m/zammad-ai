@@ -5,7 +5,7 @@ version = "1.0.5"
 
 description = "Content safety guardrail service for Zammad AI (FastAPI)"
 readme = "README.md"
-requires-python = "==3.14.8"
+requires-python = "==3.14.10"
 authors = [
     { name = "freinold", email = "fabian.reinold@muenchen.de" },
     { name = "nharbig", email = "nico.harbig@muenchen.de" },
@@ -16,25 +16,25 @@ maintainers = [
 ]
 
 dependencies = [
-    "fastapi==0.151.0",
+    "fastapi==0.165.0",
     "httpx==0.28.1",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.16.0",
+    "pydantic==2.14.4",
+    "pydantic-settings==2.16.3",
     "python-dotenv==1.2.4",
     "structlog==26.1.0",
     "truststore==0.10.5",
     "uvicorn==0.54.0",
     "prometheus_client==0.26.0",
-    "gliner2==2.1.0",
-    "gliclass==0.1.21",
-    "torch==2.14.1+cpu; sys_platform == 'linux'",
-    "transformers==5.20.2",
-    "setuptools==84.2.0",
-    "peft==0.21.2",
+    "gliner2==2.2.0",
+    "gliclass==0.1.22",
+    "torch==2.15.0+cpu; sys_platform == 'linux'",
+    "transformers==5.24.0",
+    "setuptools==84.2.1",
+    "peft==0.22.0",
 ]
 
 [dependency-groups]
-dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.17.1", "ty==0.0.89"]
+dev = ["pytest==9.2.0", "pytest-asyncio==1.5.0", "ruff==0.17.6", "ty==0.0.108"]
 
 [tool.uv]
 add-bounds = "exact"

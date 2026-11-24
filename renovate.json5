@@ -20,6 +20,19 @@
   reviewers: ["nharbig", "pilitz"],
   packageRules: [
     {
+      // Python 3.15 is not yet widely supported (e.g. onnxruntime ships no cp315 wheels).
+      // Allow 3.14.x patch updates only; block minor bumps like 3.15 for the time being.
+      matchDepNames: ["python"],
+      allowedVersions: "<3.15",
+    },
+    {
+      // langchain-xberg 1.4.0 requires xberg>=1.4.0,<2, but xberg 1.4.0 was never
+      // published (PyPI latest: 1.3.9), making langchain-xberg 1.4.0 unresolvable.
+      // Remove this rule once xberg 1.4.0 is available on PyPI.
+      matchDepNames: ["langchain-xberg"],
+      allowedVersions: "<1.4",
+    },
+    {
       matchManagers: ["pep621"],
       matchUpdateTypes: ["minor", "patch"],
       groupName: "Python: non-major updates",

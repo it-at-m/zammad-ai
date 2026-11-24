@@ -140,12 +140,12 @@ async def _build_kb_context(runtime: Any, query_model: BaseChatModel, messages: 
             )
             .strip()
         )
-        url = str(metadata.get("url") or metadata.get("answer_url") or "").strip()
+        answer_id = metadata.get("answer_id")
         sections.append("{}. {} (score: {:.3f})".format(index, title, score))
         if body:
             sections.append("   " + body)
-        if url:
-            sections.append("   " + url)
+        if answer_id:
+            sections.append("   Knowledge base article ID: " + str(answer_id))
 
     return "\n".join(sections).strip()
 

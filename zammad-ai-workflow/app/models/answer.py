@@ -9,7 +9,20 @@ class DocumentDict(BaseModel):
     """Reference document included with an answer response."""
 
     title: str = Field(description="The title of the document.")
-    url: str = Field(description="The URL source of the document.")
+    id: int | None = Field(
+        default=None,
+        description=(
+            "The knowledge base article ID, when the document is a knowledge base article. "
+            "Set only the ID for knowledge base articles; the system adds the link automatically."
+        ),
+    )
+    url: str | None = Field(
+        default=None,
+        description=(
+            "The URL of the document, when the document is not a knowledge base article "
+            "(for example a law or website page). Leave empty for knowledge base articles."
+        ),
+    )
 
 
 class AnswerCandidate(BaseModel):

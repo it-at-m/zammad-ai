@@ -366,7 +366,7 @@ async def test_perform_triage_in_progress_gauge_increments_while_running(patched
         await asyncio.sleep(0.05)
         return CategorizationResult(category=Category(name="General"), reasoning="hardware issue", confidence=0.9)
 
-    patched_triage.genai_handler.categorize_ticket = delaying_categorize  # type: ignore
+    cast(Any, patched_triage.genai_handler).categorize_ticket = delaying_categorize
 
     ticket = ZammadTicket(id=42, articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")])
     task = asyncio.create_task(patched_triage.perform_triage(ticket=ticket))
@@ -390,7 +390,7 @@ async def test_perform_triage_raises_triage_error_on_zammad_failure(patched_tria
     async def _raise_conn(*_args, **_kwargs):
         raise FakeZammadConnectionError("Fake connection error")
 
-    patched_triage.zammad_client.fetch_ticket_attachment_data = _raise_conn  # type: ignore
+    cast(Any, patched_triage.zammad_client).fetch_ticket_attachment_data = _raise_conn
     # Ensure document parsing is enabled so attachment fetching is attempted
     patched_triage.settings.zammad.document_parsing.mode = "local"
     patched_triage.settings.zammad.document_parsing.document_types = ["pdf"]
@@ -478,7 +478,7 @@ async def test_predict_category_handles_genai_exception(patched_triage: TriageSe
         """
         raise RuntimeError("LLM exploded")
 
-    patched_triage.genai_handler.categorize_ticket = _boom  # type: ignore
+    cast(Any, patched_triage.genai_handler).categorize_ticket = _boom
     with pytest.raises(TriageError) as excinfo:
         await patched_triage.predict_category(message="trigger error", session_id="session-id")
     assert "unexpected error" in str(excinfo.value)
@@ -499,7 +499,7 @@ async def test_perform_triage_handles_processing_triage_error(patched_triage: Tr
         raise TriageError("Simulated processing error")
 
     # Mock predict_category to raise TriageError
-    patched_triage.predict_category = _boom  # type: ignore
+    cast(Any, patched_triage).predict_category = _boom
 
     # Ensure there is a ticket with articles so it doesn't return early
     fake_zammad_client = cast(FakeZammadClient, patched_triage.zammad_client)

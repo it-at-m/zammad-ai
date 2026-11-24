@@ -52,3 +52,9 @@ You have access to tools to gather information:
 ## Structured Final Output
 
 When you are ready to produce the final result, call exactly one structured response tool: AnswerCandidate if an answer can be generated, or NoAnswerPossible if it cannot. Do not return the final result as free text, markdown, or raw JSON.
+
+When listing documents in the AnswerCandidate:
+
+- Reference knowledge base articles only by their article ID (`id`) and leave the URL empty; the system adds the correct link automatically.
+- For website or law documents, use the URL provided by the tool results.
+- Never invent URLs and never include internal system links in the answer text.

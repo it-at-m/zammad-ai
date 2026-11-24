@@ -1,6 +1,7 @@
 """Tests for answer service metrics behavior."""
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any, cast
@@ -12,7 +13,7 @@ from langchain.messages import HumanMessage
 from app.answer import service as answer_module
 from app.answer.judge import JudgeHandler, JudgeResult
 from app.answer.service import AnswerService
-from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict
+from app.models.answer import AnswerCandidate, AnswerResult, DocumentDict, NoAnswerPossible
 from app.settings import ZammadAISettings
 from app.settings.answer import JudgeSettings, LangfusePromptConfig, StringPromptConfig
 from app.settings.langfuse import LangfusePrompt
@@ -100,15 +101,11 @@ def _get_answer_runs_in_progress_value() -> float:
 def _build_answer_service(
     ainvoke: Callable[..., Awaitable[dict]],
     settings_factory: Callable[..., ZammadAISettings],
+    disclaimer: str = "",
 ) -> AnswerService:
     service = AnswerService.__new__(AnswerService)
-    service.settings = settings_factory(
-        overrides={
-            "answer": {
-                "ai_answer_disclaimer": "",
-            },
-        }
-    )
+    service.settings = settings_factory()
+    service.settings.answer.ai_answer_disclaimer = disclaimer
     cast(Any, service).langfuse_tags = [service.settings.usecase.name]
     cast(Any, service).langfuse_client = FakeLangfuseClient()
     cast(Any, service).user_message_template = FakePromptTemplate()
@@ -200,6 +197,60 @@ async def test_generate_answer_runs_judge_and_returns_passed_answer() -> None:
     assert isinstance(result.response, AnswerCandidate)
     assert result.response.response == VALID_RESPONSE
     assert result.trace_id == "trace-id"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_prepends_ai_answer_disclaimer(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Successful answers should start with the configured AI answer disclaimer."""
+    disclaimer = (
+        "Hinweis: Diese Antwort wurde mit Unterstützung von Künstlicher Intelligenz (KI) "
+        "erstellt und kann Fehler enthalten."
+    )
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory, disclaimer=disclaimer)
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.response == f"{disclaimer}\n\n{VALID_RESPONSE}"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_does_not_prepend_disclaimer_to_no_answer(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """NoAnswerPossible responses should not receive the AI answer disclaimer."""
+    reasoning = (
+        "Die verfügbaren Informationen reichen nicht aus, um eine belastbare Antwort zu geben. "
+        "Es liegen keine passenden Dokumente oder Quellen fuer die Anfrage des Nutzers vor."
+    )
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {"structured_response": NoAnswerPossible(reasoning=reasoning)}
+
+    service = _build_answer_service(
+        ainvoke=_ainvoke,
+        settings_factory=settings_factory,
+        disclaimer="Hinweis: KI-generiert.",
+    )
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result, AnswerResult)
+    assert isinstance(result.response, NoAnswerPossible)
+    assert result.response.reasoning == reasoning
 
 
 @pytest.mark.asyncio
@@ -321,3 +372,61 @@ def test_extract_structured_response_ignores_human_json() -> None:
     # raise a KeyError.
     with pytest.raises(ValueError):
         extract_structured_response(agent_result, (AnswerCandidate, NoAnswerPossible))
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_crafts_kb_urls_for_used_documents(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """KB article IDs cited by the agent should be turned into Zammad KB URLs server-side."""
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[
+                    DocumentDict(title="KB article", id=42),
+                    DocumentDict(title="Zero ID article", id=0),
+                    DocumentDict(title="Law", url="https://www.gesetze-im-internet.de/fev/"),
+                ],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
+    service.settings.zammad.knowledge_base_id = "1"
+
+    result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result.response, AnswerCandidate)
+    kb_document, zero_document, law_document = result.response.documents
+    assert kb_document.url == "https://example.com/#knowledge_base/1/locale/de-de/answer/42"
+    assert zero_document.url is None
+    assert law_document.url == "https://www.gesetze-im-internet.de/fev/"
+
+
+@pytest.mark.asyncio
+async def test_generate_answer_leaves_kb_documents_without_url_when_kb_disabled(
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Without a configured knowledge base, cited article IDs must not produce URLs."""
+
+    async def _ainvoke(*_args, **_kwargs) -> dict:
+        return {
+            "structured_response": AnswerCandidate(
+                response=VALID_RESPONSE,
+                documents=[DocumentDict(title="KB article", id=42, url="https://attacker.example/")],
+                auto_publish=True,
+            )
+        }
+
+    service = _build_answer_service(ainvoke=_ainvoke, settings_factory=settings_factory)
+    service.settings.zammad.knowledge_base_id = None
+
+    with caplog.at_level(logging.WARNING, logger="zammad-ai.answer.service"):
+        result = await service.generate_answer(user_text="hello", category="general")
+
+    assert isinstance(result.response, AnswerCandidate)
+    assert result.response.documents[0].url is None
+    assert any("zammad.knowledge_base_id" in record.message for record in caplog.records)

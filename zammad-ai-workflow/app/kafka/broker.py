@@ -54,6 +54,7 @@ async def _process_ticket_event(
     record_processed_event: bool = False,
     allow_in_ai_group: bool = False,
     session_id: str | None = None,
+    allow_no_answer_internal_note: bool = False,
 ) -> None:
     """Parse and process a Kafka event.
 
@@ -66,6 +67,7 @@ async def _process_ticket_event(
         record_processed_event (bool): Whether to increment the main-topic ingress metric.
         allow_in_ai_group (bool): Whether tickets already located in the AI group may be processed.
         session_id (str | None): Langfuse session ID to reuse from a previous failed attempt; if None a new one is generated. Retries pass the original ID so all attempts share one Langfuse session.
+        allow_no_answer_internal_note (bool): Whether a retry may proceed despite an existing no-answer internal note and add another one.
     """
     if not session_id:
         session_id = generate_session_id()
@@ -134,6 +136,7 @@ async def _process_ticket_event(
         ai_ticket_author=settings.zammad.ai_ticket_author,
         duplicate_detection_enabled=settings.zammad.duplicate_detection_enabled,
         allow_in_ai_group=allow_in_ai_group,
+        allow_no_answer_internal_note=allow_no_answer_internal_note,
     )
 
     if (
@@ -189,6 +192,7 @@ async def _process_ticket_event(
         original_group_id=original_group_id,
         original_group_name=original_group_name,
         allow_in_ai_group=allow_in_ai_group,
+        allow_no_answer_internal_note=allow_no_answer_internal_note,
     )
 
 
@@ -322,6 +326,8 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                                 group_id=original_group_id,
                                 handler_stage="restore_ticket_group",
                                 log_message="Moved ticket back to original group",
+                                retry_attempts=active_settings.kafka.group_restore_retry_attempts,
+                                retry_delay_seconds=active_settings.kafka.group_restore_retry_delay_seconds,
                             )
                 except AckMessage:
                     raise
@@ -412,6 +418,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         group_state=group_state,
                         record_processed_event=False,
                         allow_in_ai_group=True,
+                        allow_no_answer_internal_note=True,
                         session_id=parsed_session_id,
                     )
                     if parsed_original_group_id is None:
@@ -429,6 +436,8 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                                 group_id=parsed_original_group_id,
                                 handler_stage="restore_ticket_group",
                                 log_message="Moved ticket back to original group",
+                                retry_attempts=active_settings.kafka.group_restore_retry_attempts,
+                                retry_delay_seconds=active_settings.kafka.group_restore_retry_delay_seconds,
                             )
                 except AckMessage:
                     raise
