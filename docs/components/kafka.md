@@ -28,6 +28,12 @@ configured usecase or one of many. Events that match no usecase follow
 `router.unmatched_policy`; with the default `skip` policy the event is
 acknowledged and dropped with an INFO log entry.
 
+Match rules must be unique per ticket: configure them so that every ticket
+matches at most one usecase. Deliveries for the same ticket are not serialized
+— the service processes events concurrently (`kafka.max_workers`) and can run
+in multiple replicas — so overlapping rules could let two usecases process the
+same ticket at the same time.
+
 ## Kafka Configuration & Security
 
 Kafka settings are nested under the `kafka` key in `config.yaml` and support environment variable overrides using the prefix `ZAMMAD_AI_KAFKA__`. Security settings are further nested under `security`.

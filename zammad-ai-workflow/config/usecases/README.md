@@ -10,6 +10,10 @@ override the shared root configuration for that usecase. For example,
 `frontend.feedback.score_name` gives each usecase its own Langfuse feedback
 score, resolved from the trace's usecase tag by the feedback frontend.
 
+The one exception is `config.triage`: when the root configuration does not
+define a `triage` section, every usecase must supply its own `config.triage`,
+because a usecase without effective triage settings is rejected at startup.
+
 Per-usecase `kafka` overrides are rejected at startup. Kafka subscribers bind to
 the topics of the shared root configuration, while retry publishing uses the
 effective per-usecase settings, so a mismatched `retry_topic` would strand
@@ -21,6 +25,12 @@ without `polling_match` rules never matches polled tickets. A sole usecase
 without `match` rules additionally warns at startup when
 `router.unmatched_policy` is `skip`, because every Kafka event would then be
 dropped without processing.
+
+Keep match rules unique per ticket: a ticket must match at most one usecase.
+Deliveries for the same ticket are not serialized — events are processed
+concurrently (`kafka.max_workers`) and the service can run in multiple
+replicas — so overlapping rules could let two usecases process the same ticket
+at the same time.
 
 When multiple usecases enable polling, keep each usecase's
 `config.polling.search_query` aligned with its `polling_match` rules. Every
