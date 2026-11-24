@@ -299,11 +299,11 @@ def test_registry_does_not_warn_for_fallback_usecase_without_rules(
     assert "Usecase 'catchall'" not in caplog.text
 
 
-def test_registry_does_not_warn_for_sole_ruleless_usecase(
+def test_registry_warns_for_sole_ruleless_usecase_with_skip_policy(
     settings_factory,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A sole ruleless usecase matches every polled ticket, so no ruleless warning is emitted."""
+    """A sole ruleless usecase under the default skip policy drops every Kafka event and must warn."""
     settings: ZammadAISettings = settings_factory(usecases=[UseCaseSettings(name="default")])
     registry = UseCaseRegistry.__new__(UseCaseRegistry)
     registry.root_settings = settings
@@ -311,7 +311,72 @@ def test_registry_does_not_warn_for_sole_ruleless_usecase(
     with caplog.at_level(logging.WARNING, logger="zammad-ai.usecases.registry"):
         registry._warn_ruleless_usecases()
 
+    assert "Usecase 'default' defines no match rules" in caplog.text
+    assert "every Kafka event will be dropped" in caplog.text
+
+
+def test_registry_does_not_warn_for_sole_ruleless_usecase_with_fallback_policy(
+    settings_factory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A sole ruleless usecase with the fallback policy receives unmatched events, so it must not warn."""
+    settings: ZammadAISettings = settings_factory(
+        usecases=[UseCaseSettings(name="default")],
+        router=RouterSettings(unmatched_policy="fallback", fallback_usecase="default"),
+    )
+    registry = UseCaseRegistry.__new__(UseCaseRegistry)
+    registry.root_settings = settings
+
+    with caplog.at_level(logging.WARNING, logger="zammad-ai.usecases.registry"):
+        registry._warn_ruleless_usecases()
+
     assert "neither match nor polling_match" not in caplog.text
+    assert "every Kafka event will be dropped" not in caplog.text
+
+
+def test_registry_does_not_warn_for_sole_usecase_with_match_rules(
+    settings_factory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A sole usecase with match rules processes matching Kafka events, so it must not warn."""
+    settings: ZammadAISettings = settings_factory(
+        usecases=[UseCaseSettings(name="support", match=[UseCaseMatch(request_type="support")])]
+    )
+    registry = UseCaseRegistry.__new__(UseCaseRegistry)
+    registry.root_settings = settings
+
+    with caplog.at_level(logging.WARNING, logger="zammad-ai.usecases.registry"):
+        registry._warn_ruleless_usecases()
+
+    assert "neither match nor polling_match" not in caplog.text
+    assert "every Kafka event will be dropped" not in caplog.text
+
+
+def test_validate_usecases_rejects_per_usecase_kafka_override() -> None:
+    """Per-usecase kafka overrides must fail validation because retry events could be stranded."""
+    usecases = [
+        UseCaseSettings(
+            name="support",
+            match=[UseCaseMatch(request_type="support")],
+            config={"kafka": {"retry_topic": "stranded-retry-topic"}},
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="must not override 'kafka' settings"):
+        _validate_usecases(usecases)
+
+
+def test_validate_usecases_allows_non_kafka_config_overrides() -> None:
+    """Per-usecase overrides outside the kafka block must remain valid."""
+    usecases = [
+        UseCaseSettings(
+            name="support",
+            match=[UseCaseMatch(request_type="support")],
+            config={"triage": {"no_category_name": "Unknown"}},
+        ),
+    ]
+
+    _validate_usecases(usecases)
 
 
 def test_resolve_usecases_requires_at_least_one_usecase(settings_factory) -> None:

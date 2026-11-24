@@ -112,12 +112,23 @@ class UseCaseRegistry:
         """Warn about usecases that define neither match nor polling_match rules.
 
         With more than one usecase, such a usecase never matches a Kafka event
-        or a polled ticket. The sole-usecase case is exempt because polled
-        tickets match it unconditionally and unmatched events may be routed to
-        it via the fallback policy. The configured fallback usecase is exempt
-        for the same reason.
+        or a polled ticket. The sole-usecase case is exempt from that warning
+        because polled tickets match it unconditionally and unmatched events
+        may be routed to it via the fallback policy. The configured fallback
+        usecase is exempt for the same reason. A sole ruleless usecase still
+        silently drops every Kafka event when the unmatched policy is "skip",
+        so that combination warns as well.
         """
-        if len(self.root_settings.usecases) <= 1:
+        if len(self.root_settings.usecases) == 1:
+            definition = self.root_settings.usecases[0]
+            if not definition.match and self.root_settings.router.unmatched_policy == "skip":
+                with usecase_logging(definition.name):
+                    logger.warning(
+                        f"Usecase '{definition.name}' defines no match rules and "
+                        "router.unmatched_policy is 'skip'; every Kafka event will be "
+                        "dropped without processing. Add at least one match rule to the "
+                        "usecase definition or change the unmatched policy."
+                    )
             return
         for definition in self.root_settings.usecases:
             if definition.match or definition.polling_match:

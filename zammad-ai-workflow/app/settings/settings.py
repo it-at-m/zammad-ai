@@ -299,10 +299,18 @@ def _load_usecase_definitions(config_dir: Path) -> list[UseCaseSettings]:
 
 
 def _validate_usecases(usecases: list[UseCaseSettings], router: RouterSettings | None = None) -> None:
-    """Reject duplicate names and overlapping exact route definitions."""
+    """Reject duplicate names, overlapping route definitions, and forbidden per-usecase overrides."""
     names = [usecase.name for usecase in usecases]
     if len(names) != len(set(names)):
         raise ValueError("Usecase names must be unique")
+
+    for usecase in usecases:
+        if "kafka" in usecase.config:
+            raise ValueError(
+                f"Usecase '{usecase.name}' must not override 'kafka' settings: Kafka subscribers "
+                "bind to the shared root configuration, and a per-usecase override such as a "
+                "different retry_topic would strand retry events on a topic that no subscriber consumes."
+            )
 
     if router is not None and router.unmatched_policy == "fallback":
         if router.fallback_usecase not in names:
