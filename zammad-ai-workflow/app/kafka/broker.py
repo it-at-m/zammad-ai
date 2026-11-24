@@ -372,13 +372,15 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
             usecase_name = _parse_usecase(usecase_header)
             runtime = registry.runtimes.get(usecase_name) if usecase_name is not None else None
             if runtime is None:
-                if usecase_name is None:
-                    logger.warning("Kafka retry is missing a usecase header; resolving from its payload.")
-                else:
-                    logger.warning(
-                        "Kafka retry has an unknown usecase header; resolving from its payload.",
+                if usecase_name is not None:
+                    logger.error(
+                        "Dropping Kafka retry that names a usecase which is no longer configured; "
+                        "resolving it from its payload could process it against a different "
+                        "Zammad instance than the one that produced the retry.",
                         extra={"usecase": usecase_name},
                     )
+                    raise AckMessage()
+                logger.warning("Kafka retry is missing a usecase header; resolving from its payload.")
                 try:
                     active_settings, active_triage, active_action, usecase_name = runtime_for_event(event)
                 except KafkaPayloadError as e:

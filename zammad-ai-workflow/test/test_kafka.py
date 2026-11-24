@@ -1388,3 +1388,48 @@ def test_router_uses_configured_max_poll_interval(
     }
     assert connection_args_by_topic[(settings.kafka.topic,)]["max_poll_interval_ms"] == 900_000
     assert connection_args_by_topic[(settings.kafka.retry_topic,)]["max_poll_interval_ms"] == 900_000
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_drops_retry_with_unknown_usecase_header(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """Retries naming a removed usecase must be dropped instead of being processed by another runtime."""
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("ERROR"):
+            await test_broker.publish(
+                topic=settings.kafka.retry_topic,
+                message=kafka_message_factory(),
+                headers={"retry_count": "1", "usecase": "removed-usecase"},
+            )
+
+    mock_triage.perform_triage.assert_not_called()
+    assert "no longer configured" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_resolves_missing_usecase_header_from_payload(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Retries without a usecase header keep resolving their runtime from the payload."""
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        await test_broker.publish(
+            topic=settings.kafka.retry_topic,
+            message=kafka_message_factory(),
+            headers={"retry_count": "1"},
+        )
+
+    mock_triage.perform_triage.assert_called_once()

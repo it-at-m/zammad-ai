@@ -28,6 +28,13 @@ configuration is migrated.
   override such as a different `retry_topic` would strand retry events on a
   topic that no subscriber consumes. Keep all `kafka` settings in the root
   configuration.
+- **Retries with a stale usecase header are dropped.** A retry event whose
+  usecase header names a usecase that is no longer configured is acknowledged
+  and dropped instead of being re-resolved from its payload. Resolving the
+  payload could process the retry against a different Zammad instance than the
+  one that produced it. Retries already sitting in the retry topic when a
+  usecase is renamed or removed are therefore lost; drain or re-create them
+  before upgrading.
 
 ### Index job
 
