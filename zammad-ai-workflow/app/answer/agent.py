@@ -241,6 +241,7 @@ def build_agent(
         available_tools.append(_enable_expected_tool_failures(search_dlf))
     for law in laws or []:
         available_tools.append(build_law_tool(law))
+    law_ids_by_tool_name = {build_law_tool_name(law.id): law.id for law in laws or []}
 
     # Create the agent via the factory method
     agent: Any = create_agent(
@@ -259,6 +260,7 @@ def build_agent(
                 reserved_output_tokens=genai_settings.max_tokens,
                 overhead_tokens=genai_settings.context_overhead_tokens,
                 chars_per_token=genai_settings.chars_per_token,
+                law_ids_by_tool_name=law_ids_by_tool_name,
             ),
         ],
     )

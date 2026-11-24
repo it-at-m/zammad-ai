@@ -10,6 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables import RunnableLambda
 
 from app.answer.middleware import (
+    KB_CONTEXT_TRUNCATED,
     KnowledgebaseQuery,
     _format_answer,
     build_context_trimming_middleware,
@@ -152,6 +153,35 @@ async def test_knowledgebase_middleware_rejects_invalid_fallback_query() -> None
 
 
 @pytest.mark.asyncio
+async def test_knowledgebase_middleware_error_path_uses_kb_header() -> None:
+    """The exception path should inject an empty KB message that the trimming middleware recognizes."""
+    query_model = FakeQueryModel()
+    middleware: Any = build_knowledgebase_middleware(cast(BaseChatModel, query_model))
+
+    class FailingQdrantClient:
+        """Qdrant client fake that always fails."""
+
+        async def asearch_documents(self, **kwargs: object) -> list[tuple[Document, float]]:
+            """Raise to trigger the middleware error path."""
+            raise RuntimeError("qdrant unavailable")
+
+    runtime = SimpleNamespace(
+        context=SimpleNamespace(qdrant_kb_client=FailingQdrantClient(), knowledgebase_context=None),
+    )
+    state = {"messages": [HumanMessage(content="Ich brauche einen Personalausweis.")]}
+
+    result = await middleware.abefore_agent(state, runtime)
+
+    assert result is not None
+    message = result["messages"][0]
+    assert isinstance(message, SystemMessage)
+    assert (
+        message.content == "Knowledge-base context\n\nNo relevant knowledge-base documents were found for this request."
+    )
+    assert runtime.context.knowledgebase_context == message.content
+
+
+@pytest.mark.asyncio
 async def test_knowledgebase_middleware_expands_multi_query_results() -> None:
     """Middleware should fan out multi-query search terms when enabled on the KB client."""
     query_model = FakeQueryModel()
@@ -276,9 +306,9 @@ async def test_format_answer_links_langfuse_prompt_on_chat_prompt_template(monke
     assert result.response.startswith("Formatierte Antwort fuer den Test")
 
 
-def _tool_call(call_id: str, query: str) -> dict[str, object]:
+def _tool_call(call_id: str, query: str, name: str = "search_knowledgebase") -> dict[str, object]:
     """Build a minimal tool call payload for AI messages."""
-    return {"name": "search_knowledgebase", "args": {"query": query}, "id": call_id, "type": "tool_call"}
+    return {"name": name, "args": {"query": query}, "id": call_id, "type": "tool_call"}
 
 
 @pytest.mark.asyncio
@@ -355,8 +385,8 @@ async def test_context_trimming_middleware_drops_oldest_tool_exchanges() -> None
 
 
 @pytest.mark.asyncio
-async def test_context_trimming_middleware_returns_none_when_budget_cannot_be_met() -> None:
-    """If protected messages alone exceed the budget, trimming should leave the state unchanged."""
+async def test_context_trimming_middleware_applies_best_effort_trim_when_budget_cannot_be_met() -> None:
+    """When protected messages alone exceed the budget, removable exchanges are still dropped."""
     middleware: Any = build_context_trimming_middleware(
         context_window_tokens=1000,
         reserved_output_tokens=0,
@@ -371,7 +401,130 @@ async def test_context_trimming_middleware_returns_none_when_budget_cannot_be_me
         ]
     }
 
-    assert await middleware.abefore_model(state, None) is None
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 2
+    assert isinstance(kept[0], SystemMessage)
+    assert kept[1].content == "Ich brauche einen Personalausweis."
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_preserves_kb_context_when_trimming_frees_space() -> None:
+    """Exchanges should be trimmed before the KB context is sized against the remaining messages."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    kb_context = "Knowledge-base context\n\n" + "x" * 3000
+    state = {
+        "messages": [
+            SystemMessage(content=kb_context),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 3
+    assert isinstance(kept[0], SystemMessage)
+    assert kept[0].content == kb_context
+    assert "truncated" not in kept[0].content
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_truncates_kb_when_budget_cannot_be_met() -> None:
+    """The KB context should be truncated against the best-effort trimmed messages."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+    )
+    state = {
+        "messages": [
+            SystemMessage(content="y" * 6000),
+            SystemMessage(content="Knowledge-base context\n\n" + "x" * 3000),
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="z" * 3000, tool_call_id="call_1"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, None)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 3
+    assert isinstance(kept[0], SystemMessage)
+    assert isinstance(kept[1], SystemMessage)
+    assert kept[1].content == "Knowledge-base context\n\n" + KB_CONTEXT_TRUNCATED
+    assert kept[2].content == "Ich brauche einen Personalausweis."
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_releases_law_when_exchange_trimmed() -> None:
+    """Trimmed law tool exchanges should allow re-retrieval of the law in the same run."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+        law_ids_by_tool_name={"search_law_munich": "munich-law"},
+    )
+    runtime = SimpleNamespace(context=SimpleNamespace(searched_laws={"munich-law", "other-law"}))
+    state = {
+        "messages": [
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage", name="search_law_munich")]),
+            ToolMessage(content="x" * 3000, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, runtime)
+
+    assert result is not None
+    kept = result["messages"][1:]
+    assert len(kept) == 4
+    assert "munich-law" not in runtime.context.searched_laws
+    assert "other-law" in runtime.context.searched_laws
+
+
+@pytest.mark.asyncio
+async def test_context_trimming_middleware_keeps_law_state_when_law_exchange_retained() -> None:
+    """Retained law tool exchanges should keep the law marked as searched."""
+    middleware: Any = build_context_trimming_middleware(
+        context_window_tokens=1200,
+        reserved_output_tokens=0,
+        overhead_tokens=0,
+        law_ids_by_tool_name={"search_law_munich": "munich-law"},
+    )
+    runtime = SimpleNamespace(context=SimpleNamespace(searched_laws={"munich-law"}))
+    state = {
+        "messages": [
+            HumanMessage(content="Ich brauche einen Personalausweis."),
+            AIMessage(content="", tool_calls=[_tool_call("call_1", "erste frage")]),
+            ToolMessage(content="x" * 3000, tool_call_id="call_1"),
+            AIMessage(content="", tool_calls=[_tool_call("call_2", "zweite frage", name="search_law_munich")]),
+            ToolMessage(content="y" * 3000, tool_call_id="call_2"),
+            HumanMessage(content="Folgefrage"),
+        ]
+    }
+
+    result = await middleware.abefore_model(state, runtime)
+
+    assert result is not None
+    assert runtime.context.searched_laws == {"munich-law"}
 
 
 @pytest.mark.asyncio
