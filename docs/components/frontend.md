@@ -36,9 +36,22 @@ frontend:
   feedback:
     post_internal_note: false
     language: "de"
+    score_name: "user-thumbs"
     tags: []
     salt: "change-me"
 ```
+
+The feedback score name can be overridden per usecase via the usecase config
+(see `config/usecases/*.yaml`). The feedback frontend resolves the score name
+from the trace's usecase tag, so each usecase can write its feedback into a
+separate Langfuse score (for example `frontend.feedback.score_name:
+"permits-thumbs"`). Traces without a matching usecase tag fall back to the
+root `frontend.feedback.score_name`.
+
+The token salt (`frontend.feedback.salt`) can likewise be overridden per
+usecase. Feedback links for a usecase are validated against that usecase's
+salt, falling back to the root `frontend.feedback.salt` for traces without a
+matching usecase tag.
 
 Environment variable overrides follow the usual nested settings pattern, e.g.:
 

@@ -14,7 +14,7 @@ from logging import Logger
 
 import uvicorn
 
-from app.api.backend import backend
+from app.api.backend import create_backend
 from app.settings import ZammadAISettings, get_settings
 from app.utils.logging import get_log_config, getLogger
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     try:
         uvicorn.run(
-            app=backend,
+            app=create_backend(),
             host=hosts[settings.mode],
             port=8080,
             log_config=get_log_config(),

@@ -2,11 +2,14 @@
 
 import logging
 import logging.config
+from collections.abc import Generator
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import structlog
+from structlog.contextvars import bind_contextvars, bound_contextvars, unbind_contextvars
 from structlog.dev import ConsoleRenderer
 from structlog.processors import JSONRenderer, StackInfoRenderer, TimeStamper, UnicodeDecoder
 from structlog.stdlib import (
@@ -135,6 +138,38 @@ def getLogger(name: str = "zammad-ai") -> logging.Logger:
         logging.config.dictConfig(log_config)
         _logging_configured = True
     return logging.getLogger(name)
+
+
+USECASE_LOG_KEY = "usecase"
+
+
+def bind_usecase(name: str | None) -> None:
+    """Bind the active usecase name to the logging context.
+
+    Every log record emitted afterwards in the same async context includes the
+    usecase name as an extra field, until `unbind_usecase` is called.
+    """
+    if name:
+        bind_contextvars(**{USECASE_LOG_KEY: name})
+
+
+def unbind_usecase() -> None:
+    """Remove the usecase name from the logging context."""
+    unbind_contextvars(USECASE_LOG_KEY)
+
+
+@contextmanager
+def usecase_logging(name: str | None) -> Generator[None]:
+    """Bind the usecase name for every log record emitted within the context.
+
+    The previous binding, if any, is restored on exit so nested contexts and
+    concurrent tasks cannot leak a usecase name into unrelated log records.
+    """
+    if name:
+        with bound_contextvars(**{USECASE_LOG_KEY: name}):
+            yield
+    else:
+        yield
 
 
 class MetricsFilter(logging.Filter):

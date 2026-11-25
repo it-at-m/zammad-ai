@@ -106,6 +106,7 @@ def _build_answer_service(
     service = AnswerService.__new__(AnswerService)
     service.settings = settings_factory()
     service.settings.answer.ai_answer_disclaimer = disclaimer
+    cast(Any, service).langfuse_tags = [service.settings.usecase.name]
     cast(Any, service).langfuse_client = FakeLangfuseClient()
     cast(Any, service).user_message_template = FakePromptTemplate()
     service.agent = AsyncMock()

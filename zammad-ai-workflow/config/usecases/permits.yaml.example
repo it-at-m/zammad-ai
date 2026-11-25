@@ -1,0 +1,56 @@
+# ============================================================================
+# Example usecase definition for multi-usecase routing
+# ============================================================================
+# Copy this file to config/usecases/permits.yaml (remove the .example suffix)
+# and adjust the values. All files matching *.yaml or *.yml in
+# router.usecase_config_dir are loaded automatically at startup.
+#
+# Kafka events are only routed to this usecase when they match at least one
+# rule under `match`. Events that match no usecase follow
+# router.unmatched_policy from config.yaml ("skip" drops them, "error"
+# raises, "fallback" routes them to the configured fallback usecase).
+# ============================================================================
+
+name: "permits"
+description: "Permit requests routed from the Permits group"
+
+# Kafka routing: a rule matches when request_type and action equal the
+# event's values (omit a field to wildcard it).
+match:
+  - request_type: "permits"
+    action: "created"
+
+# Optional: route polling-based ticket intake by group metadata.
+polling_match:
+  - group_name: "Permits"
+
+# Optional per-usecase overrides, deep-merged over the shared config.yaml
+# settings. List values replace the root lists entirely, so overridden lists
+# must be complete. `usecase.name` is always taken from `name` above.
+config:
+  triage:
+    categories:
+      - name: "Permit Status"
+        auto_publish: false
+      - name: "Cannot Categorize"
+        auto_publish: false
+    no_category_name: "Cannot Categorize"
+    actions:
+      - name: "no_action"
+        description: "No automated action"
+        type: "NoAction"
+    no_action_name: "no_action"
+    action_rules: []
+    prompts:
+      type: "file"
+      prompt_map:
+        categories: "prompts/usecases/permits/triage/categories.prompt.md"
+        examples: "prompts/usecases/permits/triage/examples.prompt.md"
+        role: "prompts/usecases/permits/triage/role.prompt.md"
+  # polling:
+  #   search_query: "state.name:(new OR open)"
+  # Optional: separate Langfuse feedback score for this usecase. The feedback
+  # frontend resolves the score name from the trace's usecase tag.
+  # frontend:
+  #   feedback:
+  #     score_name: "permits-thumbs"

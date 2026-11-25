@@ -12,6 +12,7 @@ All calls to language models are traced using Langfuse's LangChain integration. 
 - Token counts and costs.
 - Latency and execution steps.
 - Metadata such as session IDs for grouping related traces.
+- A tag with the usecase name (`usecase.name`) on every trace, so traces can be filtered by usecase in the Langfuse UI.
 
 ### Prompt Management
 
@@ -26,6 +27,7 @@ This client handles:
 - callback initialization for LangChain
 - prompt fetching by name and label
 - session tracking via request or Kafka session IDs
+- trace tagging: clients created by a usecase runtime carry the usecase name as a tag, which is applied to all traces they create (via `langfuse_tags` metadata and propagated trace attributes)
 - dedicated feedback traces for `StaticAnswer` and `NoAnswerPossible` responses so internal notes can always point to a Langfuse trace
 
 ### Environment Variables
@@ -43,3 +45,7 @@ The triage and answer flows wrap chain execution in traces when `langfuse_enable
 For internal feedback notes, the workflow also creates explicit Langfuse traces for static answers and no-answer results. That keeps feedback links available even when no LLM-generated trace exists.
 
 These feedback traces reuse the session ID from the related triage run so categorization and feedback stay grouped together in Langfuse.
+
+Retried Kafka events stay in the same session as the first failed attempt: when an event fails and is republished to the retry topic, the workflow carries its Langfuse session ID in the `session_id` Kafka header. The retry consumer reads that header and passes the session ID back into triage, so the first failure and all retry attempts are grouped under one session in the Langfuse UI. If the header is missing (for example on events published by older versions), a new session ID is generated as before.
+
+Feedback scores are written under the score name configured for the trace's usecase (`frontend.feedback.score_name`, overridable per usecase). The feedback frontend resolves the usecase from the trace's usecase tag and falls back to the root score name for untagged traces.

@@ -17,16 +17,13 @@ from app.errors import (
 )
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
-from app.polling.service import (
-    PollingConfigurationError,
-    PollingService,
-    get_polling_service,
-    reset_polling_service,
-)
+from app.polling.service import PollingConfigurationError, PollingService
 from app.settings import ZammadAISettings
 from app.settings.polling import PollingSettings
 from app.settings.triage import Action, ActionTypes, Category
+from app.settings.usecase import PollingMatch, UseCaseSettings
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
+from app.usecases.resolver import UseCaseResolver
 from app.zammad.base import ZammadAuthError, ZammadPermanentError, ZammadRetryableError
 from test.fakes import FakeZammadClient
 
@@ -70,7 +67,12 @@ def _build_service(settings: ZammadAISettings, zammad_client: object) -> tuple[P
     action_service = MagicMock()
     execute_action = AsyncMock(return_value=None)
     action_service.execute_action = execute_action
-    service = PollingService(settings=settings, triage_service=triage_service, action_service=action_service)
+    service = PollingService(
+        settings=settings,
+        triage_service=triage_service,
+        action_service=action_service,
+        resolver=UseCaseResolver(settings.usecases),
+    )
     return service, perform_triage, execute_action
 
 
@@ -311,7 +313,12 @@ async def test_eai_client_rejected(settings_factory: Callable[..., ZammadAISetti
     )
     settings = settings_factory(zammad=eai_settings)
     with pytest.raises(PollingConfigurationError):
-        PollingService(settings=settings, triage_service=MagicMock(), action_service=MagicMock())
+        PollingService(
+            settings=settings,
+            triage_service=MagicMock(),
+            action_service=MagicMock(),
+            resolver=UseCaseResolver(settings.usecases),
+        )
 
 
 @pytest.mark.asyncio
@@ -342,14 +349,79 @@ async def test_start_runs_cycle_and_stop_cancels_task(settings_factory: Callable
     perform_triage.assert_not_awaited()
 
 
-def test_singleton_get_and_reset() -> None:
-    """The module-level polling service should behave as a resettable singleton."""
-    reset_polling_service()
-    first = get_polling_service(settings=MagicMock(), triage_service=MagicMock(), action_service=MagicMock())
-    second = get_polling_service(settings=MagicMock(), triage_service=MagicMock(), action_service=MagicMock())
-    try:
-        assert first is second
-    finally:
-        reset_polling_service()
+@pytest.mark.asyncio
+async def test_missing_group_name_resolved_for_group_name_polling_match(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """A missing ticket group name must be resolved when a polling_match rule routes by group name."""
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
+    settings = _make_settings(settings_factory)
+    settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name=None))
+    client.get_group_name = AsyncMock(return_value="Example Group")
+    service, perform_triage, _ = _build_service(settings, client)
 
-    assert polling_service_module._service is None
+    await service._run_cycle()
+
+    client.get_group_name.assert_awaited_once_with(5)
+    assert perform_triage.await_count == 1
+    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Example Group"
+
+
+@pytest.mark.asyncio
+async def test_existing_group_name_preserved_without_lookup(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """Tickets that already include a group name must be routed without an extra group lookup."""
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
+    settings = _make_settings(settings_factory)
+    settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name="Example Group"))
+    client.get_group_name = AsyncMock(return_value="Other")
+    service, perform_triage, _ = _build_service(settings, client)
+
+    await service._run_cycle()
+
+    client.get_group_name.assert_not_awaited()
+    assert perform_triage.await_count == 1
+    assert perform_triage.await_args_list[0].kwargs["ticket"].group_name == "Example Group"
+
+
+@pytest.mark.asyncio
+async def test_transient_group_name_failure_is_retried_without_marking(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """A transient group lookup failure must leave the ticket eligible for a later cycle."""
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
+    settings = _make_settings(settings_factory)
+    settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name=None))
+    client.get_group_name = AsyncMock(side_effect=ZammadRetryableError("transient"))
+    service, perform_triage, _ = _build_service(settings, client)
+
+    await service._run_cycle()
+
+    perform_triage.assert_not_awaited()
+    assert 1 not in service._processed
+
+
+@pytest.mark.asyncio
+async def test_vanished_group_marks_ticket_processed(
+    settings_factory: Callable[..., ZammadAISettings],
+) -> None:
+    """A ticket whose group no longer exists must be skipped as unmatched and marked processed."""
+    usecase = UseCaseSettings(name="example-usecase", polling_match=[PollingMatch(group_name="Example Group")])
+    settings = _make_settings(settings_factory)
+    settings = settings_factory(polling=settings.polling, usecases=[usecase], usecase=usecase)
+    client = _fake_client([1])
+    client.get_ticket = AsyncMock(return_value=ZammadTicket(id=1, group_id=5, group_name=None))
+    client.get_group_name = AsyncMock(side_effect=TicketNotFoundError("group gone"))
+    service, perform_triage, _ = _build_service(settings, client)
+
+    await service._run_cycle()
+
+    perform_triage.assert_not_awaited()
+    assert 1 in service._processed

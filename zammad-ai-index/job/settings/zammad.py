@@ -154,9 +154,10 @@ class DocumentParsingSettings(BaseModel):
 class BaseZammadSettings(BaseModel, ABC):
     """Base settings for Zammad integration."""
 
-    knowledge_base_id: int = Field(
-        description="The ID of the knowledge base to use for retrieving documents.",
+    knowledge_base_id: int | None = Field(
+        description="The ID of the knowledge base to use for retrieving documents. Defined per indexing target under 'targets' (optional shared default).",
         examples=[1],
+        default=None,
     )
     category_ids: list[PositiveInt] = Field(
         description="List of category IDs to filter documents by. If empty, documents from all categories will be retrieved.",

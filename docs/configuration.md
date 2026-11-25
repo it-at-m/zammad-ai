@@ -18,14 +18,15 @@ Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zamm
 
 ### Core Sections
 
-- `usecase`: deployment name and description
+- `usecases`: at least one usecase definition with `name`, `description`, `match`/`polling_match` rules, and optional per-usecase `config` overrides; a root-level `usecase` block is not supported
+- `router`: usecase routing settings (`usecase_config_dir`, `unmatched_policy`, `fallback_usecase`)
 - `genai`: model provider, chat model, embedding model, and retry settings
 - `zammad`: REST API or EAI connection settings, knowledge base ID, and document parsing config
 - `kafka`: broker URL, topic names, retry policy, client ID, group ID, and mTLS security
-- `triage`: categories, actions, rules, prompt sources, and fallback behavior
+- `triage`: categories, actions, rules, prompt sources, and fallback behavior; optional at the root when every configured usecase defines its own triage settings under `config`
 - `answer`: answer prompts, Qdrant settings, optional DLF integration, judge settings, and law tools
 - `frontend`: optional Gradio UI and feedback settings
-- `api`: API key and graceful shutdown timeout
+- `api`: API key, graceful shutdown timeout, and `max_parse_body_bytes` (body size the usecase logging middleware buffers to resolve the usecase; larger bodies skip usecase binding but are still processed)
 - `prometheus`: metrics server toggle and port
 - `guardrails`: remote `slm-guardrails` client settings used by the workflow (`enabled`, `base_url`, `request_timeout_seconds`, `auth_token`, `verify_tls`, `confidence_threshold`, `model`)
 - `log`: log format and level

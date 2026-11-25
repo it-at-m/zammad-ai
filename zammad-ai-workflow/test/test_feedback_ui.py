@@ -9,7 +9,9 @@ import pytest
 from app.frontend.feedback_ui import (
     _load_feedback_trace,
     _load_translations,
+    _resolve_access_key,
     _resolve_feedback_request,
+    _resolve_score_name,
     _submit_feedback,
     build_feedback_frontend,
 )
@@ -38,7 +40,7 @@ def test_resolve_feedback_request_uses_trace_id_query_param(german_translations:
 
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
-        expected_access_key="secret-salt",
+        access_key_configured=True,
         translations=german_translations,
     )
 
@@ -61,11 +63,12 @@ def test_get_trace_io_supports_static_answer_string_output() -> None:
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
     setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
 
-    input_text, output_text, used_documents = client.get_trace_io(trace_id="static-trace")
+    input_text, output_text, used_documents, trace_tags = client.get_trace_io(trace_id="static-trace")
 
     assert input_text == "Eine Anfrage"
     assert output_text == "Eine statische Antwort"
     assert used_documents == ""
+    assert trace_tags == []
 
 
 def test_get_trace_io_supports_nested_answer_output() -> None:
@@ -90,13 +93,14 @@ def test_get_trace_io_supports_nested_answer_output() -> None:
     client = cast(Any, LangfuseClient.__new__(LangfuseClient))
     setattr(client, "langfuse", SimpleNamespace(api=SimpleNamespace(trace=DummyTraceAPI())))
 
-    input_text, output_text, used_documents = client.get_trace_io(trace_id="answer-trace")
+    input_text, output_text, used_documents, trace_tags = client.get_trace_io(trace_id="answer-trace")
 
     assert output_text is not None
     assert input_text == "Eine Anfrage"
     assert "Ein sehr langer Antwortbetreff" in output_text
     assert "Eine ausführliche Antwort" in output_text
     assert used_documents == "- [Dokument 1](https://example.com/doc1)\n"
+    assert trace_tags == []
 
 
 def test_resolve_feedback_request_rejects_blank_query_values(german_translations: dict[str, str]) -> None:
@@ -105,7 +109,7 @@ def test_resolve_feedback_request_rejects_blank_query_values(german_translations
 
     authorized, status, query_params = _resolve_feedback_request(
         request=request,
-        expected_access_key="secret-salt",
+        access_key_configured=True,
         translations=german_translations,
     )
 
@@ -123,7 +127,7 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", "!!!"
+            return "hello", "world", "!!!", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             assert trace_id == "trace-123"
@@ -137,8 +141,8 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -146,6 +150,259 @@ def test_load_feedback_trace_validates_query_token(german_translations: dict[str
     assert output_text == "world"
     assert used_documents == "!!!"
     assert status == "Trace geladen"
+
+
+def test_resolve_score_name_prefers_usecase_tag_match() -> None:
+    """The trace's usecase tag selects the configured per-usecase score name."""
+    score_names = {"example-usecase": "example-thumbs"}
+
+    assert _resolve_score_name(["example-usecase"], "user-thumbs", score_names) == "example-thumbs"
+    assert _resolve_score_name(["unrelated", "example-usecase"], "user-thumbs", score_names) == "example-thumbs"
+
+
+def test_resolve_score_name_falls_back_to_default_without_match() -> None:
+    """Missing or unknown usecase tags fall back to the default score name."""
+    score_names = {"example-usecase": "example-thumbs"}
+
+    assert _resolve_score_name([], "user-thumbs", score_names) == "user-thumbs"
+    assert _resolve_score_name(["unknown-usecase"], "user-thumbs", score_names) == "user-thumbs"
+    assert _resolve_score_name(None, "user-thumbs", None) == "user-thumbs"
+
+
+def test_resolve_access_key_prefers_usecase_tag_match() -> None:
+    """The trace's usecase tag selects the configured per-usecase token salt."""
+    access_keys = {"example-usecase": "usecase-salt"}
+
+    assert _resolve_access_key(["example-usecase"], "root-salt", access_keys) == "usecase-salt"
+    assert _resolve_access_key(["unrelated", "example-usecase"], "root-salt", access_keys) == "usecase-salt"
+
+
+def test_resolve_access_key_falls_back_to_default_without_match() -> None:
+    """Missing or unknown usecase tags fall back to the default token salt."""
+    access_keys = {"example-usecase": "usecase-salt"}
+
+    assert _resolve_access_key([], "root-salt", access_keys) == "root-salt"
+    assert _resolve_access_key(["unknown-usecase"], "root-salt", access_keys) == "root-salt"
+    assert _resolve_access_key(None, "root-salt", None) == "root-salt"
+
+
+def test_load_feedback_trace_resolves_score_name_per_usecase(german_translations: dict[str, str]) -> None:
+    """Traces tagged with a usecase are checked against that usecase's score name."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "!!!", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            assert score_name == "example-thumbs"
+            return False
+
+    salt = "secret-salt"
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=DummyClient,
+        default_access_key=salt,
+        default_score_name="user-thumbs",
+        score_names={"example-usecase": "example-thumbs"},
+        translations=german_translations,
+    )
+
+    assert input_text == "hello"
+    assert output_text == "world"
+    assert used_documents == "!!!"
+    assert status == "Trace geladen"
+
+
+def test_load_feedback_trace_validates_token_with_usecase_salt(german_translations: dict[str, str]) -> None:
+    """Traces tagged with a usecase validate their token against that usecase's salt."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "!!!", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            assert score_name == "user-thumbs"
+            return False
+
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", "usecase-salt")})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=DummyClient,
+        default_access_key="root-salt",
+        default_score_name="user-thumbs",
+        access_keys={"example-usecase": "usecase-salt"},
+        translations=german_translations,
+    )
+
+    assert input_text == "hello"
+    assert output_text == "world"
+    assert used_documents == "!!!"
+    assert status == "Trace geladen"
+
+
+def test_load_feedback_trace_falls_back_to_root_salt_for_unknown_usecase(
+    german_translations: dict[str, str],
+) -> None:
+    """Traces without a matching usecase tag validate their token against the root salt."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "!!!", ["unknown-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", "root-salt")})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=DummyClient,
+        default_access_key="root-salt",
+        default_score_name="user-thumbs",
+        access_keys={"example-usecase": "usecase-salt"},
+        translations=german_translations,
+    )
+
+    assert input_text == "hello"
+    assert output_text == "world"
+    assert used_documents == "!!!"
+    assert status == "Trace geladen"
+
+
+def test_load_feedback_trace_rejects_root_salt_token_for_usecase_override(
+    german_translations: dict[str, str],
+) -> None:
+    """Tokens signed with the root salt fail validation for usecases with their own salt."""
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            self.score_checked = False
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "!!!", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            self.score_checked = True
+            return False
+
+    client = DummyClient()
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", "root-salt")})
+
+    input_text, output_text, used_documents, status = _load_feedback_trace(
+        request=request,
+        lf_factory=lambda: client,
+        default_access_key="root-salt",
+        default_score_name="user-thumbs",
+        access_keys={"example-usecase": "usecase-salt"},
+        translations=german_translations,
+    )
+
+    assert input_text == ""
+    assert output_text == ""
+    assert used_documents == ""
+    assert status == "Ungültiger Zugriffsschlüssel"
+    assert client.score_checked is False
+
+
+def test_submit_feedback_resolves_score_name_per_usecase(german_translations: dict[str, str]) -> None:
+    """Feedback is stored under the score name configured for the trace's usecase."""
+    attached_score_names: list[str] = []
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+            score_name: str = "thumbs",
+        ) -> None:
+            attached_score_names.append(score_name)
+
+    salt = "secret-salt"
+    result = _submit_feedback(
+        request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
+        lf_factory=DummyClient,
+        default_access_key=salt,
+        default_score_name="user-thumbs",
+        thumbs="up",
+        comment="sehr hilfreich",
+        user_name=None,
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+        score_names={"example-usecase": "example-thumbs"},
+    )
+
+    assert result == "Bewertung gespeichert"
+    assert attached_score_names == ["example-thumbs"]
+
+
+def test_submit_feedback_validates_token_with_usecase_salt(german_translations: dict[str, str]) -> None:
+    """Feedback submission validates the token against the trace's usecase salt."""
+    attached_score_names: list[str] = []
+
+    class DummyClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            return False
+
+        def attach_evaluation_to_trace(
+            self,
+            trace_id: str,
+            thumbs_up: bool,
+            comment: str | None = None,
+            user: str | None = None,
+            tags: list[str] | None = None,
+            score_name: str = "thumbs",
+        ) -> None:
+            attached_score_names.append(score_name)
+
+    result = _submit_feedback(
+        request=_make_request(
+            {"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", "usecase-salt")}
+        ),
+        lf_factory=DummyClient,
+        default_access_key="root-salt",
+        default_score_name="user-thumbs",
+        thumbs="up",
+        comment="sehr hilfreich",
+        user_name=None,
+        tags=None,
+        allowed_tags=[],
+        translations=german_translations,
+        access_keys={"example-usecase": "usecase-salt"},
+    )
+
+    assert result == "Bewertung gespeichert"
+    assert attached_score_names == ["user-thumbs"]
 
 
 def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dict[str, str]) -> None:
@@ -157,7 +414,7 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", "!!!"
+            return "hello", "world", "!!!", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             assert trace_id == "trace-123"
@@ -175,8 +432,8 @@ def test_load_feedback_trace_hides_io_when_score_exists(german_translations: dic
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -197,7 +454,7 @@ def test_load_feedback_trace_supports_empty_output_no_answer_trace(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "", ""
+            return "hello", "", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             assert trace_id == "trace-123"
@@ -211,8 +468,8 @@ def test_load_feedback_trace_supports_empty_output_no_answer_trace(
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -237,8 +494,8 @@ def test_load_feedback_trace_reports_invalid_trace_id(german_translations: dict[
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf_factory=DummyClient,
-        expected_access_key="secret-salt",
-        score_name="user-thumbs",
+        default_access_key="secret-salt",
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -259,7 +516,7 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", ""
+            return "hello", "world", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             raise LangfuseError("lookup failed")
@@ -268,8 +525,8 @@ def test_load_feedback_trace_returns_load_error_when_score_lookup_fails(
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -291,8 +548,8 @@ def test_load_feedback_trace_returns_load_error_when_client_creation_fails(
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=request,
         lf_factory=failing_factory,
-        expected_access_key="secret-salt",
-        score_name="user-thumbs",
+        default_access_key="secret-salt",
+        default_score_name="user-thumbs",
         translations=german_translations,
     )
 
@@ -345,12 +602,12 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
 
     class DummyClient(LangfuseClient):
         def __init__(self) -> None:
-            self.tags: list[str] | None = None
+            self.last_tags: list[str] | None = None
             self.score_name: str | None = None
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", "!!!"
+            return "hello", "world", "!!!", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -364,7 +621,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
             tags: list[str] | None = None,
             score_name: str = "user-thumbs",
         ) -> None:
-            self.tags = tags
+            self.last_tags = tags
             self.score_name = score_name
 
     salt = "secret-salt"
@@ -372,8 +629,8 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=lambda: client,
-        expected_access_key=salt,
-        score_name="configured-thumbs",
+        default_access_key=salt,
+        default_score_name="configured-thumbs",
         thumbs="down",
         comment="Feedback comment",
         user_name=None,
@@ -383,7 +640,7 @@ def test_submit_feedback_only_stores_configured_tags(german_translations: dict[s
     )
 
     assert result == "Bewertung gespeichert"
-    assert client.tags == ["outdated information"]
+    assert client.last_tags == ["outdated information"]
     assert client.score_name == "configured-thumbs"
 
 
@@ -409,7 +666,7 @@ def test_submit_feedback_rejects_invalid_submission(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", ""
+            return "hello", "world", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -430,8 +687,8 @@ def test_submit_feedback_rejects_invalid_submission(
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=lambda: client,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         thumbs=thumbs,
         comment=comment,
         user_name=user_name,
@@ -455,7 +712,7 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", ""
+            return "hello", "world", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             raise LangfuseError("lookup failed")
@@ -476,8 +733,8 @@ def test_submit_feedback_returns_save_error_when_score_lookup_fails(
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=lambda: client,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         thumbs="up",
         comment="valid comment",
         user_name="AB",
@@ -502,8 +759,8 @@ def test_submit_feedback_returns_save_error_when_client_creation_fails(
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=failing_factory,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         thumbs="up",
         comment="valid comment",
         user_name="AB",
@@ -524,7 +781,7 @@ def test_submit_feedback_accepts_current_helper_signature(german_translations: d
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", "!!!"
+            return "hello", "world", "!!!", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -544,8 +801,8 @@ def test_submit_feedback_accepts_current_helper_signature(german_translations: d
     result = _submit_feedback(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         thumbs="up",
         comment="valid comment",
         user_name="AB",
@@ -566,7 +823,7 @@ def test_load_feedback_trace_uses_english_translations() -> None:
 
         def get_trace_io(self, trace_id: str):
             assert trace_id == "trace-123"
-            return "hello", "world", "!!!"
+            return "hello", "world", "!!!", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -576,8 +833,8 @@ def test_load_feedback_trace_uses_english_translations() -> None:
     input_text, output_text, used_documents, status = _load_feedback_trace(
         request=_make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)}),
         lf_factory=DummyClient,
-        expected_access_key=salt,
-        score_name="user-thumbs",
+        default_access_key=salt,
+        default_score_name="user-thumbs",
         translations=translations,
     )
 
@@ -608,7 +865,7 @@ def test_build_feedback_frontend_creates_langfuse_client_per_request() -> None:
             instances.append(self)
 
         def get_trace_io(self, trace_id: str):
-            return "hello", "world", ""
+            return "hello", "world", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False
@@ -627,6 +884,90 @@ def test_build_feedback_frontend_creates_langfuse_client_per_request() -> None:
     assert len(instances) == 1
 
 
+def test_build_feedback_frontend_resolves_score_name_per_usecase() -> None:
+    """The feedback frontend resolves the score name from the trace's usecase tag."""
+    settings = FrontendSettings(feedback=FeedbackSettings(salt="secret-salt"))
+    checked_score_names: list[str] = []
+
+    class RecordingClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            checked_score_names.append(score_name)
+            return False
+
+    app = build_feedback_frontend(
+        settings,
+        langfuse_client_factory=RecordingClient,
+        feedback_score_names={"example-usecase": "example-thumbs"},
+    )
+
+    load_fns = [fn.fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+    load_fn = load_fns[0]
+    assert load_fn is not None
+    salt = "secret-salt"
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", salt)})
+
+    load_fn(request)
+
+    assert checked_score_names == ["example-thumbs"]
+
+
+def test_build_feedback_frontend_resolves_salt_per_usecase() -> None:
+    """The feedback frontend validates tokens with the salt of the trace's usecase."""
+    settings = FrontendSettings(feedback=FeedbackSettings(salt="root-salt"))
+    checked_score_names: list[str] = []
+
+    class RecordingClient(LangfuseClient):
+        def __init__(self) -> None:
+            pass
+
+        def get_trace_io(self, trace_id: str):
+            return "hello", "world", "", ["example-usecase"]
+
+        def has_score(self, trace_id: str, score_name: str) -> bool:
+            checked_score_names.append(score_name)
+            return False
+
+    app = build_feedback_frontend(
+        settings,
+        langfuse_client_factory=RecordingClient,
+        feedback_salts={"example-usecase": "usecase-salt"},
+    )
+
+    load_fns = [fn.fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+    load_fn = load_fns[0]
+    assert load_fn is not None
+    request = _make_request({"trace_id": "trace-123", "key": compute_feedback_token("hello", "world", "usecase-salt")})
+
+    load_fn(request)
+
+    assert checked_score_names == ["user-thumbs"]
+
+
+def test_build_feedback_frontend_reports_missing_salt_without_langfuse_client() -> None:
+    """Requests fail fast when neither the root nor any usecase salt is configured."""
+    settings = FrontendSettings()
+    instances: list[LangfuseClient] = []
+
+    class RecordingClient(LangfuseClient):
+        def __init__(self) -> None:
+            instances.append(self)
+
+    app = build_feedback_frontend(settings, langfuse_client_factory=RecordingClient)
+
+    load_fns = [fn.fn for fn in app.fns.values() if any(target[1] == "load" for target in fn.targets)]
+    load_fn = load_fns[0]
+    assert load_fn is not None
+    load_fn(_make_request({"trace_id": "trace-123", "key": "some-key"}))
+
+    assert instances == []
+
+
 def test_build_feedback_frontend_skips_langfuse_client_for_invalid_requests() -> None:
     """Invalid query parameters must fail before any Langfuse client is created."""
     settings = FrontendSettings(feedback=FeedbackSettings(salt="secret-salt"))
@@ -637,7 +978,7 @@ def test_build_feedback_frontend_skips_langfuse_client_for_invalid_requests() ->
             instances.append(self)
 
         def get_trace_io(self, trace_id: str):
-            return "hello", "world", ""
+            return "hello", "world", "", []
 
         def has_score(self, trace_id: str, score_name: str) -> bool:
             return False

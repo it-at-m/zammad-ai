@@ -25,6 +25,7 @@ from app.models.triage import (
     TriageResult,
 )
 from app.models.zammad import ArticleAttachment, ZammadTicket
+from app.observe.langfuse import generate_session_id
 from app.preparser.service import PreparserService, get_preparser_service
 from app.settings import ZammadAISettings
 from app.settings.triage import (
@@ -69,7 +70,13 @@ class TriageError(AppTriageError):
 class TriageService:
     """Service that classifies tickets and selects follow-up actions."""
 
-    def __init__(self, settings: ZammadAISettings) -> None:
+    def __init__(
+        self,
+        settings: ZammadAISettings,
+        guardrail_service: GuardrailService | None = None,
+        preparser_service: PreparserService | None = None,
+        owns_guardrail_service: bool | None = None,
+    ) -> None:
         """Initialize the TriageService with the provided configuration, preparing category/action maps, prompt sources, the GenAI handler, and the Zammad client.
 
         Parameters:
@@ -80,9 +87,18 @@ class TriageService:
             TriageError: If Langfuse prompt retrieval fails during prompt initialization.
         """
         self.settings: ZammadAISettings = settings
-        self.guardrail_service: GuardrailService = get_guardrail_service(settings=settings.guardrails)
-        self.preparser_service: PreparserService = get_preparser_service(settings=settings.preparser)
+        self._owns_guardrail_service = (
+            guardrail_service is None if owns_guardrail_service is None else owns_guardrail_service
+        )
+        self.guardrail_service: GuardrailService = guardrail_service or get_guardrail_service(
+            settings=settings.guardrails
+        )
+        self.preparser_service: PreparserService = preparser_service or get_preparser_service(
+            settings=settings.preparser
+        )
         # Triage setup
+        if settings.triage is None:
+            raise ValueError("Triage settings are required but not configured")
         self.categories: list[Category] = settings.triage.categories
         self.categories_by_name: dict[str, Category] = {c.name: c for c in settings.triage.categories}
 
@@ -165,6 +181,7 @@ class TriageService:
             genai_settings=settings.genai,
             prompts=genai_prompts,
             categories_langfuse_prompt=categories_langfuse_prompt,
+            tags=[settings.usecase.name],
         )
 
         self.zammad_client: BaseZammadClient
@@ -179,11 +196,12 @@ class TriageService:
 
         logger.info("Triage initialized successfully.")
 
-    async def perform_triage(self, ticket: ZammadTicket) -> TriageResult:
+    async def perform_triage(self, ticket: ZammadTicket, session_id: str | None = None) -> TriageResult:
         """Triage a Zammad ticket by analyzing its customer message to determine category, action, and any extracted values.
 
         Parameters:
             ticket (ZammadTicket): The Zammad ticket to triage.
+            session_id (str | None): Langfuse session identifier to reuse for this run; if None a new session ID is generated. Retries pass the original session ID so all attempts share one Langfuse session.
 
         Returns:
             TriageResult: Result containing the resolved category, selected action, human-readable reasoning, confidence score, and any extracted values (or `None`).
@@ -271,7 +289,8 @@ class TriageService:
 
                     customer_message += attachment_message
 
-            session_id: str = self.genai_handler.langfuse_client.generate_session_id()
+            if not session_id:
+                session_id = generate_session_id()
 
             # Step 3: Predict category using LLM
             categorization: CategorizationResult = await self.predict_category(
@@ -500,11 +519,12 @@ class TriageService:
         """
         first_error: Exception | None = None
         try:
-            try:
-                await self.guardrail_service.close()
-            except Exception as e:
-                first_error = e
-                logger.error("Failed to close guardrail service during triage cleanup", exc_info=True)
+            if self._owns_guardrail_service:
+                try:
+                    await self.guardrail_service.close()
+                except Exception as e:
+                    first_error = e
+                    logger.error("Failed to close guardrail service during triage cleanup", exc_info=True)
 
             try:
                 await self.zammad_client.close()
@@ -513,7 +533,8 @@ class TriageService:
                     first_error = e
                 logger.error("Failed to close Zammad client during triage cleanup", exc_info=True)
         finally:
-            reset_guardrail_service()
+            if self._owns_guardrail_service:
+                reset_guardrail_service()
             global _service
             _service = None
 

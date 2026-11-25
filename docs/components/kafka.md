@@ -21,10 +21,23 @@ The structure is defined in the dbs/ticketing-eventing service and can be found 
 
 ## Event Filtering
 
-The service does not automatically process every event received from Kafka. It uses the `kafka.event_processing.valid_request_types` configuration to filter events based on the `request_type` (or `anliegenart`) field.
+The service does not automatically process every event received from Kafka. The
+`match` rules of the configured usecases decide which events are processed. A
+usecase without `match` rules never matches an event, whether it is the only
+configured usecase or one of many. Events that match no usecase follow
+`router.unmatched_policy`: with the default `skip` policy the event is
+acknowledged and dropped with an INFO log entry, with `error` it is also
+acknowledged and dropped but with an ERROR log entry (the event is not
+redelivered, so a usecase configuration gap cannot cause an infinite
+redelivery loop), and with `fallback` it is routed to the usecase named by
+`router.fallback_usecase`. Both `skip` and `error` record a
+`skipped_unmatched_usecase` outcome in `zammad_ai_kafka_ticket_outcomes_total`.
 
-- **Config Key**: `kafka.event_processing.valid_request_types` (list of strings)
-- **Logic**: If the `request_type` of an incoming event is not in this list, the event is acknowledged and ignored. This prevents the service from responding to tickets it is not configured to handle.
+Match rules must be unique per ticket: configure them so that every ticket
+matches at most one usecase. Deliveries for the same ticket are not serialized
+— the service processes events concurrently (`kafka.max_workers`) and can run
+in multiple replicas — so overlapping rules could let two usecases process the
+same ticket at the same time.
 
 ## Kafka Configuration & Security
 
@@ -38,13 +51,6 @@ kafka:
   topic: "ticket-events"
   retry_topic: "ticket-events-retry"
   group_id: "zammad-ai"
-  # event_processing holds filtering and processing-related options
-  event_processing:
-    valid_request_types:
-      - "Support"
-    valid_action_types:
-      - "created"
-      - "updated"
 
   retry_delay_seconds: 300
   max_retry_attempts: 3
@@ -84,11 +90,13 @@ Use double underscores for nesting. Important keys include:
 - `ZAMMAD_AI_KAFKA__MAX_RETRY_ATTEMPTS`
 - `ZAMMAD_AI_KAFKA__GROUP_RESTORE_RETRY_ATTEMPTS`
 - `ZAMMAD_AI_KAFKA__GROUP_RESTORE_RETRY_DELAY_SECONDS`
-- `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_REQUEST_TYPES`
-- `ZAMMAD_AI_KAFKA__EVENT_PROCESSING__VALID_ACTION_TYPES`
 - `ZAMMAD_AI_KAFKA__SECURITY__CA_FILE_BASE64`
 - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_BASE64`
 - `ZAMMAD_AI_KAFKA__SECURITY__PKCS12_PW`
+
+Event filtering is not configured via Kafka environment variables. Which events
+are processed is decided by the usecase `match` rules together with
+`router.unmatched_policy` — see [Event Filtering](#event-filtering).
 
 ### Security Schemas
 
@@ -117,7 +125,15 @@ When using PKCS#12, the broker security layer decodes the secret in-memory, conv
   - second retry: base delay times 2
   - third retry: base delay times 4
 - Retrying stops after `kafka.max_retry_attempts` completed retries, at which point the event is acknowledged and dropped.
+- Retries whose `usecase` header names a usecase that is no longer configured are acknowledged and dropped with a
+  `dropped_unknown_usecase` outcome in `zammad_ai_kafka_ticket_outcomes_total` instead of being re-resolved from their
+  payload, which could process them against a different Zammad instance than the one that produced the retry. The same
+  outcome is recorded when a retry without a `usecase` header cannot be resolved from its payload (payload validation
+  failure, or no matching usecase under the `error` policy); under the default `skip` policy such a retry instead
+  records `skipped_unmatched_usecase`. Dropped retries are never redelivered.
 - Moving a ticket back to its original group is retried in place before the event is handed to the retry topic:
   `kafka.group_restore_retry_attempts` additional attempts with `kafka.group_restore_retry_delay_seconds` base delay,
   doubled after each failed attempt (defaults: wait 5s, then 10s). This keeps transient Zammad connection errors from
-  sending fully processed events to the retry topic.
+  sending fully processed events to the retry topic. The restore is skipped when the ticket is no longer in the AI
+  group — for example because an agent took over the ticket or an overlapping delivery for the same ticket already
+  restored it — so a stale restore cannot move the ticket out of its current group.

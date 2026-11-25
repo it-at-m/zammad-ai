@@ -24,6 +24,7 @@ export default defineConfig({
         items: [
           { text: "Configuration Guide", link: "/configuration" },
           { text: "REST API Reference", link: "/api" },
+          { text: "Upgrade Notes", link: "/upgrade" },
         ],
       },
       {

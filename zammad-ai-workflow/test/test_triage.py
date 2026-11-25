@@ -165,6 +165,7 @@ def patched_triage(
 
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        fake_genai_handler.tags = kwargs.get("tags")
         return fake_genai_handler
 
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
@@ -190,6 +191,7 @@ def triage_factory(
 
     def _fake_genai_handler(*args, **kwargs):
         fake_genai_handler.categories_langfuse_prompt = kwargs.get("categories_langfuse_prompt")
+        fake_genai_handler.tags = kwargs.get("tags")
         return fake_genai_handler
 
     monkeypatch.setattr(triage_module, "GenAIHandler", _fake_genai_handler)
@@ -313,6 +315,23 @@ async def test_perform_triage_happy_path(patched_triage: TriageService) -> None:
 
 
 @pytest.mark.asyncio
+async def test_perform_triage_reuses_provided_session_id(patched_triage: TriageService) -> None:
+    """A provided session ID must be reused instead of generating a new one."""
+    ticket = ZammadTicket(
+        id=42,
+        articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")],
+    )
+    cast(FakeZammadClient, patched_triage.zammad_client).ticket = ticket
+    patched_triage.genai_handler.categorization_result = CategorizationResult(  # type: ignore
+        category=Category(name="General"),
+        reasoning="hardware issue",
+        confidence=0.9,
+    )
+    result = await patched_triage.perform_triage(ticket=ticket, session_id="retry-session")
+    assert result.session_id == "retry-session"
+
+
+@pytest.mark.asyncio
 async def test_perform_triage_in_progress_gauge_returns_to_baseline_on_success(patched_triage: TriageService) -> None:
     """The in-progress gauge should return to baseline after a successful run."""
     baseline = _get_triage_runs_in_progress_value()
@@ -347,7 +366,7 @@ async def test_perform_triage_in_progress_gauge_increments_while_running(patched
         await asyncio.sleep(0.05)
         return CategorizationResult(category=Category(name="General"), reasoning="hardware issue", confidence=0.9)
 
-    patched_triage.genai_handler.categorize_ticket = delaying_categorize
+    cast(Any, patched_triage.genai_handler).categorize_ticket = delaying_categorize
 
     ticket = ZammadTicket(id=42, articles=[ZammadArticle(id=1, ticket_id=42, text="My printer is broken")])
     task = asyncio.create_task(patched_triage.perform_triage(ticket=ticket))
@@ -371,7 +390,7 @@ async def test_perform_triage_raises_triage_error_on_zammad_failure(patched_tria
     async def _raise_conn(*_args, **_kwargs):
         raise FakeZammadConnectionError("Fake connection error")
 
-    patched_triage.zammad_client.fetch_ticket_attachment_data = _raise_conn
+    cast(Any, patched_triage.zammad_client).fetch_ticket_attachment_data = _raise_conn
     # Ensure document parsing is enabled so attachment fetching is attempted
     patched_triage.settings.zammad.document_parsing.mode = "local"
     patched_triage.settings.zammad.document_parsing.document_types = ["pdf"]
@@ -459,7 +478,7 @@ async def test_predict_category_handles_genai_exception(patched_triage: TriageSe
         """
         raise RuntimeError("LLM exploded")
 
-    patched_triage.genai_handler.categorize_ticket = _boom
+    cast(Any, patched_triage.genai_handler).categorize_ticket = _boom
     with pytest.raises(TriageError) as excinfo:
         await patched_triage.predict_category(message="trigger error", session_id="session-id")
     assert "unexpected error" in str(excinfo.value)
@@ -480,7 +499,7 @@ async def test_perform_triage_handles_processing_triage_error(patched_triage: Tr
         raise TriageError("Simulated processing error")
 
     # Mock predict_category to raise TriageError
-    patched_triage.predict_category = _boom
+    cast(Any, patched_triage).predict_category = _boom
 
     # Ensure there is a ticket with articles so it doesn't return early
     fake_zammad_client = cast(FakeZammadClient, patched_triage.zammad_client)
@@ -714,6 +733,14 @@ async def test_triage_links_categories_prompt_reference(
         getattr(fake_genai_handler.langfuse_client, "last_langfuse_prompt")
         is fake_genai_handler.categories_langfuse_prompt
     )
+
+
+def test_triage_passes_usecase_tag_to_genai_handler(
+    patched_triage: TriageService,
+    fake_genai_handler: FakeGenAIHandler,
+) -> None:
+    """Triage should forward the usecase name as Langfuse trace tag."""
+    assert fake_genai_handler.tags == [patched_triage.settings.usecase.name]
 
 
 # ---------------------------------------------------------------------------
