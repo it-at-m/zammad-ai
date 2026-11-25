@@ -13,6 +13,8 @@ score, resolved from the trace's usecase tag by the feedback frontend.
 The one exception is `config.triage`: when the root configuration does not
 define a `triage` section, every usecase must supply its own `config.triage`,
 because a usecase without effective triage settings is rejected at startup.
+A `usecase` key inside `config` is ignored: routing rules come from the
+top-level `match` and `polling_match` keys of the usecase file.
 
 Per-usecase `kafka` overrides are rejected at startup. Kafka subscribers bind to
 the topics of the shared root configuration, while retry publishing uses the

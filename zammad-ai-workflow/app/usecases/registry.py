@@ -155,7 +155,9 @@ class UseCaseRegistry:
             "match": [match.model_dump() for match in definition.match],
             "polling_match": [match.model_dump() for match in definition.polling_match],
         }
-        _deep_merge(payload, deepcopy(definition.config))
+        config = deepcopy(definition.config)
+        config.pop("usecase", None)
+        _deep_merge(payload, config)
         if payload.get("triage") is None:
             raise ValueError(
                 f"Usecase '{definition.name}' must define triage settings under its config "
