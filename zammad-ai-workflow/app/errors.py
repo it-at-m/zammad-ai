@@ -33,6 +33,12 @@ class KafkaPayloadError(AppError):
     retryable = False
 
 
+class UnmatchedUsecaseError(KafkaPayloadError):
+    """Raised when a Kafka event matches no configured usecase under the error policy."""
+
+    retryable = False
+
+
 class TicketNotFoundError(AppError):
     """Raised when the referenced ticket does not exist anymore."""
 

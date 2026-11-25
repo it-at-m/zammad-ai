@@ -21,7 +21,7 @@ from app.kafka.helper import (
     _restore_ticket_group,
     _sleep_until_retry_after,
 )
-from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL
+from app.metrics import KAFKA_EVENTS_TOTAL, KAFKA_TICKET_OUTCOMES_TOTAL, USECASE_TICKET_OUTCOMES_TOTAL
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadArticle, ZammadTicket
@@ -35,7 +35,7 @@ from app.settings.triage import (
     StringTriagePrompts,
     TriageSettings,
 )
-from app.settings.usecase import UseCaseMatch, UseCaseSettings
+from app.settings.usecase import RouterSettings, UseCaseMatch, UseCaseSettings
 from app.settings.zammad import ZammadAPISettings, ZammadEAISettings
 from app.usecases.registry import UseCaseRegistry
 from app.zammad.base import ZammadConnectionError, ZammadRetryableError
@@ -318,6 +318,48 @@ async def test_event_handler_logs_and_acks_unmatched_event_with_skip_policy(
 
     assert "Skipping Kafka event that matched no configured usecase." in caplog.text
     mock_triage.perform_triage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_event_handler_records_single_outcome_for_unmatched_event_with_error_policy(
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """With the error policy, an unmatched event must be dropped and counted exactly once."""
+    settings = settings_factory(
+        router=RouterSettings(unmatched_policy="error"),
+        usecases=[
+            UseCaseSettings(
+                name="example-usecase",
+                match=[UseCaseMatch(request_type="example-request", action="ticket_created")],
+            )
+        ],
+    )
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+    labels = {"category": "unknown", "action_type": "unknown", "outcome": "skipped_unmatched_usecase"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("ERROR"):
+            await test_broker.publish(
+                topic=settings.kafka.topic,
+                message={
+                    "action": "ticket_created",
+                    "ticket": "747",
+                    "status": "new",
+                    "statusId": "1",
+                    "anliegenart": "Unbekanntes Anliegen",
+                    "lhmExtId": "",
+                },
+            )
+
+    mock_triage.perform_triage.assert_not_called()
+    assert "Dropping Kafka event with an unresolvable usecase." in caplog.text
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline + 1
+    )
 
 
 @pytest.mark.asyncio
@@ -1445,6 +1487,13 @@ async def test_retry_event_handler_drops_retry_with_unknown_usecase_header(
     """Retries naming a removed usecase must be dropped instead of being processed by another runtime."""
     settings = settings_factory()
     router, _ = build_router(settings=settings, registry=mock_registry(settings))
+    labels = {"category": "unknown", "action_type": "unknown", "outcome": "dropped_unknown_usecase"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
+    usecase_baseline = _get_counter_value(
+        USECASE_TICKET_OUTCOMES_TOTAL,
+        "zammad_ai_usecase_ticket_outcomes_total",
+        {**labels, "usecase": "removed-usecase"},
+    )
 
     async with TestKafkaBroker(router.broker) as test_broker:
         with caplog.at_level("ERROR"):
@@ -1456,6 +1505,86 @@ async def test_retry_event_handler_drops_retry_with_unknown_usecase_header(
 
     mock_triage.perform_triage.assert_not_called()
     assert "no longer configured" in caplog.text
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline + 1
+    )
+    assert (
+        _get_counter_value(
+            USECASE_TICKET_OUTCOMES_TOTAL,
+            "zammad_ai_usecase_ticket_outcomes_total",
+            {**labels, "usecase": "removed-usecase"},
+        )
+        == usecase_baseline + 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_drops_retry_with_unresolvable_payload(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """Retries without a usecase header whose payload cannot be resolved are dropped and counted."""
+    settings = settings_factory()
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+    labels = {"category": "unknown", "action_type": "unknown", "outcome": "dropped_unknown_usecase"}
+    baseline = _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels)
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("ERROR"):
+            await test_broker.publish(
+                topic=settings.kafka.retry_topic,
+                message={"action": "created", "status": "new", "statusId": "1"},
+                headers={"retry_count": "1"},
+            )
+
+    mock_triage.perform_triage.assert_not_called()
+    assert "unresolved payload" in caplog.text
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", labels) == baseline + 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_retry_event_handler_records_single_outcome_for_unmatched_payload_with_error_policy(
+    kafka_message_factory: Callable[..., dict[str, str]],
+    mock_triage: MagicMock,
+    mock_registry: Callable[[ZammadAISettings], UseCaseRegistry],
+    settings_factory: Callable[..., ZammadAISettings],
+    caplog,
+) -> None:
+    """A headerless retry whose payload matches no usecase must be counted exactly once."""
+    settings = settings_factory(router=RouterSettings(unmatched_policy="error"))
+    router, _ = build_router(settings=settings, registry=mock_registry(settings))
+    dropped_labels = {"category": "unknown", "action_type": "unknown", "outcome": "dropped_unknown_usecase"}
+    skipped_labels = {"category": "unknown", "action_type": "unknown", "outcome": "skipped_unmatched_usecase"}
+    dropped_baseline = _get_counter_value(
+        KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", dropped_labels
+    )
+    skipped_baseline = _get_counter_value(
+        KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", skipped_labels
+    )
+
+    async with TestKafkaBroker(router.broker) as test_broker:
+        with caplog.at_level("ERROR"):
+            await test_broker.publish(
+                topic=settings.kafka.retry_topic,
+                message=kafka_message_factory(anliegenart="Unbekanntes Anliegen"),
+                headers={"retry_count": "1"},
+            )
+
+    mock_triage.perform_triage.assert_not_called()
+    assert "unresolved payload" in caplog.text
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", dropped_labels)
+        == dropped_baseline + 1
+    )
+    assert (
+        _get_counter_value(KAFKA_TICKET_OUTCOMES_TOTAL, "zammad_ai_kafka_ticket_outcomes_total", skipped_labels)
+        == skipped_baseline
+    )
 
 
 @pytest.mark.asyncio

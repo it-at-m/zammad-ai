@@ -42,13 +42,31 @@ Kafka processing metrics use the `zammad_ai_kafka_*` prefix and are emitted by t
 Business counters derived from Kafka processing are also exported:
 
 - `zammad_ai_kafka_events_total`
-  - Counts only main-topic Kafka events that pass payload parsing and request/action filtering.
-  - Retry-topic events and filtered events are not counted.
+  - Counts only main-topic Kafka events that pass payload parsing and enter processing.
+  - Retry-topic events and events that match no usecase are not counted.
 - `zammad_ai_kafka_ticket_outcomes_total`
   - Counts Kafka-driven ticket outcomes with labels `category`, `action_type`, and `outcome`.
   - `action_type` values are normalized to `ai_answer`, `static_answer`, `no_action`, or `unknown`.
-  - `outcome` values currently include `answer`, `shared_draft`, `manual`, and `aborted_with_error`.
+  - `outcome` values currently include `answer`, `shared_draft`, `manual`, `aborted_with_error`, `dropped`, `skipped_unmatched_usecase`, and `dropped_unknown_usecase`.
+  - `skipped_unmatched_usecase` is recorded when an event matches no configured usecase (under both the `skip` and `error` policies); `dropped_unknown_usecase` is recorded when a retry is dropped because its `usecase` header names an unconfigured usecase or its payload cannot be resolved to a usecase.
   - When a ticket aborts before a triage result exists, `category="unknown"` and `action_type="unknown"` are used.
+
+### Polling Metrics
+
+Polling-based ticket intake metrics use the `zammad_ai_polling_*` prefix:
+
+- `zammad_ai_polling_cycles_total`
+  - Counts polling cycles with a single `outcome` label.
+- `zammad_ai_polling_ticket_outcomes_total`
+  - Counts polling-driven ticket outcomes with labels `category`, `action_type`, and `outcome`.
+  - `outcome` values currently include `processed`, `aborted_with_error`, and `skipped_unmatched_usecase`.
+  - `skipped_unmatched_usecase` is recorded when a polled ticket matches no configured usecase.
+
+### Usecase Metrics
+
+- `zammad_ai_usecase_ticket_outcomes_total`
+  - Counts ticket outcomes with an additional `usecase` label.
+  - Recorded alongside the Kafka and polling outcome counters whenever the resolved usecase is known.
 
 ## Configuration
 

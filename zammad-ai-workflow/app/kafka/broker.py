@@ -12,7 +12,7 @@ from prometheus_client import REGISTRY
 from pydantic import ValidationError
 
 from app.action.service import ActionService
-from app.errors import KafkaPayloadError
+from app.errors import KafkaPayloadError, UnmatchedUsecaseError
 from app.kafka.helper import (
     USECASE_HEADER,
     _handle_processing_exception,
@@ -25,7 +25,7 @@ from app.kafka.helper import (
     _safe_ticket_id,
     _sleep_until_retry_after,
 )
-from app.metrics import record_processed_main_kafka_event
+from app.metrics import record_kafka_ticket_outcome, record_processed_main_kafka_event
 from app.models.kafka import Event
 from app.models.triage import TriageResult
 from app.models.zammad import ZammadTicket
@@ -261,6 +261,11 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                             "ticket_id": _safe_ticket_id(parsed.ticket),
                         },
                     )
+                    record_kafka_ticket_outcome(
+                        category=None,
+                        action_type=None,
+                        outcome="skipped_unmatched_usecase",
+                    )
                     raise AckMessage()
                 case "fallback":
                     if settings.router.fallback_usecase is None:
@@ -272,7 +277,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                     if definition is None:
                         raise KafkaPayloadError("Configured fallback usecase is not available")
                 case "error":
-                    raise KafkaPayloadError("Kafka event did not match a configured usecase")
+                    raise UnmatchedUsecaseError("Kafka event did not match a configured usecase")
             if definition is None:
                 raise KafkaPayloadError("No usecase could be resolved for Kafka event")
         runtime = registry.runtimes.get(definition.name)
@@ -297,6 +302,14 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                 active_settings, active_triage, active_action, usecase = runtime_for_event(event)
             except AckMessage:
                 raise
+            except UnmatchedUsecaseError as e:
+                record_kafka_ticket_outcome(
+                    category=None,
+                    action_type=None,
+                    outcome="skipped_unmatched_usecase",
+                )
+                logger.error("Dropping Kafka event with an unresolvable usecase.", exc_info=True)
+                raise AckMessage() from e
             except KafkaPayloadError as e:
                 logger.error("Dropping Kafka event with an unresolvable usecase.", exc_info=True)
                 raise AckMessage() from e
@@ -375,12 +388,23 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                         "Zammad instance than the one that produced the retry.",
                         extra={"usecase": usecase_name},
                     )
+                    record_kafka_ticket_outcome(
+                        category=None,
+                        action_type=None,
+                        outcome="dropped_unknown_usecase",
+                        usecase=usecase_name,
+                    )
                     raise AckMessage()
                 logger.warning("Kafka retry is missing a usecase header; resolving from its payload.")
                 try:
                     active_settings, active_triage, active_action, usecase_name = runtime_for_event(event)
                 except KafkaPayloadError as e:
                     logger.error("Dropping Kafka retry with an unresolved payload.", exc_info=True)
+                    record_kafka_ticket_outcome(
+                        category=None,
+                        action_type=None,
+                        outcome="dropped_unknown_usecase",
+                    )
                     raise AckMessage() from e
             else:
                 active_settings, active_triage, active_action = (

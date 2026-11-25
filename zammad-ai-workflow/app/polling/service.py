@@ -199,6 +199,12 @@ class PollingService:
             resolved_usecase = self.resolver.resolve_ticket(ticket)
             if resolved_usecase is None or resolved_usecase.name != self.settings.usecase.name:
                 self._processed[ticket_id] = monotonic()
+                record_polling_ticket_outcome(
+                    category=None,
+                    action_type=None,
+                    outcome="skipped_unmatched_usecase",
+                    usecase=self.settings.usecase.name,
+                )
                 return "skipped_unmatched_usecase"
             ensure_ticket_not_already_processed(
                 ticket,
