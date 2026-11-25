@@ -211,13 +211,32 @@ async def _restore_ticket_group(
     group_id: int,
     handler_stage: str,
     log_message: str,
+    expected_group_id: int | None = None,
     retry_attempts: int = 0,
     retry_delay_seconds: float = 5.0,
 ) -> None:
-    """Move a ticket back to its original group, retrying transient Zammad errors with backoff."""
+    """Move a ticket back to its original group, retrying transient Zammad errors with backoff.
+
+    The restore is skipped when the ticket is no longer in the AI group identified by
+    ``expected_group_id`` — for example because an overlapping delivery for the same ticket
+    already restored it or an agent took over the ticket. Deliveries for the same ticket are
+    not serialized, so the check prevents a stale restore from moving the ticket again.
+    """
     for attempt in range(retry_attempts + 1):
         try:
             ticket = await zammad_client.get_ticket_metadata(ticket_id)
+            if expected_group_id is not None and ticket.group_id != expected_group_id:
+                logger.info(
+                    "Skipping restore because the ticket is no longer in the AI group",
+                    extra={
+                        "handler_stage": handler_stage,
+                        "ticket_id": ticket_id,
+                        "expected_group_id": expected_group_id,
+                        "current_group_id": ticket.group_id,
+                        "original_group_id": group_id,
+                    },
+                )
+                return
             await zammad_client.update_ticket_group(
                 ticket_id=ticket_id,
                 group_id=group_id,
@@ -324,6 +343,7 @@ async def _handle_processing_exception(
                         group_id=original_group_id,
                         handler_stage="restore_ticket_group",
                         log_message="Moved ticket back to original group",
+                        expected_group_id=settings.zammad.ai_ticket_group_id,
                         retry_attempts=settings.kafka.group_restore_retry_attempts,
                         retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
                     )
@@ -362,6 +382,7 @@ async def _handle_processing_exception(
                 group_id=original_group_id,
                 handler_stage="restore_ticket_group",
                 log_message="Moved ticket back to original group",
+                expected_group_id=settings.zammad.ai_ticket_group_id,
                 retry_attempts=settings.kafka.group_restore_retry_attempts,
                 retry_delay_seconds=settings.kafka.group_restore_retry_delay_seconds,
             )

@@ -323,6 +323,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                             group_id=original_group_id,
                             handler_stage="restore_ticket_group",
                             log_message="Moved ticket back to original group",
+                            expected_group_id=active_settings.zammad.ai_ticket_group_id,
                             retry_attempts=active_settings.kafka.group_restore_retry_attempts,
                             retry_delay_seconds=active_settings.kafka.group_restore_retry_delay_seconds,
                         )
@@ -430,6 +431,7 @@ def build_router(settings: ZammadAISettings, registry: UseCaseRegistry | None = 
                             group_id=parsed_original_group_id,
                             handler_stage="restore_ticket_group",
                             log_message="Moved ticket back to original group",
+                            expected_group_id=active_settings.zammad.ai_ticket_group_id,
                             retry_attempts=active_settings.kafka.group_restore_retry_attempts,
                             retry_delay_seconds=active_settings.kafka.group_restore_retry_delay_seconds,
                         )

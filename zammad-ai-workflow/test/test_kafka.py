@@ -983,6 +983,50 @@ async def test_restore_ticket_group_uses_metadata_without_articles() -> None:
 
 
 @pytest.mark.asyncio
+async def test_restore_ticket_group_skips_when_ticket_left_expected_group() -> None:
+    """The restore is skipped when the ticket is no longer in the AI group it was moved into."""
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=17, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+
+    await _restore_ticket_group(
+        zammad_client=zammad_client,
+        ticket_id=3720,
+        group_id=17,
+        handler_stage="restore_ticket_group",
+        log_message="Moved ticket back to original group",
+        expected_group_id=99,
+    )
+
+    zammad_client.update_ticket_group.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_restore_ticket_group_runs_when_ticket_still_in_expected_group() -> None:
+    """The restore proceeds when the ticket is still in the expected AI group."""
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=99, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+
+    await _restore_ticket_group(
+        zammad_client=zammad_client,
+        ticket_id=3720,
+        group_id=17,
+        handler_stage="restore_ticket_group",
+        log_message="Moved ticket back to original group",
+        expected_group_id=99,
+    )
+
+    zammad_client.update_ticket_group.assert_awaited_once_with(
+        ticket_id=3720,
+        group_id=17,
+        pending_time="2026-10-05T07:35:41.000Z",
+    )
+
+
+@pytest.mark.asyncio
 async def test_restore_ticket_group_retries_transient_errors_with_backoff(
     settings_factory: Callable[..., ZammadAISettings],
     monkeypatch: pytest.MonkeyPatch,
