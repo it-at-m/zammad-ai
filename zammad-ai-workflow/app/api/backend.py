@@ -85,10 +85,10 @@ def _is_kafka_reachable(broker_url: str, timeout_seconds: float = 1.0) -> bool:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application startup and shutdown by initializing and cleaning shared services.
 
-    On startup, attaches the usecase registry, preparser service, and polling services to `app.state`. On shutdown, awaits cleanup of the polling services and the usecase registry; `asyncio.CancelledError` raised during cleanup is caught.
+    On startup, attaches the preparser service and polling services to `app.state`. On shutdown, awaits cleanup of the polling services and the usecase registry; `asyncio.CancelledError` raised during cleanup is caught.
     """
     set_status("startup")
-    settings: ZammadAISettings = get_settings()
+    settings: ZammadAISettings = app.state.settings
     metrics_server = None
     metrics_thread = None
 
@@ -106,7 +106,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
         logger.info("Initializing usecase runtimes")
-        app.state.usecase_registry = usecase_registry
         app.state.preparser_service = get_preparser_service(settings=settings.preparser)
 
         polling_runtimes = [
@@ -116,7 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             if settings.zammad.type == "eai":
                 logger.error("Polling is configured but the Zammad EAI client does not support polling.")
                 raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
-            if kafka_router is not None:
+            if app.state.kafka_router is not None:
                 logger.warning("Both Kafka and polling-based ticket intake are active.")
             logger.warning(
                 "Polling-based ticket intake uses in-memory deduplication and must run as a single replica. "
@@ -137,7 +136,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 f"Polling-based ticket intake active: query '{settings.polling.search_query}' every {settings.polling.interval_seconds} seconds."
             )
 
-        if kafka_router is None:
+        if app.state.kafka_router is None:
             set_status("ready")
 
         yield
@@ -168,169 +167,190 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Prometheus metrics server shutdown complete.")
 
 
-settings: ZammadAISettings = get_settings()
-usecase_registry: UseCaseRegistry = UseCaseRegistry(settings)
+def create_backend() -> FastAPI:
+    """Build the FastAPI application together with its full service graph.
 
-if settings.polling.enabled and settings.zammad.type == "eai":
-    raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
+    Constructing the application instantiates the usecase registry (all Zammad clients, GenAI handlers, Langfuse and guardrail clients) and, when the Kafka broker is reachable, the Kafka router. Importing this module does not build the service graph; construction happens on the first call. Subsequent calls return the cached application; settings changes after the first call have no effect.
 
-kafka_router = None
-if _is_kafka_reachable(settings.kafka.broker_url):
-    try:
-        from app.kafka.broker import build_router
+    Returns:
+        FastAPI: The configured backend application.
+    """
+    global _backend
+    if _backend is not None:
+        return _backend
 
-        kafka_router, _ = build_router(settings=settings, registry=usecase_registry)
-        logger.info("Kafka broker is reachable; Kafka router enabled.")
-    except Exception:
-        if settings.kafka.silent_fallback:
-            logger.warning(
-                "Kafka router could not be initialized; continuing with REST-only mode.",
-                exc_info=True,
-            )
-        else:
-            logger.error("Kafka router could not be initialized and silent fallback is disabled.", exc_info=True)
-            raise
-else:
-    if settings.kafka.silent_fallback:
-        logger.warning("Kafka broker is not reachable; continuing with REST-only mode.")
+    settings: ZammadAISettings = get_settings()
+    logger.info("Building usecase registry")
+    usecase_registry = UseCaseRegistry(settings)
+
+    if settings.polling.enabled and settings.zammad.type == "eai":
+        raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
+
+    kafka_router = None
+    if _is_kafka_reachable(settings.kafka.broker_url):
+        try:
+            from app.kafka.broker import build_router
+
+            kafka_router, _ = build_router(settings=settings, registry=usecase_registry)
+            logger.info("Kafka broker is reachable; Kafka router enabled.")
+        except Exception:
+            if settings.kafka.silent_fallback:
+                logger.warning(
+                    "Kafka router could not be initialized; continuing with REST-only mode.",
+                    exc_info=True,
+                )
+            else:
+                logger.error("Kafka router could not be initialized and silent fallback is disabled.", exc_info=True)
+                raise
     else:
-        logger.error("Kafka broker is not reachable and silent fallback is disabled.")
-        raise RuntimeError("Kafka broker is not reachable and silent fallback is disabled.")
-
-# Create FastAPI app with lifespan
-backend = FastAPI(
-    lifespan=lifespan,
-    title="Zammad AI Backend",
-    description="Backend service for Zammad AI, handling Kafka events and REST API for ticket triage and answer generation.",
-    docs_url="/api/docs" if settings.mode == "development" else None,
-    redoc_url="/api/redoc" if settings.mode == "development" else None,
-    # Langfuse exports the application spans but not FastAPI's native HTTP spans.
-    # Leaving them enabled makes the unexported HTTP span the OTel root.
-    telemetry={"tracing": False},
-)
-
-
-@backend.middleware("http")
-async def prometheus_http_metrics_middleware(
-    request: Request,
-    call_next: Callable[[Request], Awaitable[Response]],
-) -> Response:
-    """Collect Prometheus HTTP metrics around each incoming request."""
-    start_time: float = perf_counter()
-    method: str = request.method
-    status_code = 500
-    try:
-        if request.url.path in ("/triage", "/answer"):
-            async with track_activity():
-                response: Response = await call_next(request)
-                status_code = response.status_code
+        if settings.kafka.silent_fallback:
+            logger.warning("Kafka broker is not reachable; continuing with REST-only mode.")
         else:
-            response = await call_next(request)
-            status_code = response.status_code
-    except Exception:
-        raise
-    finally:
-        route = request.scope.get("route")
-        route_path: str = route.path if route is not None and hasattr(route, "path") else "unmatched"
-        HTTP_REQUESTS_TOTAL.labels(method=method, path=route_path, status=str(status_code)).inc()
-        HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=route_path, status=str(status_code)).observe(
-            perf_counter() - start_time
-        )
+            logger.error("Kafka broker is not reachable and silent fallback is disabled.")
+            raise RuntimeError("Kafka broker is not reachable and silent fallback is disabled.")
 
-    return response
+    # Create FastAPI app with lifespan
+    backend = FastAPI(
+        lifespan=lifespan,
+        title="Zammad AI Backend",
+        description="Backend service for Zammad AI, handling Kafka events and REST API for ticket triage and answer generation.",
+        docs_url="/api/docs" if settings.mode == "development" else None,
+        redoc_url="/api/redoc" if settings.mode == "development" else None,
+        # Langfuse exports the application spans but not FastAPI's native HTTP spans.
+        # Leaving them enabled makes the unexported HTTP span the OTel root.
+        telemetry={"tracing": False},
+    )
+    backend.state.settings = settings
+    backend.state.usecase_registry = usecase_registry
+    backend.state.kafka_router = kafka_router
 
+    @backend.middleware("http")
+    async def prometheus_http_metrics_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Collect Prometheus HTTP metrics around each incoming request."""
+        start_time: float = perf_counter()
+        method: str = request.method
+        status_code = 500
+        try:
+            if request.url.path in ("/triage", "/answer"):
+                async with track_activity():
+                    response: Response = await call_next(request)
+                    status_code = response.status_code
+            else:
+                response = await call_next(request)
+                status_code = response.status_code
+        except Exception:
+            raise
+        finally:
+            route = request.scope.get("route")
+            route_path: str = route.path if route is not None and hasattr(route, "path") else "unmatched"
+            HTTP_REQUESTS_TOTAL.labels(method=method, path=route_path, status=str(status_code)).inc()
+            HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=route_path, status=str(status_code)).observe(
+                perf_counter() - start_time
+            )
 
-# Registered after the metrics middleware so it wraps it: the usecase binding
-# must be active in the outer request task, because uvicorn emits the access
-# log from the response send call after the endpoint has returned.
-backend.add_middleware(
-    UsecaseLoggingMiddleware,
-    registry=usecase_registry,
-    max_parse_body_bytes=settings.api.max_parse_body_bytes,
-)
+        return response
 
-
-if kafka_router is not None:
-    backend.include_router(router=kafka_router)
-
-    @kafka_router.after_startup
-    async def mark_ready(_app: FastAPI) -> None:
-        """Mark the application status as ready after Kafka startup completes."""
-        set_status("ready")
-        logger.info("Kafka broker connected and application startup completed.")
-
-
-# Mount API routers
-backend.include_router(
-    router=triage_router,
-    prefix="/api/v1",
-)
-
-backend.include_router(
-    router=answer_router,
-    prefix="/api/v1",
-)
-
-
-@backend.get("/api/v1/prompt_versions", tags=["status"])
-async def get_prompt_versions() -> dict[str, object]:
-    """Return the versions of all loaded prompts.
-
-    Returns:
-        dict[str, int | None]: A flat dictionary mapping prompt names to their version
-        numbers when a single usecase runtime is configured. With multiple usecase
-        runtimes, a nested dictionary mapping usecase names to their prompt version
-        dictionaries is returned instead.
-    """
-    runtimes = backend.state.usecase_registry.runtimes
-    if len(runtimes) == 1:
-        runtime = next(iter(runtimes.values()))
-        prompts = runtime.triage_service.get_prompt_versions()
-        prompts.update(runtime.answer_service.get_prompt_versions())
-        return prompts
-    return {
-        name: {
-            **runtime.triage_service.get_prompt_versions(),
-            **runtime.answer_service.get_prompt_versions(),
-        }
-        for name, runtime in runtimes.items()
-    }  # type: ignore[return-value]
-
-
-@backend.get("/api/v1/usecases", tags=["status"])
-async def get_usecases() -> list[dict[str, str]]:
-    """Return configured usecases for API clients and the developer frontend."""
-    return [{"name": usecase.name, "description": usecase.description} for usecase in settings.usecases]
-
-
-@backend.get("/api/v1/health", tags=["health"])
-async def health_check() -> HealthCheckResponse:
-    """Provide a basic application health check response.
-
-    Returns:
-        HealthCheckResponse: An instance containing the application's default health status.
-    """
-    return HealthCheckResponse()
-
-
-if settings.frontend.enabled:
-    usecase_settings = {name: runtime.settings for name, runtime in usecase_registry.runtimes.items()}
-    # Mount the feedback frontend first so it is not shadowed by the root frontend mount.
-    backend = mount_feedback_frontend(app=backend, settings=settings, usecase_settings=usecase_settings)
-    backend = mount_frontend(
-        app=backend,
-        settings=settings,
-        usecase_settings=usecase_settings,
+    # Registered after the metrics middleware so it wraps it: the usecase binding
+    # must be active in the outer request task, because uvicorn emits the access
+    # log from the response send call after the endpoint has returned.
+    backend.add_middleware(
+        UsecaseLoggingMiddleware,
+        registry=usecase_registry,
+        max_parse_body_bytes=settings.api.max_parse_body_bytes,
     )
 
-if not settings.frontend.enabled and settings.mode == "development":
-    logger.info("Frontend is disabled, rerouting root path to API docs")
+    if kafka_router is not None:
+        backend.include_router(router=kafka_router)
 
-    @backend.get("/", include_in_schema=False)
-    async def reroute_to_docs() -> RedirectResponse:
-        """Redirect root requests to the API documentation page.
+        @kafka_router.after_startup
+        async def mark_ready(_app: FastAPI) -> None:
+            """Mark the application status as ready after Kafka startup completes."""
+            set_status("ready")
+            logger.info("Kafka broker connected and application startup completed.")
+
+    # Mount API routers
+    backend.include_router(
+        router=triage_router,
+        prefix="/api/v1",
+    )
+
+    backend.include_router(
+        router=answer_router,
+        prefix="/api/v1",
+    )
+
+    @backend.get("/api/v1/prompt_versions", tags=["status"])
+    async def get_prompt_versions(request: Request) -> dict[str, object]:
+        """Return the versions of all loaded prompts.
 
         Returns:
-            RedirectResponse: A response that redirects the client to "/api/docs".
+            dict[str, int | None]: A flat dictionary mapping prompt names to their version
+            numbers when a single usecase runtime is configured. With multiple usecase
+            runtimes, a nested dictionary mapping usecase names to their prompt version
+            dictionaries is returned instead.
         """
-        return RedirectResponse(url="/api/docs")
+        runtimes = request.app.state.usecase_registry.runtimes
+        if len(runtimes) == 1:
+            runtime = next(iter(runtimes.values()))
+            prompts = runtime.triage_service.get_prompt_versions()
+            prompts.update(runtime.answer_service.get_prompt_versions())
+            return prompts
+        return {
+            name: {
+                **runtime.triage_service.get_prompt_versions(),
+                **runtime.answer_service.get_prompt_versions(),
+            }
+            for name, runtime in runtimes.items()
+        }  # type: ignore[return-value]
+
+    @backend.get("/api/v1/usecases", tags=["status"])
+    async def get_usecases() -> list[dict[str, str]]:
+        """Return configured usecases for API clients and the developer frontend."""
+        return [{"name": usecase.name, "description": usecase.description} for usecase in settings.usecases]
+
+    @backend.get("/api/v1/health", tags=["health"])
+    async def health_check() -> HealthCheckResponse:
+        """Provide a basic application health check response.
+
+        Returns:
+            HealthCheckResponse: An instance containing the application's default health status.
+        """
+        return HealthCheckResponse()
+
+    if settings.frontend.enabled:
+        usecase_settings = {name: runtime.settings for name, runtime in usecase_registry.runtimes.items()}
+        # Mount the feedback frontend first so it is not shadowed by the root frontend mount.
+        backend = mount_feedback_frontend(app=backend, settings=settings, usecase_settings=usecase_settings)
+        backend = mount_frontend(
+            app=backend,
+            settings=settings,
+            usecase_settings=usecase_settings,
+        )
+
+    if not settings.frontend.enabled and settings.mode == "development":
+        logger.info("Frontend is disabled, rerouting root path to API docs")
+
+        @backend.get("/", include_in_schema=False)
+        async def reroute_to_docs() -> RedirectResponse:
+            """Redirect root requests to the API documentation page.
+
+            Returns:
+                RedirectResponse: A response that redirects the client to "/api/docs".
+            """
+            return RedirectResponse(url="/api/docs")
+
+    _backend = backend
+    return backend
+
+
+_backend: FastAPI | None = None
+
+
+def __getattr__(name: str) -> FastAPI:
+    """Expose the backend application lazily so importing this module stays side-effect free."""
+    if name == "backend":
+        return create_backend()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
