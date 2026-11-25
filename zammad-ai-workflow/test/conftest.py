@@ -7,9 +7,11 @@ Kafka payloads, and reusable fake dependencies.
 import logging
 import os
 from collections.abc import Callable, Generator
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from faststream.kafka import TestKafkaBroker
 from pydantic import HttpUrl, SecretStr
 
@@ -357,3 +359,131 @@ def fake_zammad_client(settings_factory: Callable[..., ZammadAISettings]) -> Fak
     settings = settings_factory()
     assert isinstance(settings.zammad, ZammadAPISettings)
     return FakeZammadClient(settings=settings.zammad)
+
+
+class _ApiTriageStub:
+    """Triage service stub that answers with usecase-specific canned results."""
+
+    def __init__(self, usecase_name: str) -> None:
+        """Initialize the stub with the usecase name it stands in for."""
+        self.usecase_name = usecase_name
+        self.no_category = Category(name="Unknown")
+        self.no_action = Action(name="No Action", description="No action", type=ActionTypes.NoAction)
+
+    async def predict_category(self, *_args, **_kwargs) -> Any:
+        """Return a canned CategorizationResult naming the stub's usecase."""
+        from app.models.triage import CategorizationResult
+
+        return CategorizationResult(
+            category=Category(name=f"category-{self.usecase_name}"),
+            reasoning=f"stub:{self.usecase_name}",
+            confidence=1.0,
+        )
+
+    async def get_action_name(self, *_args, **_kwargs) -> str:
+        """Return the stub's default action name."""
+        return self.no_action.name
+
+    def _name_to_action(self, _action_name: str) -> Action:
+        """Return the stub's default Action regardless of the requested name."""
+        return self.no_action
+
+    async def cleanup(self) -> None:
+        """Perform no cleanup."""
+        return None
+
+
+class _ApiActionStub:
+    """Action service stub that answers with a usecase-specific static answer."""
+
+    def __init__(self, usecase_name: str) -> None:
+        """Initialize the stub with the usecase name it stands in for."""
+        self.usecase_name = usecase_name
+
+    async def get_answer(self, *_args, **_kwargs) -> Any:
+        """Return an AnswerResult with a static answer naming the stub's usecase."""
+        from app.models.answer import AnswerResult, StaticAnswer
+
+        return AnswerResult(response=StaticAnswer(response=f"answer from {self.usecase_name}"))
+
+    async def cleanup(self) -> None:
+        """Perform no cleanup."""
+        return None
+
+
+class _ApiUseCaseRegistry:
+    """Registry stand-in exposing stub runtimes for API endpoint tests."""
+
+    def __init__(self, runtimes: dict[str, SimpleNamespace]) -> None:
+        """Initialize the registry with the given runtimes mapping."""
+        self.runtimes = runtimes
+
+    def get(self, name: str) -> SimpleNamespace:
+        """Return a runtime by name, mirroring UseCaseRegistry's KeyError behavior."""
+        try:
+            return self.runtimes[name]
+        except KeyError as e:
+            raise KeyError(f"Unknown usecase: {name}") from e
+
+    async def cleanup(self) -> None:
+        """Perform no cleanup."""
+        return None
+
+
+def _api_runtime(name: str, settings: ZammadAISettings) -> SimpleNamespace:
+    """Build a stub usecase runtime with usecase-specific triage and action stubs."""
+    from app.preparser.service import PreparserService
+
+    return SimpleNamespace(
+        settings=settings,
+        triage_service=_ApiTriageStub(name),
+        action_service=_ApiActionStub(name),
+        preparser_service=PreparserService(settings=PreparserSettings(enabled=False)),
+    )
+
+
+@pytest.fixture
+def test_client_factory(
+    monkeypatch: pytest.MonkeyPatch, settings_factory: Callable[..., ZammadAISettings]
+) -> Callable[..., TestClient]:
+    """Provide a factory that builds a TestClient for the backend with a stubbed usecase registry.
+
+    The factory patches the settings accessors, replaces the usecase registry with one
+    stub runtime per configured usecase, and disables the Kafka reachability check so
+    the backend is built in REST-only mode without touching real services.
+
+    Returns:
+        factory (Callable[..., TestClient]): A callable that accepts an optional
+        `usecases` keyword override and returns an unentered TestClient.
+    """
+
+    def _factory(*, usecases: list[UseCaseSettings] | None = None) -> TestClient:
+        """Create a TestClient for the backend application with stubbed runtimes.
+
+        Parameters:
+            usecases (list[UseCaseSettings] | None): Usecase definitions to configure; defaults to the base settings' single "default" usecase.
+
+        Returns:
+            TestClient: An unentered TestClient for the freshly built backend application.
+        """
+        settings = settings_factory()
+        if usecases is not None:
+            settings = settings_factory(usecases=usecases)
+        settings.kafka.silent_fallback = True
+
+        registry = _ApiUseCaseRegistry(
+            {usecase.name: _api_runtime(usecase.name, settings) for usecase in settings.usecases}
+        )
+
+        import app.api.backend as backend_module
+
+        monkeypatch.setattr("app.settings.settings.get_settings", lambda: settings)
+        monkeypatch.setattr("app.settings.get_settings", lambda: settings)
+        monkeypatch.setattr(backend_module, "get_settings", lambda: settings)
+        monkeypatch.setattr(backend_module, "UseCaseRegistry", lambda _settings: registry)
+        monkeypatch.setattr(backend_module, "_is_kafka_reachable", lambda *_args, **_kwargs: False)
+        monkeypatch.setattr(backend_module, "_backend", None)
+
+        return TestClient(backend_module.create_backend())
+
+    return _factory
