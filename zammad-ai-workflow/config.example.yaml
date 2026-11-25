@@ -49,7 +49,7 @@ usecases:
 # See config/usecases/permits.yaml.example for a complete, ready-to-copy example.
 router:
   usecase_config_dir: "config/usecases"
-  unmatched_policy: "skip" # Options: "skip" (drop unmatched events), "error" (raise), "fallback" (route to fallback_usecase)
+  unmatched_policy: "skip" # Options: "skip" (drop unmatched events with an INFO log), "error" (drop unmatched events with an ERROR log and a skipped_unmatched_usecase metric; the event is not redelivered), "fallback" (route to fallback_usecase)
   # For unmatched_policy: "fallback", set the target usecase name here.
   # fallback_usecase: "my_usecase"
 

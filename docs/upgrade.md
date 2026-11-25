@@ -21,8 +21,9 @@ configuration is migrated.
   `router.unmatched_policy: skip`, a sole ruleless usecase silently drops every
   Kafka event; this combination now also produces a startup warning.
 - **Polling-enabled usecases need `polling_match` rules once more than one
-  usecase is configured.** A sole usecase receives every polled ticket, but
-  with two or more usecases a usecase without `polling_match` rules never
+  usecase is configured.** A sole usecase without `polling_match` rules receives
+  every polled ticket; with `polling_match` rules, it receives only matching
+  tickets. With two or more usecases, a usecase without `polling_match` rules never
   matches polled tickets; those tickets are skipped every polling cycle and
   remain unprocessed. Add `polling_match` rules to each polling-enabled usecase
   before adding a second usecase.
