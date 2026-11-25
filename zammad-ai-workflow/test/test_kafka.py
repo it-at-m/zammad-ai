@@ -1,5 +1,6 @@
 """Tests for Kafka event routing and triage invocation."""
 
+import logging
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Protocol, cast
@@ -1066,6 +1067,34 @@ async def test_restore_ticket_group_runs_when_ticket_still_in_expected_group() -
         group_id=17,
         pending_time="2026-10-05T07:35:41.000Z",
     )
+
+
+@pytest.mark.asyncio
+async def test_restore_ticket_group_runs_when_current_group_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A missing current group id is treated as unknown and must not skip the restore."""
+    zammad_client = AsyncMock()
+    zammad_client.get_ticket_metadata = AsyncMock(
+        return_value=ZammadTicket(id=3720, group_id=None, pending_time="2026-10-05T07:35:41.000Z", articles=[])
+    )
+
+    with caplog.at_level(logging.WARNING, logger="zammad-ai.kafka.helper"):
+        await _restore_ticket_group(
+            zammad_client=zammad_client,
+            ticket_id=3720,
+            group_id=17,
+            handler_stage="restore_ticket_group",
+            log_message="Moved ticket back to original group",
+            expected_group_id=99,
+        )
+
+    zammad_client.update_ticket_group.assert_awaited_once_with(
+        ticket_id=3720,
+        group_id=17,
+        pending_time="2026-10-05T07:35:41.000Z",
+    )
+    assert "Proceeding with restore because the current group is unknown" in caplog.text
 
 
 @pytest.mark.asyncio

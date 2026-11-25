@@ -112,9 +112,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             runtime for runtime in app.state.usecase_registry.runtimes.values() if runtime.settings.polling.enabled
         ]
         if settings.polling.enabled or polling_runtimes:
-            if settings.zammad.type == "eai":
-                logger.error("Polling is configured but the Zammad EAI client does not support polling.")
-                raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
             if app.state.kafka_router is not None:
                 logger.warning("Both Kafka and polling-based ticket intake are active.")
             logger.warning(
@@ -182,9 +179,6 @@ def create_backend() -> FastAPI:
     settings: ZammadAISettings = get_settings()
     logger.info("Building usecase registry")
     usecase_registry = UseCaseRegistry(settings)
-
-    if settings.polling.enabled and settings.zammad.type == "eai":
-        raise RuntimeError("Polling-based ticket intake is not supported with the Zammad EAI client.")
 
     kafka_router = None
     if _is_kafka_reachable(settings.kafka.broker_url):

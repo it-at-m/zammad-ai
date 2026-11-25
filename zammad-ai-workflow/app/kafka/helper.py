@@ -221,11 +221,12 @@ async def _restore_ticket_group(
     ``expected_group_id`` — for example because an overlapping delivery for the same ticket
     already restored it or an agent took over the ticket. Deliveries for the same ticket are
     not serialized, so the check prevents a stale restore from moving the ticket again.
+    A missing current ``group_id`` is treated as unknown and does not skip the restore.
     """
     for attempt in range(retry_attempts + 1):
         try:
             ticket = await zammad_client.get_ticket_metadata(ticket_id)
-            if expected_group_id is not None and ticket.group_id != expected_group_id:
+            if expected_group_id is not None and ticket.group_id is not None and ticket.group_id != expected_group_id:
                 logger.info(
                     "Skipping restore because the ticket is no longer in the AI group",
                     extra={
@@ -237,6 +238,16 @@ async def _restore_ticket_group(
                     },
                 )
                 return
+            if expected_group_id is not None and ticket.group_id is None:
+                logger.warning(
+                    "Proceeding with restore because the current group is unknown",
+                    extra={
+                        "handler_stage": handler_stage,
+                        "ticket_id": ticket_id,
+                        "expected_group_id": expected_group_id,
+                        "original_group_id": group_id,
+                    },
+                )
             await zammad_client.update_ticket_group(
                 ticket_id=ticket_id,
                 group_id=group_id,
