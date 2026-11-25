@@ -19,7 +19,7 @@ jobs:
       - name: Run all modules on push to main
         id: all
         if: github.event_name == 'push'
-        run: echo 'modules=["./zammad-ai-workflow", "./slm-guardrails"]' >> "$GITHUB_OUTPUT"
+        run: echo 'modules=["./zammad-ai-workflow", "./zammad-ai-index", "./slm-guardrails"]' >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         if: github.event_name == 'pull_request'
@@ -34,6 +34,9 @@ jobs:
             workflow:
               - 'zammad-ai-workflow/**'
               - '.github/workflows/pytest.yaml'
+            index:
+              - 'zammad-ai-index/**'
+              - '.github/workflows/pytest.yaml'
             guardrails:
               - 'slm-guardrails/**'
               - '.github/workflows/pytest.yaml'
@@ -42,8 +45,8 @@ jobs:
         id: matrix
         if: github.event_name == 'pull_request'
         run: |
-          modules=$(jq -nc --arg w "${{ steps.filter.outputs.workflow }}" --arg g "${{ steps.filter.outputs.guardrails }}" \
-            '[[$w, "./zammad-ai-workflow"], [$g, "./slm-guardrails"]] | map(select(.[0] == "true") | .[1])')
+          modules=$(jq -nc --arg w "${{ steps.filter.outputs.workflow }}" --arg i "${{ steps.filter.outputs.index }}" --arg g "${{ steps.filter.outputs.guardrails }}" \
+            '[[$w, "./zammad-ai-workflow"], [$i, "./zammad-ai-index"], [$g, "./slm-guardrails"]] | map(select(.[0] == "true") | .[1])')
           echo "modules=$modules" >> "$GITHUB_OUTPUT"
 
   test:
