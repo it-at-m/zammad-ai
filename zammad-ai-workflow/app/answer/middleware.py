@@ -1,17 +1,19 @@
-"""LangGraph middleware for injecting knowledge-base context."""
+"""LangGraph middleware for injecting knowledge-base context and trimming model context."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from logging import Logger
 from typing import Any
 
-from langchain.agents.middleware import before_agent
-from langchain.messages import HumanMessage, SystemMessage
+from langchain.agents.middleware import before_agent, before_model
+from langchain.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langfuse import observe, propagate_attributes
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from pydantic import BaseModel, Field, ValidationError
 from qdrant_client.models import Filter, IsEmptyCondition, PayloadField
 
@@ -25,6 +27,7 @@ logger: Logger = getLogger("zammad-ai.answer.middleware")
 
 KB_CONTEXT_HEADER = "Knowledge-base context"
 KB_CONTEXT_EMPTY = "No relevant knowledge-base documents were found for this request."
+KB_CONTEXT_TRUNCATED = "[Knowledge-base context was truncated to fit the model context window.]"
 
 
 class KnowledgebaseQuery(BaseModel):
@@ -164,10 +167,276 @@ def build_knowledgebase_middleware(query_model: BaseChatModel):
             return {"messages": [SystemMessage(content=context)]}
         except Exception:
             logger.error("Failed to build knowledge-base context.", exc_info=True)
-            runtime.context.knowledgebase_context = KB_CONTEXT_EMPTY
-            return {"messages": [SystemMessage(content=KB_CONTEXT_EMPTY)]}
+            empty_context = KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_EMPTY
+            runtime.context.knowledgebase_context = empty_context
+            return {"messages": [SystemMessage(content=empty_context)]}
 
     return knowledgebase_middleware
+
+
+def _split_into_exchanges(messages: list[Any]) -> list[list[Any]]:
+    """Group messages into exchanges, keeping tool results attached to their tool calls."""
+    exchanges: list[list[Any]] = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        if isinstance(message, AIMessage) and message.tool_calls:
+            exchange = [message]
+            index += 1
+            while index < len(messages) and isinstance(messages[index], ToolMessage):
+                exchange.append(messages[index])
+                index += 1
+            exchanges.append(exchange)
+        else:
+            exchanges.append([message])
+            index += 1
+    return exchanges
+
+
+def _is_kb_context(message: Any) -> bool:
+    return (
+        isinstance(message, SystemMessage)
+        and isinstance(message.content, str)
+        and message.content.startswith(KB_CONTEXT_HEADER)
+    )
+
+
+def _truncate_kb_context(
+    messages: list[Any],
+    budget_tokens: int,
+    chars_per_token: float,
+    untruncated_content: str | None = None,
+) -> tuple[list[Any], bool]:
+    """Reduce the injected KB message to the space left by the other messages.
+
+    The replacement SystemMessage is sized as a complete message: the fixed
+    per-message overhead the estimator adds on top of the content characters
+    (role and message framing) is reserved before the remaining token
+    allowance is converted into characters. The final estimated token count is
+    verified against the budget and shrunk further when necessary, while
+    messages that already fit stay unchanged.
+
+    Parameters:
+        untruncated_content (str | None): Knowledge-base content to size the
+            replacement from. Defaults to the current message content; pass
+            the pre-truncation text to grow the context back after other
+            messages were removed.
+
+    Returns the resulting messages and whether the knowledge-base context was
+    modified.
+    """
+    kb_indices = [index for index, message in enumerate(messages) if _is_kb_context(message)]
+    if not kb_indices:
+        return messages, False
+
+    non_kb_messages = [message for index, message in enumerate(messages) if index not in kb_indices]
+    available_tokens = budget_tokens - count_tokens_approximately(
+        non_kb_messages,
+        chars_per_token=chars_per_token,
+    )
+    original_content = untruncated_content if untruncated_content is not None else str(messages[kb_indices[0]].content)
+    suffix = "\n\n" + KB_CONTEXT_TRUNCATED
+    minimal_replacement = KB_CONTEXT_HEADER + "\n\n" + KB_CONTEXT_TRUNCATED
+
+    if available_tokens <= 0:
+        replacement = minimal_replacement
+    else:
+        overhead_tokens = count_tokens_approximately(
+            [SystemMessage(content="")],
+            chars_per_token=chars_per_token,
+        )
+        max_chars = max(0, int((available_tokens - overhead_tokens) * chars_per_token))
+        body_limit = max_chars - len(suffix)
+        if len(original_content) <= max_chars:
+            replacement = original_content
+        elif body_limit >= len(KB_CONTEXT_HEADER):
+            replacement = original_content[:body_limit] + suffix
+        else:
+            replacement = minimal_replacement
+
+    result = list(messages)
+    original = messages[kb_indices[0]]
+    modified = replacement != original.content
+    if modified:
+        result[kb_indices[0]] = SystemMessage(content=replacement, id=original.id)
+    for index in reversed(kb_indices[1:]):
+        del result[index]
+        modified = True
+
+    while (
+        modified
+        and replacement != minimal_replacement
+        and count_tokens_approximately(result, chars_per_token=chars_per_token) > budget_tokens
+    ):
+        overflow_tokens = count_tokens_approximately(result, chars_per_token=chars_per_token) - budget_tokens
+        body_limit = len(replacement) - len(suffix) - int(overflow_tokens * chars_per_token) - 1
+        replacement = (
+            original_content[:body_limit] + suffix if body_limit >= len(KB_CONTEXT_HEADER) else minimal_replacement
+        )
+        result[kb_indices[0]] = SystemMessage(content=replacement, id=original.id)
+
+    return result, modified
+
+
+def _trim_messages_to_budget(
+    messages: list[Any],
+    budget_tokens: int,
+    chars_per_token: float,
+    keep_latest_tool_exchange: bool = False,
+) -> tuple[list[Any], list[list[Any]]]:
+    """Drop old exchanges until the estimated token count fits the budget.
+
+    The latest human message and non-KB system messages are preserved. Tool
+    results are dropped together with their tool-call message so the sequence
+    stays valid. With keep_latest_tool_exchange the latest tool exchange is
+    preserved as well, so a caller can reduce the knowledge-base context first
+    and only give up that exchange in a second pass. Removal is
+    best effort: when protected messages alone exceed the budget, every
+    removable exchange is still dropped.
+
+    Returns the kept messages together with the exchanges that were removed.
+    """
+    total = count_tokens_approximately(messages, chars_per_token=chars_per_token)
+    if total <= budget_tokens:
+        return messages, []
+
+    exchanges = _split_into_exchanges(messages)
+    latest_human_index = next(
+        (index for index in reversed(range(len(messages))) if isinstance(messages[index], HumanMessage)),
+        None,
+    )
+    latest_tool_exchange = next(
+        (
+            index
+            for index in reversed(range(len(exchanges)))
+            if exchanges[index] and isinstance(exchanges[index][0], AIMessage) and exchanges[index][0].tool_calls
+        ),
+        None,
+    )
+    exchange_ranges: list[tuple[int, range]] = []
+    message_index = 0
+    for index, exchange in enumerate(exchanges):
+        exchange_ranges.append((index, range(message_index, message_index + len(exchange))))
+        message_index += len(exchange)
+
+    removed: list[list[Any]] = []
+    for preserve_human_messages in (True, False):
+        for index, exchange_indices in exchange_ranges:
+            if total <= budget_tokens:
+                break
+            exchange = exchanges[index]
+            if not exchange or any(isinstance(message, SystemMessage) for message in exchange):
+                continue
+            if keep_latest_tool_exchange and index == latest_tool_exchange:
+                continue
+            if latest_human_index is not None and latest_human_index in exchange_indices:
+                continue
+            has_human_message = any(isinstance(message, HumanMessage) for message in exchange)
+            if preserve_human_messages and has_human_message:
+                continue
+            total -= count_tokens_approximately(exchange, chars_per_token=chars_per_token)
+            removed.append(exchanges[index])
+            exchanges[index] = []
+
+    kept = [message for exchange in exchanges for message in exchange]
+    return kept, removed
+
+
+def _release_laws_of_removed_exchanges(
+    removed_exchanges: list[list[Any]],
+    runtime: Any,
+    law_ids_by_tool_name: Mapping[str, str] | None,
+) -> None:
+    """Allow re-retrieval of laws whose tool results were removed from the conversation.
+
+    Without this, the law tool would answer with a reference to previously
+    retrieved documents that are no longer part of the message history.
+    """
+    if not law_ids_by_tool_name:
+        return
+    searched_laws = getattr(getattr(runtime, "context", None), "searched_laws", None)
+    if not isinstance(searched_laws, set):
+        return
+    for exchange in removed_exchanges:
+        for message in exchange:
+            if not isinstance(message, AIMessage):
+                continue
+            for tool_call in message.tool_calls:
+                law_id = law_ids_by_tool_name.get(tool_call.get("name"))
+                if law_id is not None:
+                    searched_laws.discard(law_id)
+
+
+def build_context_trimming_middleware(
+    context_window_tokens: int,
+    reserved_output_tokens: int,
+    overhead_tokens: int = 8192,
+    chars_per_token: float = 3.0,
+    law_ids_by_tool_name: Mapping[str, str] | None = None,
+):
+    """Create middleware that keeps the agent conversation within the model context window.
+
+    Older exchanges are dropped first while the latest tool exchange
+    is preserved; the knowledge-base context is reduced before that exchange
+    is given up as a last resort.
+
+    Parameters:
+        context_window_tokens (int): Maximum context window of the model in tokens.
+        reserved_output_tokens (int): Tokens reserved for the model response (max_tokens).
+        overhead_tokens (int): Reserve for the agent prompt, tools, and tokenization overhead.
+        chars_per_token (float): Estimated characters per token for token-count approximation.
+        law_ids_by_tool_name (Mapping[str, str] | None): Mapping from law tool names to law ids,
+            used to allow re-retrieval of laws whose tool results were trimmed.
+    """
+    budget = context_window_tokens - reserved_output_tokens - overhead_tokens
+    if budget <= 0:
+        raise ValueError(
+            "Context budget must be positive, got "
+            f"{context_window_tokens} - {reserved_output_tokens} - {overhead_tokens} = {budget}."
+        )
+
+    @before_model
+    async def context_trimming_middleware(state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+        messages = list(state.get("messages", []))
+
+        kept, removed_exchanges = _trim_messages_to_budget(
+            messages,
+            budget,
+            chars_per_token,
+            keep_latest_tool_exchange=True,
+        )
+        kb_content = next((str(message.content) for message in kept if _is_kb_context(message)), None)
+        result, kb_modified = _truncate_kb_context(kept, budget, chars_per_token)
+        over_budget = count_tokens_approximately(result, chars_per_token=chars_per_token) > budget
+
+        if over_budget:
+            kept, removed_latest = _trim_messages_to_budget(
+                result,
+                budget,
+                chars_per_token,
+                keep_latest_tool_exchange=False,
+            )
+            removed_exchanges.extend(removed_latest)
+            result, kb_modified_pass2 = _truncate_kb_context(
+                kept, budget, chars_per_token, untruncated_content=kb_content
+            )
+            kb_modified = kb_modified or kb_modified_pass2
+            over_budget = count_tokens_approximately(result, chars_per_token=chars_per_token) > budget
+
+        _release_laws_of_removed_exchanges(removed_exchanges, runtime, law_ids_by_tool_name)
+
+        if over_budget:
+            logger.warning("Cannot trim messages below the context budget after removing old conversation history.")
+        if not removed_exchanges and not kb_modified:
+            return None
+
+        if removed_exchanges:
+            logger.warning(f"Trimmed answer context from {len(messages)} to {len(result)} messages.")
+        if kb_modified:
+            logger.warning("Truncated knowledge-base context to fit the model context window.")
+        return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *result]}
+
+    return context_trimming_middleware
 
 
 @observe(as_type="span")

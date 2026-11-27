@@ -19,7 +19,7 @@ Main settings live in `zammad-ai-workflow/app/settings/` and are loaded by `zamm
 ### Core Sections
 
 - `usecase`: deployment name and description
-- `genai`: model provider, chat model, embedding model, and retry settings
+- `genai`: model provider, chat model, embedding model, retry settings, and context-window reserves used to trim answer-agent context
 - `zammad`: REST API or EAI connection settings, knowledge base ID, and document parsing config
 - `kafka`: broker URL, topic names, retry policy, client ID, group ID, and mTLS security
 - `triage`: categories, actions, rules, prompt sources, and fallback behavior

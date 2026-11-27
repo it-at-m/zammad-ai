@@ -73,6 +73,10 @@ export default defineConfig({
             link: "/components/triage",
           },
           {
+            text: "Answer",
+            link: "/components/answer",
+          },
+          {
             text: "Zammad Integration",
             link: "/components/zammad",
           },

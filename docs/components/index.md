@@ -5,6 +5,7 @@ The repository is split into a workflow service, an indexing job and a guardrail
 - [Kafka](kafka.md)
 - [Frontend](frontend.md)
 - [Triage](triage.md)
+- [Answer](answer.md)
 - [Zammad Integration](zammad.md)
 - [Guardrails Service](guardrails.md)
 - [Qdrant Vector Database](qdrant.md)

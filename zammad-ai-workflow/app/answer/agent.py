@@ -25,7 +25,7 @@ from .knowledgebase import (
     RetrieveDocumentsKBOutput,
     SearchQdrantKBInput,
 )
-from .middleware import build_knowledgebase_middleware
+from .middleware import build_context_trimming_middleware, build_knowledgebase_middleware
 
 logger: Logger = getLogger("zammad-ai.answer.agent")
 
@@ -241,6 +241,7 @@ def build_agent(
         available_tools.append(_enable_expected_tool_failures(search_dlf))
     for law in laws or []:
         available_tools.append(build_law_tool(law))
+    law_ids_by_tool_name = {build_law_tool_name(law.id): law.id for law in laws or []}
 
     # Create the agent via the factory method
     agent: Any = create_agent(
@@ -252,7 +253,16 @@ def build_agent(
             tool_message_content="Response candidate has been generated!",
         ),
         context_schema=AgentContext,
-        middleware=[build_knowledgebase_middleware(chat_model)],
+        middleware=[
+            build_knowledgebase_middleware(chat_model),
+            build_context_trimming_middleware(
+                context_window_tokens=genai_settings.context_window_tokens,
+                reserved_output_tokens=genai_settings.max_tokens,
+                overhead_tokens=genai_settings.context_overhead_tokens,
+                chars_per_token=genai_settings.chars_per_token,
+                law_ids_by_tool_name=law_ids_by_tool_name,
+            ),
+        ],
     )
 
     return agent
